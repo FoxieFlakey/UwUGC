@@ -4,27 +4,27 @@ use crate::objects_manager::{Object, ObjectRef};
 
 use super::ObjectManager;
 
-pub struct Context;
+pub struct LocalObjectsChain;
 
-impl Context {
+impl LocalObjectsChain {
   pub(super) fn new() -> Self {
     return Self {
     }
   }
 }
 
-pub struct ContextGuard<'a> {
-  ctx: Arc<Context>,
+pub struct Context<'a> {
+  ctx: Arc<LocalObjectsChain>,
   owner: &'a ObjectManager
 }
 
 // Ensure that ContextGuard stays on same thread
 // by disallowing it to be Send or Sync
-impl !Send for ContextGuard<'_> {}
-impl !Sync for ContextGuard<'_> {}
+impl !Send for Context<'_> {}
+impl !Sync for Context<'_> {}
 
-impl<'a> ContextGuard<'a> {
-  pub(super) fn new(ctx: Arc<Context>, owner: &'a ObjectManager) -> Self {
+impl<'a> Context<'a> {
+  pub(super) fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager) -> Self {
     return Self {
       owner,
       ctx
@@ -57,7 +57,7 @@ impl<'a> ContextGuard<'a> {
   }
 }
 
-impl Drop for ContextGuard<'_> {
+impl Drop for Context<'_> {
   fn drop(&mut self) {
     let mut contexts = self.owner.contexts.lock().unwrap();
     
