@@ -1,5 +1,9 @@
 use std::{any::Any, marker::PhantomData, ptr, sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}};
 
+use context::Context;
+
+mod context;
+
 pub struct Object {
   next: AtomicPtr<Object>,
   marked: AtomicBool,
@@ -51,7 +55,7 @@ impl ObjectManager {
   
   // SAFETY: Caller ensures that 'start' and 'end' is valid Object
   // and also valid chain
-  unsafe fn add_chain_to_list(&self, start: *mut Object, end: *mut Object) {
+  pub(super) unsafe fn add_chain_to_list(&self, start: *mut Object, end: *mut Object) {
     // NOTE: Relaxed ordering because don't need to access data pointed by "head"
     let mut current_head = self.head.load(Ordering::Relaxed);
     loop {
@@ -75,27 +79,10 @@ impl ObjectManager {
     unsafe { drop(Box::from_raw(obj)) };
   }
   
-  pub fn alloc<'a, T: Any + 'static>(&'a self, func: impl FnOnce() -> T) -> ObjectRef<'a, T> {
-    // Leak it and we'll handle it here
-    let obj = Box::leak(Box::new(Object {
-      data: Box::new(func()),
-      marked: AtomicBool::new(false),
-      next: AtomicPtr::new(ptr::null_mut())
-    }));
-    
-    let obj_ptr = obj as *mut Object as usize;
-    println!("Allocated   : {obj_ptr:#016x}");
-    
-    // Try insert it to head
-    // SAFETY: 'obj' is both start and end of 1 object length chain
-    // and also just allocated it earlier
-    unsafe {
-      self.add_chain_to_list(obj, obj);
-    }
-    
-    let allocated_size = size_of_val(obj) + size_of_val(obj.data.as_ref());
-    self.used_size.fetch_add(allocated_size, Ordering::Relaxed);
-    return ObjectRef::new(obj);
+  pub fn create_context(&self) -> Context {
+    return Context {
+      owner: self
+    };
   }
   
   // Filters alive object to be kept alive
