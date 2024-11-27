@@ -10,10 +10,7 @@ use static_assertions::const_assert_eq;
 // Like AtomicPtr<T> but atomically exchange
 // two pointers
 pub struct AtomicDoublePtr<T1, T2> {
-  #[cfg(target_pointer_width = "64")]
-  double_ptr: AtomicU128,
-  #[cfg(target_pointer_width = "32")]
-  double_ptr: AtomicU64,
+  double_ptr: AtomicDPointers,
   phantom: PhantomData<(T1, T2)>
 }
 
@@ -22,11 +19,23 @@ type DPointers = u128;
 #[cfg(target_pointer_width = "32")]
 type DPointers = u64;
 
+#[cfg(target_pointer_width = "64")]
+type AtomicDPointers = AtomicU128;
+#[cfg(target_pointer_width = "32")]
+type AtomicDPointers = AtomicU64;
+
 // Double pointer indeed must fit two pointers
 // as usize must be single pointer sized
 const_assert_eq!(DPointers::BITS, usize::BITS * 2);
 
 impl<T1, T2> AtomicDoublePtr<T1, T2> {
+  pub fn new(ptrs: (*mut T1, *mut T2)) -> Self {
+    return Self {
+      double_ptr: AtomicDPointers::new(Self::pack_pointers(ptrs)),
+      phantom: PhantomData {}
+    };
+  }
+  
   fn pack_pointers(ptrs: (*mut T1, *mut T2)) -> DPointers {
     let a = ptrs.0 as DPointers;
     let b = ptrs.1 as DPointers;
