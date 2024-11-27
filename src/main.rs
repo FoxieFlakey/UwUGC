@@ -34,5 +34,6 @@ fn main() {
   // Keep non u32 data alive 
   manager.create_sweeper().sweep(|obj| obj.borrow_inner::<u32>().is_none());
   
+  println!("Dropping manager");
   drop(manager);
 }

@@ -122,6 +122,12 @@ impl ObjectManager {
   }
 }
 
+impl Drop for ObjectManager {
+  fn drop(&mut self) {
+    self.create_sweeper().sweep(|_| false);
+  }
+}
+
 impl Sweeper<'_> {
   // Filters alive object to be kept alive
   // if predicate return false, the object
