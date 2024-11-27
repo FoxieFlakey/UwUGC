@@ -10,8 +10,7 @@ pub struct Object {
 
 pub struct ObjectManager {
   head: AtomicPtr<Object>,
-  used_size: AtomicUsize,
-  phantom: PhantomData<()>
+  used_size: AtomicUsize
 }
 
 pub struct ObjectRef<'a, T: 'a> {
@@ -46,7 +45,6 @@ impl ObjectManager {
   pub fn new() -> Self {
     return Self {
       head: AtomicPtr::new(ptr::null_mut()),
-      phantom: PhantomData {},
       used_size: AtomicUsize::new(0)
     };
   }
