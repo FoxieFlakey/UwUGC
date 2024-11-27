@@ -195,7 +195,7 @@ impl Drop for Sweeper<'_> {
     // Leaking memory during panicking is fine because program going to
     // die anyway so leak the objects so it can be used during panicking
     // for maybe some strange codes
-    if self.saved_chain.is_none() && !thread::panicking() {
+    if self.saved_chain.is_some() && !thread::panicking() {
       panic!("Sweeper must not be dropped before sweep is called!");
     }
   }
