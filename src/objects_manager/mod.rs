@@ -1,6 +1,6 @@
 use std::{any::Any, marker::PhantomData, ptr, sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}};
 
-use context::Context;
+use context::{Context, ContextGuard};
 
 mod context;
 
@@ -79,9 +79,11 @@ impl ObjectManager {
     unsafe { drop(Box::from_raw(obj)) };
   }
   
-  pub fn create_context(&self) -> Context {
-    return Context {
-      owner: self
+  pub fn create_context(&self) -> ContextGuard {
+    return ContextGuard {
+      ctx: Context {
+        owner: self
+      }
     };
   }
   

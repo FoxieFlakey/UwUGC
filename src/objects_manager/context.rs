@@ -1,4 +1,4 @@
-use std::{any::Any, ptr, sync::atomic::{AtomicBool, AtomicPtr, Ordering}};
+use std::{any::Any, ops::Deref, ptr, sync::atomic::{AtomicBool, AtomicPtr, Ordering}};
 
 use crate::objects_manager::{Object, ObjectRef};
 
@@ -7,11 +7,6 @@ use super::ObjectManager;
 pub struct Context<'a> {
   pub(super) owner: &'a ObjectManager
 }
-
-// Ensure that Context stays on same thread
-// by disallowing it to be Send or Sync
-impl !Send for Context<'_> {}
-impl !Sync for Context<'_> {}
 
 impl Context<'_> {
   pub fn alloc<T: Any + 'static>(&self, func: impl FnOnce() -> T) -> ObjectRef<T> {
@@ -37,6 +32,23 @@ impl Context<'_> {
     let allocated_size = size_of_val(obj) + size_of_val(obj.data.as_ref());
     manager.used_size.fetch_add(allocated_size, Ordering::Relaxed);
     return ObjectRef::new(obj);
+  }
+}
+
+pub struct ContextGuard<'a> {
+  pub(super) ctx: Context<'a>
+}
+
+// Ensure that ContextGuard stays on same thread
+// by disallowing it to be Send or Sync
+impl !Send for ContextGuard<'_> {}
+impl !Sync for ContextGuard<'_> {}
+
+impl<'a> Deref for ContextGuard<'a> {
+  type Target = Context<'a>;
+  
+  fn deref(&self) -> &Self::Target {
+    return &self.ctx;
   }
 }
 
