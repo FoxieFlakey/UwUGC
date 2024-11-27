@@ -7,6 +7,7 @@ mod context;
 pub struct Object {
   next: AtomicPtr<Object>,
   marked: AtomicBool,
+  total_size: usize,
   
   // Data can only contain owned structs
   data: Box<dyn Any + Send + Sync + 'static>
@@ -89,6 +90,7 @@ impl ObjectManager {
     // SAFETY: Caller already ensure 'obj' is valid reference
     // because references in Rust must be valid
     unsafe { drop(Box::from_raw(obj)) };
+    self.used_size.fetch_sub(obj.total_size, Ordering::Relaxed);
   }
   
   pub fn create_context(&self) -> Context {

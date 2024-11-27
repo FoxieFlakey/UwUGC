@@ -56,7 +56,8 @@ impl<'a> Context<'a> {
     let obj = Box::leak(Box::new(Object {
       data: Box::new(func()),
       marked: AtomicBool::new(false),
-      next: AtomicPtr::new(ptr::null_mut())
+      next: AtomicPtr::new(ptr::null_mut()),
+      total_size: 0
     }));
     
     let obj_ptr = obj as *mut Object as usize;
@@ -86,8 +87,8 @@ impl<'a> Context<'a> {
       }
     }
     
-    let allocated_size = size_of_val(obj) + size_of_val(obj.data.as_ref());
-    manager.used_size.fetch_add(allocated_size, Ordering::Relaxed);
+    obj.total_size = size_of_val(obj) + size_of_val(obj.data.as_ref());
+    manager.used_size.fetch_add(obj.total_size, Ordering::Relaxed);
     return ObjectRef::new(obj);
   }
   
