@@ -1,0 +1,13 @@
+match_arm_leading_pipes = true
+max_width = 80
+imports_granularity = "Item"
+newline_style = "Unix"
+reorder_impl_items = true
+group_imports = "StdExternalCrate"
+required_version = "1.7.0"
+struct_lit_single_line = false
+tab_spaces = 2
+trailing_comma = "Never"
+unstable_features = true
+where_single_line = true
+
