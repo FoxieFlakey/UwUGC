@@ -52,7 +52,7 @@ impl<T1, T2> AtomicDoublePtr<T1, T2> {
     self.double_ptr.store(Self::pack_pointers(ptrs), ordering);
   }
   
-  pub fn load(&self, ptrs: (*mut T1, *mut T2), ordering: Ordering) -> (*mut T1, *mut T2) {
+  pub fn load(&self, ordering: Ordering) -> (*mut T1, *mut T2) {
     return Self::unpack_pointers(self.double_ptr.load(ordering));
   }
   
