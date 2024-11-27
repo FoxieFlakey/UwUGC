@@ -23,6 +23,11 @@ pub struct ObjectRef<'a, T: 'a> {
   phantom: PhantomData<T>
 }
 
+pub struct Sweeper<'a> {
+  owner: &'a ObjectManager,
+  saved_chain: *mut Object
+}
+
 impl<'a, T: 'static> ObjectRef<'a, T> {
   fn new(obj: &'a mut Object) -> Self {
     return Self {
@@ -90,23 +95,31 @@ impl ObjectManager {
     return Context::new(ctx, self);
   }
   
-  // Filters alive object to be kept alive
-  // if predicate return false, the object
-  // is deallocated else kept alive
-  pub fn sweep(&self, mut predicate: impl FnMut(&Object) -> bool) {
+  pub fn create_sweeper(&self) -> Sweeper {
     // Flush all contexts' local chain to global before sweeping
     for ctx in self.contexts.lock().unwrap().values() {
       // SAFETY: 'self' owns the objects chain
       unsafe { ctx.flush_to_global(self) };
     }
     
+    return Sweeper {
+      owner: self,
+      // Atomically empty the list and get snapshot of current objects
+      // at the time of swap, Ordering::Acquire because changes must be
+      // visible now
+      saved_chain: self.head.swap(ptr::null_mut(), Ordering::Acquire)
+    }
+  }
+}
+
+impl Sweeper<'_> {
+  // Filters alive object to be kept alive
+  // if predicate return false, the object
+  // is deallocated else kept alive
+  pub fn sweep(self, mut predicate: impl FnMut(&Object) -> bool) {
     let mut live_objects: *mut Object = ptr::null_mut();
     let mut last_live_objects: *mut Object = ptr::null_mut();
-    
-    // Atomically empty the list and get snapshot of current objects
-    // at the time of swap, Ordering::Acquire because predicate may need
-    // to see changes in the objects themselves
-    let mut iter_current_ptr = self.head.swap(ptr::null_mut(), Ordering::Acquire);
+    let mut iter_current_ptr = self.saved_chain;
     
     // Run 'predicate' for each object, so can decide whether to deallocate or not
     while iter_current_ptr != ptr::null_mut() {
@@ -122,7 +135,7 @@ impl ObjectManager {
       if !predicate(current) {
         println!("Dead        : {current_ptr_as_usize:#016x}");
         // 'predicate' determine that 'current' object is to be deallocated
-        self.dealloc(current);
+        self.owner.dealloc(current);
         
         // 'current' reference now is invalid, drop it to let compiler
         // know that it can't be used anymore and as a note to future
@@ -157,7 +170,7 @@ impl ObjectManager {
     
     // SAFETY: Objects are alive and a valid singly linked chain
     unsafe {
-      self.add_chain_to_list(live_objects, last_live_objects);
+      self.owner.add_chain_to_list(live_objects, last_live_objects);
     }
   }
 }

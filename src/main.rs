@@ -32,7 +32,7 @@ fn main() {
   println!("Sweeping");
   
   // Keep non u32 data alive 
-  manager.sweep(|obj| obj.borrow_inner::<u32>().is_none());
+  manager.create_sweeper().sweep(|obj| obj.borrow_inner::<u32>().is_none());
   
   drop(manager);
 }
