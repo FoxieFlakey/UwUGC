@@ -1,4 +1,4 @@
-use std::{any::Any, marker::PhantomData, ptr, sync::atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}};
+use std::{any::Any, collections::HashMap, marker::PhantomData, ptr, sync::{atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}, Arc, Mutex}, thread::{self, ThreadId}};
 
 use context::{Context, ContextGuard};
 
@@ -14,7 +14,8 @@ pub struct Object {
 
 pub struct ObjectManager {
   head: AtomicPtr<Object>,
-  used_size: AtomicUsize
+  used_size: AtomicUsize,
+  contexts: Mutex<HashMap<ThreadId, Arc<Context>>>
 }
 
 pub struct ObjectRef<'a, T: 'a> {
@@ -49,7 +50,8 @@ impl ObjectManager {
   pub fn new() -> Self {
     return Self {
       head: AtomicPtr::new(ptr::null_mut()),
-      used_size: AtomicUsize::new(0)
+      used_size: AtomicUsize::new(0),
+      contexts: Mutex::new(HashMap::new())
     };
   }
   
@@ -80,11 +82,12 @@ impl ObjectManager {
   }
   
   pub fn create_context(&self) -> ContextGuard {
-    return ContextGuard {
-      ctx: Context {
-        owner: self
-      }
-    };
+    let mut contexts = self.contexts.lock().unwrap();
+    let ctx = contexts.entry(thread::current().id())
+      .or_insert(Arc::new(Context {}))
+      .clone();
+    
+    return ContextGuard::new(ctx, self);
   }
   
   // Filters alive object to be kept alive

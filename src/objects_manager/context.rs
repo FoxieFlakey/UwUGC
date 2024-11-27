@@ -1,14 +1,29 @@
-use std::{any::Any, ops::Deref, ptr, sync::atomic::{AtomicBool, AtomicPtr, Ordering}};
+use std::{any::Any, ptr, sync::{atomic::{AtomicBool, AtomicPtr, Ordering}, Arc}, thread};
 
 use crate::objects_manager::{Object, ObjectRef};
 
 use super::ObjectManager;
 
-pub struct Context<'a> {
-  pub(super) owner: &'a ObjectManager
+pub struct Context;
+
+pub struct ContextGuard<'a> {
+  ctx: Arc<Context>,
+  owner: &'a ObjectManager
 }
 
-impl Context<'_> {
+// Ensure that ContextGuard stays on same thread
+// by disallowing it to be Send or Sync
+impl !Send for ContextGuard<'_> {}
+impl !Sync for ContextGuard<'_> {}
+
+impl<'a> ContextGuard<'a> {
+  pub(super) fn new(ctx: Arc<Context>, owner: &'a ObjectManager) -> Self {
+    return Self {
+      owner,
+      ctx
+    };
+  }
+  
   pub fn alloc<T: Any + 'static>(&self, func: impl FnOnce() -> T) -> ObjectRef<T> {
     let manager = self.owner;
     
@@ -35,20 +50,12 @@ impl Context<'_> {
   }
 }
 
-pub struct ContextGuard<'a> {
-  pub(super) ctx: Context<'a>
-}
-
-// Ensure that ContextGuard stays on same thread
-// by disallowing it to be Send or Sync
-impl !Send for ContextGuard<'_> {}
-impl !Sync for ContextGuard<'_> {}
-
-impl<'a> Deref for ContextGuard<'a> {
-  type Target = Context<'a>;
-  
-  fn deref(&self) -> &Self::Target {
-    return &self.ctx;
+impl Drop for ContextGuard<'_> {
+  fn drop(&mut self) {
+    let mut contexts = self.owner.contexts.lock().unwrap();
+    
+    // Remove context belonging to current thread
+    contexts.remove(&thread::current().id());
   }
 }
 
