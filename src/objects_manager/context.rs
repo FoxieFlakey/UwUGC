@@ -1,4 +1,4 @@
-use std::{any::Any, ptr, sync::{atomic::{AtomicBool, AtomicPtr, Ordering}, Arc, Mutex}, thread};
+use std::{any::Any, ptr, sync::{atomic::{AtomicBool, AtomicPtr, Ordering}, Arc}, thread};
 
 use crate::objects_manager::{Object, ObjectRef};
 
