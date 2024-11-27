@@ -187,6 +187,14 @@ impl Sweeper<'_> {
 
 impl Drop for Sweeper<'_> {
   fn drop(&mut self) {
+    // There no reasonable thing can be done here
+    // 1. Execute the sweep anyway -> may leads to memory unsafety in other safe codes
+    //    due can't be sure which is in use
+    // 2. Dont execute the sweep -> memory leaks! this Sweeper move all objects into it
+    //
+    // Leaking memory during panicking is fine because program going to
+    // die anyway so leak the objects so it can be used during panicking
+    // for maybe some strange codes
     if self.saved_chain.is_none() && !thread::panicking() {
       panic!("Sweeper must not be dropped before sweep is called!");
     }
