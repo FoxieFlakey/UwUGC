@@ -9,7 +9,7 @@ pub struct Object {
   marked: AtomicBool,
   
   // Data can only contain owned structs
-  data: Box<dyn Any + 'static>
+  data: Box<dyn Any + Send + Sync + 'static>
 }
 
 pub struct ObjectManager {

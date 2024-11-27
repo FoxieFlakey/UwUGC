@@ -49,7 +49,7 @@ impl<'a> Context<'a> {
     };
   }
   
-  pub fn alloc<T: Any + 'static>(&self, func: impl FnOnce() -> T) -> ObjectRef<T> {
+  pub fn alloc<T: Any + Sync + Send + 'static>(&self, func: impl FnOnce() -> T) -> ObjectRef<T> {
     let manager = self.owner;
     
     // Leak it and we'll handle it here

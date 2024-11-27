@@ -1,6 +1,8 @@
 // Needed for objects_manager::context::Context
 #![feature(negative_impls)]
 
+use std::{sync::Arc, thread};
+
 use objects_manager::ObjectManager;
 
 mod objects_manager;
@@ -9,15 +11,18 @@ mod util;
 fn main() {
   println!("Hello, world!");
   
-  let manager = ObjectManager::new();
+  let manager = Arc::new(ObjectManager::new());
   
-  let ctx = manager.create_context();
-  ctx.alloc(|| "Alive 1");
-  ctx.alloc(|| 2 as u32);
-  ctx.alloc(|| "Alive 2".to_string());
-  ctx.alloc(|| 1 as u32);
-  ctx.alloc(|| 2 as u32);
-  drop(ctx);
+  let manager_for_thread = manager.clone();
+  thread::spawn(move || {
+    let ctx = manager_for_thread.create_context();
+    ctx.alloc(|| "Alive 1");
+    ctx.alloc(|| 2 as u32);
+    ctx.alloc(|| "Alive 2".to_string());
+    ctx.alloc(|| 1 as u32);
+    ctx.alloc(|| 2 as u32);
+    drop(ctx);
+  }).join().unwrap();
   
   println!("Sweeping");
   
