@@ -59,5 +59,15 @@ impl<T1, T2> AtomicDoublePtr<T1, T2> {
   pub fn swap(&self, ptrs: (*mut T1, *mut T2), ordering: Ordering) -> (*mut T1, *mut T2) {
     return Self::unpack_pointers(self.double_ptr.swap(Self::pack_pointers(ptrs), ordering));
   }
+  
+  pub fn compare_exchange_weak(&self, old: (*mut T1, *mut T2), new: (*mut T1, *mut T2), success: Ordering, failure: Ordering) -> Result<(*mut T1, *mut T2), (*mut T1, *mut T2)> {
+    let old = Self::pack_pointers(old);
+    let new = Self::pack_pointers(new);
+    
+    return match self.double_ptr.compare_exchange_weak(old, new, success, failure) {
+      Ok(x) => Ok(Self::unpack_pointers(x)),
+      Err(x) => Err(Self::unpack_pointers(x))
+    };
+  }
 }
 
