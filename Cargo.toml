@@ -5,3 +5,5 @@ edition = "2021"
 
 [dependencies]
 intrusive-collections = "0.9.7"
+portable-atomic = "1.10.0"
+static_assertions = "1.1.0"

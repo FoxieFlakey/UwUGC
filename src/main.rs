@@ -4,6 +4,7 @@
 use objects_manager::ObjectManager;
 
 mod objects_manager;
+mod util;
 
 fn main() {
   println!("Hello, world!");
