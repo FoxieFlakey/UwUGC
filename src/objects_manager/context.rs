@@ -8,6 +8,8 @@ pub struct Context<'a> {
   pub(super) owner: &'a ObjectManager
 }
 
+// Ensure that Context stays on same thread
+// by disallowing it to be Send or Sync
 impl !Send for Context<'_> {}
 impl !Sync for Context<'_> {}
 
