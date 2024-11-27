@@ -94,6 +94,12 @@ impl ObjectManager {
   // if predicate return false, the object
   // is deallocated else kept alive
   pub fn sweep(&self, mut predicate: impl FnMut(&Object) -> bool) {
+    // Flush all contexts' local chain to global before sweeping
+    for ctx in self.contexts.lock().unwrap().values() {
+      // SAFETY: 'self' owns the objects chain
+      unsafe { ctx.flush_to_global(self) };
+    }
+    
     let mut live_objects: *mut Object = ptr::null_mut();
     let mut last_live_objects: *mut Object = ptr::null_mut();
     
