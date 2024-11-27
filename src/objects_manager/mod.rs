@@ -29,7 +29,7 @@ pub struct ObjectRef<'a, T: 'a> {
 
 pub struct Sweeper<'a> {
   owner: &'a ObjectManager,
-  saved_chain: *mut Object
+  saved_chain: Option<*mut Object>
 }
 
 impl<'a, T: 'static> ObjectRef<'a, T> {
@@ -114,7 +114,7 @@ impl ObjectManager {
       // Atomically empty the list and get snapshot of current objects
       // at the time of swap, Ordering::Acquire because changes must be
       // visible now
-      saved_chain: self.head.swap(ptr::null_mut(), Ordering::Acquire)
+      saved_chain: Some(self.head.swap(ptr::null_mut(), Ordering::Acquire))
     };
     
     drop(sweeper_lock_guard);
@@ -126,10 +126,10 @@ impl Sweeper<'_> {
   // Filters alive object to be kept alive
   // if predicate return false, the object
   // is deallocated else kept alive
-  pub fn sweep(self, mut predicate: impl FnMut(&Object) -> bool) {
+  pub fn sweep(mut self, mut predicate: impl FnMut(&Object) -> bool) {
     let mut live_objects: *mut Object = ptr::null_mut();
     let mut last_live_objects: *mut Object = ptr::null_mut();
-    let mut iter_current_ptr = self.saved_chain;
+    let mut iter_current_ptr = self.saved_chain.take().unwrap();
     
     // Run 'predicate' for each object, so can decide whether to deallocate or not
     while iter_current_ptr != ptr::null_mut() {
@@ -181,6 +181,14 @@ impl Sweeper<'_> {
     // SAFETY: Objects are alive and a valid singly linked chain
     unsafe {
       self.owner.add_chain_to_list(live_objects, last_live_objects);
+    }
+  }
+}
+
+impl Drop for Sweeper<'_> {
+  fn drop(&mut self) {
+    if self.saved_chain.is_none() && !thread::panicking() {
+      panic!("Sweeper must not be dropped before sweep is called!");
     }
   }
 }
