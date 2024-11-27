@@ -84,7 +84,7 @@ impl ObjectManager {
   pub fn create_context(&self) -> ContextGuard {
     let mut contexts = self.contexts.lock().unwrap();
     let ctx = contexts.entry(thread::current().id())
-      .or_insert(Arc::new(Context {}))
+      .or_insert(Arc::new(Context::new()))
       .clone();
     
     return ContextGuard::new(ctx, self);

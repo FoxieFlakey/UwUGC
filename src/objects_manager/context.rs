@@ -1,10 +1,17 @@
-use std::{any::Any, ptr, sync::{atomic::{AtomicBool, AtomicPtr, Ordering}, Arc}, thread};
+use std::{any::Any, ptr, sync::{atomic::{AtomicBool, AtomicPtr, Ordering}, Arc, Mutex}, thread};
 
 use crate::objects_manager::{Object, ObjectRef};
 
 use super::ObjectManager;
 
 pub struct Context;
+
+impl Context {
+  pub(super) fn new() -> Self {
+    return Self {
+    }
+  }
+}
 
 pub struct ContextGuard<'a> {
   ctx: Arc<Context>,
