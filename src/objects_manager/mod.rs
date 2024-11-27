@@ -15,7 +15,11 @@ pub struct Object {
 pub struct ObjectManager {
   head: AtomicPtr<Object>,
   used_size: AtomicUsize,
-  contexts: Mutex<HashMap<ThreadId, Arc<LocalObjectsChain>>>
+  contexts: Mutex<HashMap<ThreadId, Arc<LocalObjectsChain>>>,
+  
+  // Used to prevent concurrent creation of sweeper, as at the
+  // moment two invocation of it going to fight with each other
+  sweeper_protect_mutex: Mutex<()>
 }
 
 pub struct ObjectRef<'a, T: 'a> {
@@ -56,7 +60,8 @@ impl ObjectManager {
     return Self {
       head: AtomicPtr::new(ptr::null_mut()),
       used_size: AtomicUsize::new(0),
-      contexts: Mutex::new(HashMap::new())
+      contexts: Mutex::new(HashMap::new()),
+      sweeper_protect_mutex: Mutex::new(())
     };
   }
   
@@ -96,19 +101,24 @@ impl ObjectManager {
   }
   
   pub fn create_sweeper(&self) -> Sweeper {
+    let sweeper_lock_guard = self.sweeper_protect_mutex.lock().unwrap();
+    
     // Flush all contexts' local chain to global before sweeping
     for ctx in self.contexts.lock().unwrap().values() {
       // SAFETY: 'self' owns the objects chain
       unsafe { ctx.flush_to_global(self) };
     }
     
-    return Sweeper {
+    let sweeper = Sweeper {
       owner: self,
       // Atomically empty the list and get snapshot of current objects
       // at the time of swap, Ordering::Acquire because changes must be
       // visible now
       saved_chain: self.head.swap(ptr::null_mut(), Ordering::Acquire)
-    }
+    };
+    
+    drop(sweeper_lock_guard);
+    return sweeper;
   }
 }
 
