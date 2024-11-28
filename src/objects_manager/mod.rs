@@ -1,6 +1,7 @@
 use std::{any::Any, collections::HashMap, marker::PhantomData, ptr, sync::{atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}, Arc, Mutex}, thread::{self, ThreadId}};
 
-use context::{LocalObjectsChain, Context};
+use context::LocalObjectsChain;
+pub use context::Context;
 
 mod context;
 
