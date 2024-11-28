@@ -1,11 +1,11 @@
 // Needed for objects_manager::context::Context
 #![feature(negative_impls)]
 
-use root_manager::Heap;
+use heap::Heap;
 
 mod objects_manager;
 mod util;
-mod root_manager;
+mod heap;
 
 fn main() {
   println!("Hello, world!");
