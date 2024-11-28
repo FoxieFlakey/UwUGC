@@ -10,7 +10,7 @@ pub struct LocalObjectsChain {
 }
 
 impl LocalObjectsChain {
-  pub(super) fn new() -> Self {
+  pub fn new() -> Self {
     return Self {
       chain: AtomicDoublePtr::new((ptr::null_mut(), ptr::null_mut()))
     }
@@ -19,7 +19,7 @@ impl LocalObjectsChain {
   // Move all objects in local chain to global list
   // clearing local chain
   // SAFETY: Caller must ensure that 'owner' is actually the owner
-  pub(super) unsafe fn flush_to_global(&self, owner: &ObjectManager) {
+  pub unsafe fn flush_to_global(&self, owner: &ObjectManager) {
     // Relaxed ordering because doesnt need to access the object itself
     let (start, end) = self.chain.swap((ptr::null_mut(), ptr::null_mut()), Ordering::Acquire);
     
@@ -42,7 +42,7 @@ impl !Send for Context<'_> {}
 impl !Sync for Context<'_> {}
 
 impl<'a> Context<'a> {
-  pub(super) fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager) -> Self {
+  pub fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager) -> Self {
     return Self {
       owner,
       ctx
