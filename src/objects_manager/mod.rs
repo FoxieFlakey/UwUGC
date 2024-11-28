@@ -199,6 +199,7 @@ impl Drop for Sweeper<'_> {
     // 1. Execute the sweep anyway -> may leads to memory unsafety in other safe codes
     //    due can't be sure which is in use
     // 2. Dont execute the sweep -> memory leaks! this Sweeper move all objects into it
+    // 3. Add back to origin -> Quite not good, because confusing behaviour
     //
     // Leaking memory during panicking is fine because program going to
     // die anyway so leak the objects so it can be used during panicking
