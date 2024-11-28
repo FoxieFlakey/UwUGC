@@ -42,7 +42,7 @@ impl !Send for ContextHandle<'_> {}
 impl !Sync for ContextHandle<'_> {}
 
 impl<'a> ContextHandle<'a> {
-  pub fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager) -> Self {
+  pub(super) fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager) -> Self {
     return Self {
       owner,
       ctx
