@@ -126,15 +126,13 @@ impl ObjectManager {
 
 impl Drop for ObjectManager {
   fn drop(&mut self) {
-    self.create_sweeper().sweep(|_| false);
+    self.create_sweeper().sweep();
   }
 }
 
 impl Sweeper<'_> {
-  // Filters alive object to be kept alive
-  // if predicate return false, the object
-  // is deallocated else kept alive
-  pub fn sweep(mut self, mut predicate: impl FnMut(&Object) -> bool) {
+  // Sweeps dead objects and consume this sweeper
+  pub fn sweep(mut self) {
     let mut live_objects: *mut Object = ptr::null_mut();
     let mut last_live_objects: *mut Object = ptr::null_mut();
     let mut iter_current_ptr = self.saved_chain.take().unwrap();
@@ -150,7 +148,7 @@ impl Sweeper<'_> {
       iter_current_ptr = current.next.load(Ordering::Acquire);
       
       let current_ptr_as_usize = current_ptr as usize;
-      if !predicate(current) {
+      if !current.marked.load(Ordering::Relaxed) {
         println!("Dead        : {current_ptr_as_usize:#016x}");
         // 'predicate' determine that 'current' object is to be deallocated
         self.owner.dealloc(current);

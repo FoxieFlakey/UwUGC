@@ -31,8 +31,8 @@ fn main() {
   join.join().unwrap();
   println!("Sweeping");
   
-  // Keep non u32 data alive 
-  manager.create_sweeper().sweep(|obj| obj.borrow_inner::<u32>().is_none());
+  // Everything is dead
+  manager.create_sweeper().sweep();
   
   println!("Dropping manager");
   drop(manager);
