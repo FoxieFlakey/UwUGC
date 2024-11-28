@@ -1,6 +1,6 @@
 use std::{any::Any, ptr, sync::{atomic::{AtomicBool, AtomicPtr, Ordering}, Arc}, thread};
 
-use crate::{objects_manager::{Object, ObjectRef}, util::double_atomic_ptr::AtomicDoublePtr};
+use crate::{objects_manager::Object, util::double_atomic_ptr::AtomicDoublePtr};
 
 use super::ObjectManager;
 
@@ -49,7 +49,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Any + Sync + Send + 'static>(&self, func: impl FnOnce() -> T) -> ObjectRef<T> {
+  pub fn alloc<T: Any + Sync + Send + 'static>(&self, func: impl FnOnce() -> T) -> *mut Object {
     let manager = self.owner;
     
     // Leak it and we'll handle it here
@@ -89,7 +89,7 @@ impl<'a> ContextHandle<'a> {
     
     obj.total_size = size_of_val(obj) + size_of_val(obj.data.as_ref());
     manager.used_size.fetch_add(obj.total_size, Ordering::Relaxed);
-    return ObjectRef::new(obj);
+    return obj;
   }
   
   // Move all objects in local chain to global list

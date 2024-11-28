@@ -1,39 +1,38 @@
 // Needed for objects_manager::context::Context
 #![feature(negative_impls)]
 
-use std::{sync::Arc, thread};
-
-use objects_manager::ObjectManager;
+use root_manager::Heap;
 
 mod objects_manager;
 mod util;
+mod root_manager;
 
 fn main() {
   println!("Hello, world!");
   
-  let manager = Arc::new(ObjectManager::new());
+  let heap = Heap::new();
   
-  let manager_for_thread = manager.clone();
-  let join = thread::spawn(move || {
-    let ctx = manager_for_thread.create_context();
-    ctx.alloc(|| "Alive 1");
-    ctx.alloc(|| 2 as u32);
-    ctx.alloc(|| "Alive 2".to_string());
-    drop(ctx);
-  });
+  let ctx = heap.create_context();
+  let str_ref = ctx.alloc(|| "String UwU");
   
-  let ctx = manager.create_context();
-  ctx.alloc(|| "Alive 1");
-  ctx.alloc(|| 2 as u32);
-  ctx.alloc(|| "Alive 2".to_string());
+  let str = str_ref.borrow_inner();
+  println!("Str: {str}");
+  
+  let str2_ref = ctx.alloc(|| "Alternative");
+  drop(str_ref);
+  
+  println!("Printing current root refs");
+  let mut root_buffer = Vec::new();
+  heap.take_root_snapshot(&mut root_buffer);
+  
+  for obj in root_buffer {
+    let ptr = obj as usize;
+    println!("RootRef       {ptr:#016x}");
+  }
+  
+  drop(str2_ref);
   drop(ctx);
   
-  join.join().unwrap();
-  println!("Sweeping");
-  
-  // Everything is dead
-  unsafe { manager.create_sweeper().sweep() };
-  
-  println!("Dropping manager");
-  drop(manager);
+  println!("Quitting :3");
+  drop(heap);
 }

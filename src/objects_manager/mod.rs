@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap, marker::PhantomData, ptr, sync::{atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}, Arc, Mutex}, thread::{self, ThreadId}};
+use std::{any::Any, collections::HashMap, ptr, sync::{atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}, Arc, Mutex}, thread::{self, ThreadId}};
 
 use context::LocalObjectsChain;
 pub use context::ContextHandle;
@@ -24,31 +24,9 @@ pub struct ObjectManager {
   sweeper_protect_mutex: Mutex<()>
 }
 
-pub struct ObjectRef<'a, T: 'a> {
-  obj: &'a mut Object,
-  phantom: PhantomData<T>
-}
-
 pub struct Sweeper<'a> {
   owner: &'a ObjectManager,
   saved_chain: Option<*mut Object>
-}
-
-impl<'a, T: 'static> ObjectRef<'a, T> {
-  fn new(obj: &'a mut Object) -> Self {
-    return Self {
-      phantom: PhantomData {},
-      obj
-    }
-  }
-  
-  pub fn borrow_inner(&self) -> &T {
-    return self.obj.data.downcast_ref().unwrap();
-  }
-  
-  pub fn borrow_mut(&mut self) -> &mut T {
-    return self.obj.data.downcast_mut().unwrap();
-  }
 }
 
 impl Object {
