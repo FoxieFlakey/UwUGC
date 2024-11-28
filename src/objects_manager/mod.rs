@@ -1,7 +1,7 @@
 use std::{any::Any, collections::HashMap, marker::PhantomData, ptr, sync::{atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}, Arc, Mutex}, thread::{self, ThreadId}};
 
 use context::LocalObjectsChain;
-pub use context::Context;
+pub use context::ContextHandle;
 
 mod context;
 
@@ -94,13 +94,13 @@ impl ObjectManager {
     self.used_size.fetch_sub(obj.total_size, Ordering::Relaxed);
   }
   
-  pub fn create_context(&self) -> Context {
+  pub fn create_context(&self) -> ContextHandle {
     let mut contexts = self.contexts.lock().unwrap();
     let ctx = contexts.entry(thread::current().id())
       .or_insert(Arc::new(LocalObjectsChain::new()))
       .clone();
     
-    return Context::new(ctx, self);
+    return ContextHandle::new(ctx, self);
   }
   
   pub fn create_sweeper(&self) -> Sweeper {

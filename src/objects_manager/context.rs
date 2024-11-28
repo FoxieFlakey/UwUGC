@@ -31,17 +31,17 @@ impl LocalObjectsChain {
   }
 }
 
-pub struct Context<'a> {
+pub struct ContextHandle<'a> {
   ctx: Arc<LocalObjectsChain>,
   owner: &'a ObjectManager
 }
 
-// Ensure that ContextGuard stays on same thread
+// Ensure that ContextHandle stays on same thread
 // by disallowing it to be Send or Sync
-impl !Send for Context<'_> {}
-impl !Sync for Context<'_> {}
+impl !Send for ContextHandle<'_> {}
+impl !Sync for ContextHandle<'_> {}
 
-impl<'a> Context<'a> {
+impl<'a> ContextHandle<'a> {
   pub fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager) -> Self {
     return Self {
       owner,
@@ -102,7 +102,7 @@ impl<'a> Context<'a> {
   }
 }
 
-impl Drop for Context<'_> {
+impl Drop for ContextHandle<'_> {
   fn drop(&mut self) {
     // Move all objects in current local chain to global list
     self.flush_to_global();
