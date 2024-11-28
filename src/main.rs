@@ -32,7 +32,7 @@ fn main() {
   println!("Sweeping");
   
   // Everything is dead
-  manager.create_sweeper().sweep();
+  unsafe { manager.create_sweeper().sweep() };
   
   println!("Dropping manager");
   drop(manager);

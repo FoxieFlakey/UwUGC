@@ -126,13 +126,18 @@ impl ObjectManager {
 
 impl Drop for ObjectManager {
   fn drop(&mut self) {
-    self.create_sweeper().sweep();
+    // SAFETY: Rust lifetime limit on the Context and lifetime on
+    // allocated object reference ensures that any ObjectRef does
+    // not live longer than ObjectManager, therefore its safe
+    unsafe { self.create_sweeper().sweep() };
   }
 }
 
 impl Sweeper<'_> {
   // Sweeps dead objects and consume this sweeper
-  pub fn sweep(mut self) {
+  // SAFETY: Caller must ensure live objects actually
+  // marked!
+  pub unsafe fn sweep(mut self) {
     let mut live_objects: *mut Object = ptr::null_mut();
     let mut last_live_objects: *mut Object = ptr::null_mut();
     let mut iter_current_ptr = self.saved_chain.take().unwrap();
