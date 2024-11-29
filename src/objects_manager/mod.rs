@@ -14,6 +14,12 @@ pub struct Object {
   data: Box<dyn Any + Send + Sync + 'static>
 }
 
+impl Object {
+  pub fn mark(&self) {
+    self.marked.store(true, Ordering::Relaxed);
+  }
+}
+
 pub struct ObjectManager {
   head: AtomicPtr<Object>,
   used_size: AtomicUsize,

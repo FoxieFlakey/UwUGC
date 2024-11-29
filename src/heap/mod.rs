@@ -39,10 +39,10 @@ impl RootEntry {
 }
 
 pub struct Heap {
-  object_manager: ObjectManager,
-  contexts: Mutex<HashMap<ThreadId, Arc<Context>>>,
+  pub(crate) object_manager: ObjectManager,
+  pub(crate) contexts: Mutex<HashMap<ThreadId, Arc<Context>>>,
   
-  gc_state: GCState
+  pub(crate) gc_state: GCState
 }
 
 impl Heap {
@@ -89,6 +89,10 @@ impl Heap {
       self.take_root_snapshot_unlocked(buffer);
     }
     drop(cookie);
+  }
+  
+  pub fn run_gc(&self) {
+    self.gc_state.run_gc(self);
   }
 }
 
