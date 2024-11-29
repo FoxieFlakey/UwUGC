@@ -46,6 +46,37 @@ impl Context {
       current = &**current.next.get();
     }
   }
+  
+  // SAFETY: Caller ensures that nothing can concurrently access the 
+  // root set
+  pub unsafe fn clear_root_set(&self) {
+    // Make sure any newly added/removed root entry is visible
+    atomic::fence(atomic::Ordering::Acquire);
+    
+    let inner = &*self.inner.get();
+    let head = inner.head.as_ref().get_ref();
+    
+    let mut current = *head.next.get();
+    // While 'current' is not the head as this linked list is circular
+    while current as *const RootEntry != head as *const RootEntry {
+      let next = *(*current).next.get();
+      
+      let entry_ptr = current as usize;
+      println!("Freed entry: {entry_ptr}");
+      
+      // Drop the root entry and remove it from set
+      let _ = Box::from_raw(current);
+      current = next;
+    }
+  }
+}
+
+impl Drop for Context {
+  fn drop(&mut self) {
+    // Current thread is last one with reference to this context
+    // therefore its safe to clear it (to deallocate the root entries)
+    unsafe { self.clear_root_set() };
+  }
 }
 
 pub struct ContextHandle<'a> {
@@ -102,6 +133,16 @@ impl<T: Any + Send + Sync + 'static> Drop for RootRef<'_, T> {
     // does read)
     atomic::fence(atomic::Ordering::Release);
     drop(cookie);
+    
+    // Make sure that 'entry' reference will never be invalid
+    // by telling Rust its lifetime ends here
+    #[allow(dropping_references)]
+    drop(entry);
+    
+    // Drop the "root_entry" itself as its unused now
+    // SAFETY: Nothing reference it anymore so it is safe
+    // to be dropped
+    let _ = unsafe { Box::from_raw(self.entry_ref) };
   }
 }
 
@@ -118,7 +159,7 @@ impl<'a> ContextHandle<'a> {
     let gc_lock_cookie = self.owner.gc_state.block_gc();
     let new_obj = self.obj_manager_ctx.alloc(initer);
     
-    let entry = Box::pin(RootEntry {
+    let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
       obj: new_obj,
       next: UnsafeCell::new(ptr::null_mut()),

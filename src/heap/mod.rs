@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::HashMap, pin::Pin, sync::{Arc, Mutex}, thread::{self, ThreadId}};
+use std::{cell::UnsafeCell, collections::HashMap, sync::{Arc, Mutex}, thread::{self, ThreadId}};
 
 use context::Context;
 
@@ -18,8 +18,8 @@ pub(super) struct RootEntry {
 impl RootEntry {
   // Insert 'val' to next of this entry
   // Returns a *mut pointer to it and leaks it
-  pub unsafe fn insert(&mut self, val: Pin<Box<RootEntry>>) -> *mut RootEntry {
-    let val = Box::leak(Pin::into_inner(val));
+  pub unsafe fn insert(&mut self, val: Box<RootEntry>) -> *mut RootEntry {
+    let val = Box::leak(val);
     
     // Make 'val' prev points to this entry
     *val.prev.get_mut() = self;
