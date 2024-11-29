@@ -108,7 +108,7 @@ impl Drop for ObjectManager {
     // SAFETY: Rust lifetime limit on the Context and lifetime on
     // allocated object reference ensures that any ObjectRef does
     // not live longer than ObjectManager, therefore its safe
-    unsafe { self.create_sweeper().sweep() };
+    unsafe { self.create_sweeper().sweep_and_reset_mark_flag() };
   }
 }
 
@@ -116,7 +116,7 @@ impl Sweeper<'_> {
   // Sweeps dead objects and consume this sweeper
   // SAFETY: Caller must ensure live objects actually
   // marked!
-  pub unsafe fn sweep(mut self) {
+  pub unsafe fn sweep_and_reset_mark_flag(mut self) {
     let mut live_objects: *mut Object = ptr::null_mut();
     let mut last_live_objects: *mut Object = ptr::null_mut();
     let mut iter_current_ptr = self.saved_chain.take().unwrap();
@@ -132,7 +132,7 @@ impl Sweeper<'_> {
       iter_current_ptr = current.next.load(Ordering::Acquire);
       
       let current_ptr_as_usize = current_ptr as usize;
-      if !current.marked.load(Ordering::Relaxed) {
+      if !current.marked.swap(false, Ordering::Relaxed) {
         println!("Dead        : {current_ptr_as_usize:#016x}");
         // 'predicate' determine that 'current' object is to be deallocated
         self.owner.dealloc(current);
