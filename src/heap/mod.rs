@@ -61,6 +61,8 @@ impl Heap {
     return ContextHandle::new(self, self.object_manager.create_context(), ctx.clone());
   }
   
+  // SAFETY: Caller must ensure that mutators arent actively trying
+  // to use the root concurrently
   pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<*mut Object>) {
     let contexts = self.contexts.lock().unwrap();
     for ctx in contexts.values() {
