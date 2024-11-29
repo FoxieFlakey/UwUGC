@@ -1,4 +1,3 @@
-// Needed for objects_manager::context::Context
 #![feature(negative_impls)]
 
 use heap::Heap;
