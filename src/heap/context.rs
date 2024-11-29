@@ -85,7 +85,7 @@ impl<T: Any + Send + Sync + 'static> Drop for RootRef<'_, T> {
     
     // Block GC as GC would see half modified root set if without
     // SAFETY: GCState is always valid
-    let cookie = unsafe { &*entry.gc_state }.block();
+    let cookie = unsafe { &*entry.gc_state }.block_gc();
     
     // SAFETY: Circular linked list is special that every next and prev
     // is valid so its safe
@@ -115,7 +115,7 @@ impl<'a> ContextHandle<'a> {
   }
   
   pub fn alloc<T: Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRef<T> {
-    let gc_lock_cookie = self.owner.gc_state.block();
+    let gc_lock_cookie = self.owner.gc_state.block_gc();
     let new_obj = self.obj_manager_ctx.alloc(initer);
     
     let entry = Box::pin(RootEntry {

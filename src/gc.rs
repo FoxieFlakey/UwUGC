@@ -19,7 +19,7 @@ impl GCState {
     }
   }
   
-  pub fn block(&self) -> GCLockCookie {
+  pub fn block_gc(&self) -> GCLockCookie {
     return GCLockCookie {
       _cookie: self.gc_lock.read().unwrap()
     }
