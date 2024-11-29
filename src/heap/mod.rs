@@ -81,16 +81,6 @@ impl Heap {
     }
   }
   
-  pub fn take_root_snapshot(&self, buffer: &mut Vec<*mut Object>) {
-    let cookie = self.gc_state.block_mutators();
-    // SAFETY: Threads which modifies the root entries are blocked from
-    // making changes
-    unsafe {
-      self.take_root_snapshot_unlocked(buffer);
-    }
-    drop(cookie);
-  }
-  
   pub fn run_gc(&self) {
     self.gc_state.run_gc(self);
   }
