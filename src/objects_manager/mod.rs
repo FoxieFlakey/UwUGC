@@ -66,10 +66,11 @@ impl ObjectManager {
   }
   
   fn dealloc(&self, obj: &mut Object) {
+    let total_size = obj.total_size;
     // SAFETY: Caller already ensure 'obj' is valid reference
     // because references in Rust must be valid
     unsafe { drop(Box::from_raw(obj)) };
-    self.used_size.fetch_sub(obj.total_size, Ordering::Relaxed);
+    self.used_size.fetch_sub(total_size, Ordering::Relaxed);
   }
   
   pub fn create_context(&self) -> ContextHandle {
