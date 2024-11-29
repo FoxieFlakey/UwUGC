@@ -1,7 +1,6 @@
-use std::{collections::HashMap, sync::{Arc, Mutex}, thread::{self, ThreadId}};
+use std::{cell::UnsafeCell, collections::HashMap, pin::Pin, sync::{Arc, Mutex}, thread::{self, ThreadId}};
 
 use context::Context;
-use intrusive_collections::{intrusive_adapter, LinkedListLink};
 
 use crate::{gc::GCState, objects_manager::{Object, ObjectManager}};
 
@@ -9,12 +8,34 @@ pub use context::ContextHandle;
 
 mod context;
 
-pub(super) struct RootEntry<'a> {
-  link: LinkedListLink,
-  obj: &'a mut Object
+pub(super) struct RootEntry {
+  next: UnsafeCell<*mut RootEntry>,
+  prev: UnsafeCell<*mut RootEntry>,
+  gc_state: *const GCState,
+  obj: *mut Object
 }
 
-intrusive_adapter!(RootEntryAdapter = Box<RootEntry<'static>>: RootEntry { link: LinkedListLink });
+impl RootEntry {
+  // Insert 'val' to next of this entry
+  // Returns a *mut pointer to it and leaks it
+  pub unsafe fn insert(&mut self, val: Pin<Box<RootEntry>>) -> *mut RootEntry {
+    let val = Box::leak(Pin::into_inner(val));
+    
+    // Make 'val' prev points to this entry
+    *val.prev.get_mut() = self;
+    
+    // Make 'val' next points to entry next of this
+    *val.next.get_mut() = *self.next.get_mut();
+    
+    // Make next entry's prev to point to 'val'
+    *(**self.next.get_mut()).prev.get_mut() = val;
+    
+    // Make this entry's next to point to 'val'
+    *self.next.get_mut() = val;
+    
+    return val;
+  }
+}
 
 pub struct Heap {
   object_manager: ObjectManager,
@@ -41,16 +62,24 @@ impl Heap {
   }
   
   pub fn take_root_snapshot(&self, buffer: &mut Vec<*mut Object>) {
+    let cookie = self.gc_state.block_mutators();
+    
     let contexts = self.contexts.lock().unwrap();
     for ctx in contexts.values() {
-      ctx.for_each_root(|entry| {
-        // NOTE: Cast reference to *mut Object because after this
-        // return caller must ensure that *mut Object is valid
-        // because after this returns no lock ensures that GC isn't
-        // actively collect that potential *mut Object
-        buffer.push(entry.obj as *const Object as *mut Object);
-      });
+      // SAFETY: Threads which modifies the root entries are blocked from
+      // making changes
+      unsafe {
+        ctx.for_each_root(|entry| {
+          // NOTE: Cast reference to *mut Object because after this
+          // return caller must ensure that *mut Object is valid
+          // because after this returns no lock ensures that GC isn't
+          // actively collect that potential *mut Object
+          buffer.push(entry.obj as *const Object as *mut Object);
+        });
+      }
     }
+    
+    drop(cookie);
   }
 }
 

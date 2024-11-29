@@ -1,4 +1,4 @@
-use std::sync::{RwLock, RwLockReadGuard};
+use std::sync::{RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 pub struct GCState {
   gc_lock: RwLock<()>
@@ -6,6 +6,10 @@ pub struct GCState {
 
 pub struct GCLockCookie<'a> {
   _cookie: RwLockReadGuard<'a, ()>
+}
+
+pub struct GCExclusiveLockCookie<'a> {
+  _cookie: RwLockWriteGuard<'a, ()>
 }
 
 impl GCState {
@@ -18,6 +22,12 @@ impl GCState {
   pub fn block(&self) -> GCLockCookie {
     return GCLockCookie {
       _cookie: self.gc_lock.read().unwrap()
+    }
+  }
+  
+  pub fn block_mutators(&self) -> GCExclusiveLockCookie {
+    return GCExclusiveLockCookie {
+      _cookie: self.gc_lock.write().unwrap()
     }
   }
 }
