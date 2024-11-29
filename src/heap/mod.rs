@@ -15,6 +15,11 @@ pub(super) struct RootEntry {
   obj: *mut Object
 }
 
+// SAFETY: It is only shared between GC thread and owning thread
+// and GC thread, its being protected by GC locks
+unsafe impl Sync for RootEntry {}
+unsafe impl Send for RootEntry {}
+
 impl RootEntry {
   // Insert 'val' to next of this entry
   // Returns a *mut pointer to it and leaks it
