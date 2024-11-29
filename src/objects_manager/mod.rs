@@ -52,7 +52,8 @@ impl ObjectManager {
     let mut current_head = self.head.load(Ordering::Relaxed);
     loop {
       // Modify 'end' object's 'next' field so it connects to current head 
-      (*end).next.store(current_head, Ordering::Relaxed);
+      // SAFETY: Caller responsibility that 'end' is valid
+      unsafe { (*end).next.store(current_head, Ordering::Relaxed) };
       
       // Change head to point to 'start' of chain
       // NOTE: Relaxed failure ordering because don't need to access the pointer in the head

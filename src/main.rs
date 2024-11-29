@@ -1,4 +1,5 @@
 #![feature(negative_impls)]
+#![deny(unsafe_op_in_unsafe_fn)]
 
 use heap::Heap;
 

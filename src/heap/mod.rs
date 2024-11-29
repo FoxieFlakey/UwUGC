@@ -28,7 +28,8 @@ impl RootEntry {
     *val.next.get_mut() = *self.next.get_mut();
     
     // Make next entry's prev to point to 'val'
-    *(**self.next.get_mut()).prev.get_mut() = val;
+    // SAFETY: 'next' is always valid in circular list
+    unsafe { *(**self.next.get_mut()).prev.get_mut() = val };
     
     // Make this entry's next to point to 'val'
     *self.next.get_mut() = val;
@@ -66,13 +67,17 @@ impl Heap {
   pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<*mut Object>) {
     let contexts = self.contexts.lock().unwrap();
     for ctx in contexts.values() {
-      ctx.for_each_root(|entry| {
-        // NOTE: Cast reference to *mut Object because after this
-        // return caller must ensure that *mut Object is valid
-        // because after this returns no lock ensures that GC isn't
-        // actively collect that potential *mut Object
-        buffer.push(entry.obj as *const Object as *mut Object);
-      });
+      // SAFETY: Its caller responsibility to make sure there are no
+      // concurrent modification to the root set
+      unsafe {
+        ctx.for_each_root(|entry| {
+          // NOTE: Cast reference to *mut Object because after this
+          // return caller must ensure that *mut Object is valid
+          // because after this returns no lock ensures that GC isn't
+          // actively collect that potential *mut Object
+          buffer.push(entry.obj as *const Object as *mut Object);
+        });
+      }
     }
   }
   

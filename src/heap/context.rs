@@ -36,19 +36,24 @@ impl Context {
   pub unsafe fn for_each_root(&self, mut iterator: impl FnMut(&RootEntry)) {
     // Make sure any newly added/removed root entry is visible
     atomic::fence(atomic::Ordering::Acquire);
-    let inner = &*self.inner.get();
+    // SAFETY: Context is owned by the thread and only deallocated
+    // by the same thread and no mutation
+    let inner = unsafe { &*self.inner.get() };
     let head = inner.head.as_ref().get_ref();
     
-    let mut current = &**head.next.get();
+    // SAFETY: In circular buffer 'next' is always valid
+    let mut current = unsafe { &**head.next.get() };
     // While 'current' is not the head as this linked list is circular
     while current as *const RootEntry != head as *const RootEntry {
       iterator(current);
-      current = &**current.next.get();
+      // SAFETY: In circular buffer 'next' is always valid
+      current = unsafe { &**current.next.get() };
     }
   }
   
   // SAFETY: Caller ensures that nothing can concurrently access the 
   // root set
+  #[allow(unsafe_op_in_unsafe_fn)]
   pub unsafe fn clear_root_set(&self) {
     // Make sure any newly added/removed root entry is visible
     atomic::fence(atomic::Ordering::Acquire);
