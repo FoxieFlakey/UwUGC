@@ -67,9 +67,6 @@ impl<'a> ContextHandle<'a> {
       total_size: 0
     }));
     
-    let obj_ptr = obj as *mut Object as usize;
-    println!("Allocated   : {obj_ptr:#016x}");
-    
     // Add object to local chain
     // NOTE: Relaxed because dont need to access data pointers returned by load
     let mut old = self.ctx.chain.load(Ordering::Relaxed);

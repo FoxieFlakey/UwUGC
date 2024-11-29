@@ -89,6 +89,10 @@ impl Heap {
   pub fn run_gc(&self) {
     self.gc_state.run_gc(self);
   }
+  
+  pub fn get_usage(&self) -> usize {
+    return self.object_manager.get_usage();
+  }
 }
 
 

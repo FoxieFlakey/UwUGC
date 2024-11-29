@@ -109,6 +109,10 @@ impl ObjectManager {
     drop(sweeper_lock_guard);
     return sweeper;
   }
+  
+  pub fn get_usage(&self) -> usize {
+    return self.used_size.load(Ordering::Relaxed);
+  }
 }
 
 impl Drop for ObjectManager {
@@ -139,9 +143,7 @@ impl Sweeper<'_> {
       let current = unsafe { &mut *current_ptr };
       iter_current_ptr = current.next.load(Ordering::Acquire);
       
-      let current_ptr_as_usize = current_ptr as usize;
       if !current.marked.swap(false, Ordering::Relaxed) {
-        println!("Dead        : {current_ptr_as_usize:#016x}");
         // 'predicate' determine that 'current' object is to be deallocated
         self.owner.dealloc(current);
         
@@ -152,7 +154,6 @@ impl Sweeper<'_> {
         drop(current);
         continue;
       }
-      println!("Live        : {current_ptr_as_usize:#016x}");
       
       // First live object, init the chain
       if live_objects == ptr::null_mut() {
