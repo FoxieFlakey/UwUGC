@@ -68,7 +68,7 @@ impl<'a> ContextHandle<'a> {
   }
   
   pub fn alloc<T: Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRef<'a, T> {
-    let gc_lock_cookie = self.owner.gc_lock.read().unwrap();
+    let gc_lock_cookie = self.owner.gc_state.block();
     
     let mut inner = self.ctx.inner.lock().unwrap();
     inner.root_set.push_front(Box::new(RootEntry {

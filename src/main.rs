@@ -6,6 +6,7 @@ use heap::Heap;
 mod objects_manager;
 mod util;
 mod heap;
+mod gc;
 
 fn main() {
   println!("Hello, world!");

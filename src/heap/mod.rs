@@ -1,9 +1,9 @@
-use std::{collections::HashMap, sync::{Arc, Mutex, RwLock}, thread::{self, ThreadId}};
+use std::{collections::HashMap, sync::{Arc, Mutex}, thread::{self, ThreadId}};
 
 use context::Context;
 use intrusive_collections::{intrusive_adapter, LinkedListLink};
 
-use crate::objects_manager::{Object, ObjectManager};
+use crate::{gc::GCState, objects_manager::{Object, ObjectManager}};
 
 pub use context::ContextHandle;
 
@@ -20,7 +20,7 @@ pub struct Heap {
   object_manager: ObjectManager,
   contexts: Mutex<HashMap<ThreadId, Arc<Context>>>,
   
-  gc_lock: RwLock<()>
+  gc_state: GCState
 }
 
 impl Heap {
@@ -28,7 +28,7 @@ impl Heap {
     return Self {
       object_manager: ObjectManager::new(),
       contexts: Mutex::new(HashMap::new()),
-      gc_lock: RwLock::new(())
+      gc_state: GCState::new()
     };
   }
   
