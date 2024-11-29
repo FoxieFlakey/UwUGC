@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::HashMap, sync::{Arc, Mutex}, thread::{self, ThreadId}};
+use std::{cell::SyncUnsafeCell, collections::HashMap, sync::{Arc, Mutex}, thread::{self, ThreadId}};
 
 use context::Context;
 
@@ -9,8 +9,8 @@ pub use context::ContextHandle;
 mod context;
 
 pub(super) struct RootEntry {
-  next: UnsafeCell<*mut RootEntry>,
-  prev: UnsafeCell<*mut RootEntry>,
+  next: SyncUnsafeCell<*mut RootEntry>,
+  prev: SyncUnsafeCell<*mut RootEntry>,
   gc_state: *const GCState,
   obj: *mut Object
 }

@@ -1,4 +1,4 @@
-use std::{any::Any, cell::UnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
+use std::{any::Any, cell::SyncUnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
 use crate::objects_manager::ContextHandle as ObjectManagerContextHandle;
@@ -8,7 +8,7 @@ pub struct ContextInner {
 }
 
 pub struct Context {
-  inner: UnsafeCell<ContextInner>
+  inner: SyncUnsafeCell<ContextInner>
 }
 
 impl Context {
@@ -16,15 +16,15 @@ impl Context {
     let mut head = Box::pin(RootEntry {
       gc_state: ptr::null_mut(),
       obj: ptr::null_mut(),
-      next: UnsafeCell::new(ptr::null_mut()),
-      prev: UnsafeCell::new(ptr::null_mut())
+      next: SyncUnsafeCell::new(ptr::null_mut()),
+      prev: SyncUnsafeCell::new(ptr::null_mut())
     });
     
     *(head.next.get_mut()) = &mut *head;
     *(head.prev.get_mut()) = &mut *head;
     
     return Self {
-      inner: UnsafeCell::new(ContextInner {
+      inner: SyncUnsafeCell::new(ContextInner {
         head
       })
     };
@@ -167,8 +167,8 @@ impl<'a> ContextHandle<'a> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
       obj: new_obj,
-      next: UnsafeCell::new(ptr::null_mut()),
-      prev: UnsafeCell::new(ptr::null_mut())
+      next: SyncUnsafeCell::new(ptr::null_mut()),
+      prev: SyncUnsafeCell::new(ptr::null_mut())
     });
     
     // SAFETY: Current thread is only owner of the head, and modification to it

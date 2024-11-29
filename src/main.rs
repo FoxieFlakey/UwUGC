@@ -1,4 +1,5 @@
 #![feature(negative_impls)]
+#![feature(sync_unsafe_cell)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use heap::Heap;
