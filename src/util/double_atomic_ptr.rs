@@ -5,7 +5,6 @@ use portable_atomic::AtomicU128;
 
 #[cfg(target_pointer_width = "32")]
 use portable_atomic::AtomicU64;
-use static_assertions::const_assert_eq;
 
 // Like AtomicPtr<T> but atomically exchange
 // two pointers
@@ -23,10 +22,6 @@ type DPointers = u64;
 type AtomicDPointers = AtomicU128;
 #[cfg(target_pointer_width = "32")]
 type AtomicDPointers = AtomicU64;
-
-// Double pointer indeed must fit two pointers
-// as usize must be single pointer sized
-const_assert_eq!(DPointers::BITS, usize::BITS * 2);
 
 impl<T1, T2> AtomicDoublePtr<T1, T2> {
   pub fn new(ptrs: (*mut T1, *mut T2)) -> Self {

@@ -5,4 +5,3 @@ edition = "2021"
 
 [dependencies]
 portable-atomic = "1.10.0"
-static_assertions = "1.1.0"
