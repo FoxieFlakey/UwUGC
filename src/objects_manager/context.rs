@@ -23,6 +23,13 @@ impl LocalObjectsChain {
     // Relaxed ordering because doesnt need to access the object itself
     let (start, end) = self.chain.swap((ptr::null_mut(), ptr::null_mut()), Ordering::Acquire);
     
+    // Nothing to flush
+    if start == ptr::null_mut() {
+      assert_eq!(start, ptr::null_mut());
+      assert_eq!(end, ptr::null_mut());
+      return;
+    }
+    
     // SAFETY: All objects in chain are valid, by design random object in middle
     // of chain cannot be deallocated safely
     unsafe {
