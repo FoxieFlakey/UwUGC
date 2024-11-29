@@ -61,24 +61,26 @@ impl Heap {
     return ContextHandle::new(self, self.object_manager.create_context(), ctx.clone());
   }
   
-  pub fn take_root_snapshot(&self, buffer: &mut Vec<*mut Object>) {
-    let cookie = self.gc_state.block_mutators();
-    
+  pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<*mut Object>) {
     let contexts = self.contexts.lock().unwrap();
     for ctx in contexts.values() {
-      // SAFETY: Threads which modifies the root entries are blocked from
-      // making changes
-      unsafe {
-        ctx.for_each_root(|entry| {
-          // NOTE: Cast reference to *mut Object because after this
-          // return caller must ensure that *mut Object is valid
-          // because after this returns no lock ensures that GC isn't
-          // actively collect that potential *mut Object
-          buffer.push(entry.obj as *const Object as *mut Object);
-        });
-      }
+      ctx.for_each_root(|entry| {
+        // NOTE: Cast reference to *mut Object because after this
+        // return caller must ensure that *mut Object is valid
+        // because after this returns no lock ensures that GC isn't
+        // actively collect that potential *mut Object
+        buffer.push(entry.obj as *const Object as *mut Object);
+      });
     }
-    
+  }
+  
+  pub fn take_root_snapshot(&self, buffer: &mut Vec<*mut Object>) {
+    let cookie = self.gc_state.block_mutators();
+    // SAFETY: Threads which modifies the root entries are blocked from
+    // making changes
+    unsafe {
+      self.take_root_snapshot_unlocked(buffer);
+    }
     drop(cookie);
   }
 }
