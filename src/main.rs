@@ -5,7 +5,7 @@
 use std::{ffi::{c_int, c_long}, hint::black_box, io::{self, Write}, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
 use gc::GCParams;
-use heap::Heap;
+use heap::{Heap, HeapParams};
 use mimalloc::MiMalloc;
 use portable_atomic::AtomicBool;
 use util::data_collector::DataCollector;
@@ -26,12 +26,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 fn start_stat_thread(heap: Arc<Heap>, stat_collector: Arc<DataCollector<HeapStatRecord>>) -> JoinHandle<()> {
   return thread::spawn(move || {
     while !QUIT_THREADS.load(Ordering::Relaxed) {
-      // If over 512 MiB usage panics
       let usage = heap.get_usage();
-      if usage > MAX_SIZE {
-        panic!("Hard limit reached");
-      }
-      
       stat_collector.put_data(HeapStatRecord {
         max_size: MAX_SIZE,
         usage,
@@ -92,9 +87,12 @@ fn main() {
     println!("Prepared the memory!");
   }
   
-  let heap = Heap::new(GCParams {
-    poll_rate: POLL_RATE,
-    trigger_size: TRIGGER_SIZE
+  let heap = Heap::new(HeapParams {
+    gc_params: GCParams {
+      poll_rate: POLL_RATE,
+      trigger_size: TRIGGER_SIZE
+    },
+    max_size: MAX_SIZE
   });
   let stat_collector = Arc::new(DataCollector::new(4096));
   

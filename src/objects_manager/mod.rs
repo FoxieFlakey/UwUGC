@@ -5,6 +5,9 @@ pub use context::ContextHandle;
 
 mod context;
 
+#[derive(Debug)]
+pub struct AllocError;
+
 pub struct Object {
   next: AtomicPtr<Object>,
   marked: AtomicBool,
@@ -24,6 +27,7 @@ pub struct ObjectManager {
   head: AtomicPtr<Object>,
   used_size: AtomicUsize,
   contexts: Mutex<HashMap<ThreadId, Arc<LocalObjectsChain>>>,
+  max_size: usize,
   
   // Used to prevent concurrent creation of sweeper, as at the
   // moment two invocation of it going to fight with each other
@@ -46,12 +50,13 @@ impl Object {
 }
 
 impl ObjectManager {
-  pub fn new() -> Self {
+  pub fn new(max_size: usize) -> Self {
     return Self {
       head: AtomicPtr::new(ptr::null_mut()),
       used_size: AtomicUsize::new(0),
       contexts: Mutex::new(HashMap::new()),
-      sweeper_protect_mutex: Mutex::new(())
+      sweeper_protect_mutex: Mutex::new(()),
+      max_size
     };
   }
   

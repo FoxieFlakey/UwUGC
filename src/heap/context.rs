@@ -195,7 +195,7 @@ impl<'a> ContextHandle<'a> {
     let gc_lock_cookie = self.owner.gc_state.block_gc();
     // SAFETY: Object is newly allocated and GC blocked, so the object
     // can't disappear and protected from seeing half modified root set
-    let root_ref = unsafe { self.new_root_ref_from_ptr(self.obj_manager_ctx.alloc(initer)) };
+    let root_ref = unsafe { self.new_root_ref_from_ptr(self.obj_manager_ctx.try_alloc(initer).unwrap()) };
     drop(gc_lock_cookie);
     return root_ref;
   }

@@ -2,7 +2,7 @@ use std::{any::Any, ptr, sync::{atomic::{AtomicBool, AtomicPtr, Ordering}, Arc},
 
 use crate::{objects_manager::Object, util::double_atomic_ptr::AtomicDoublePtr};
 
-use super::ObjectManager;
+use super::{AllocError, ObjectManager};
 
 pub struct LocalObjectsChain {
   // Maintains start and end of chain
@@ -56,15 +56,28 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Any + Sync + Send + 'static>(&self, func: impl FnOnce() -> T) -> *mut Object {
+  pub fn try_alloc<T: Any + Sync + Send + 'static>(&self, func: impl FnOnce() -> T) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
+    let total_size = size_of::<Object>() + size_of::<T>();
+    let mut current_usage = manager.used_size.load(Ordering::Relaxed);
+    loop {
+      let new_size = current_usage + total_size;
+      if new_size >= manager.max_size {
+        return Err(AllocError);
+      }
+      
+      match manager.used_size.compare_exchange_weak(current_usage, new_size, Ordering::Relaxed, Ordering::Relaxed) {
+        Ok(_) => break,
+        Err(x) => current_usage = x
+      }
+    }
     
     // Leak it and we'll handle it here
     let obj = Box::leak(Box::new(Object {
       data: Box::new(func()),
       marked: AtomicBool::new(false),
       next: AtomicPtr::new(ptr::null_mut()),
-      total_size: 0
+      total_size
     }));
     
     // Add object to local chain
@@ -90,10 +103,7 @@ impl<'a> ContextHandle<'a> {
         Err(actual) => old = actual
       }
     }
-    
-    obj.total_size = size_of_val(obj) + size_of_val(obj.data.as_ref());
-    manager.used_size.fetch_add(obj.total_size, Ordering::Relaxed);
-    return obj;
+    return Ok(obj);
   }
   
   // Move all objects in local chain to global list

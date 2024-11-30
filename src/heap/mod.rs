@@ -9,6 +9,11 @@ pub use context::RootRef;
 
 mod context;
 
+pub struct HeapParams {
+  pub gc_params: GCParams,
+  pub max_size: usize
+}
+
 pub(super) struct RootEntry {
   next: SyncUnsafeCell<*mut RootEntry>,
   prev: SyncUnsafeCell<*mut RootEntry>,
@@ -52,11 +57,11 @@ pub struct Heap {
 }
 
 impl Heap {
-  pub fn new(gc_params: GCParams) -> Arc<Self> {
+  pub fn new(heap_params: HeapParams) -> Arc<Self> {
     return Arc::new_cyclic(|weak_self| Self {
-      object_manager: ObjectManager::new(),
+      object_manager: ObjectManager::new(heap_params.max_size),
       contexts: Mutex::new(HashMap::new()),
-      gc_state: GCState::new(gc_params, weak_self.clone())
+      gc_state: GCState::new(heap_params.gc_params, weak_self.clone())
     });
   }
   
