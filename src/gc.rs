@@ -70,6 +70,9 @@ impl GCState {
   fn call_gc(&self, cmd: GCCommand) {
     // Wait for any previous command to be executed
     let mut cmd_control = self.wait_for_gc(None, None);
+    // There must not be any command in execution, GC replace it
+    // with None after completing a command
+    assert_eq!(cmd_control.command.is_none(), true);
     cmd_control.submit_count += 1;
     cmd_control.command = Some(cmd);
     
