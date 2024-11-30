@@ -52,9 +52,16 @@ impl Drop for GCState {
 
 impl GCState {
   // Wait for any currently executing command to be completed
-  fn wait_for_gc<'a>(&self, mut cmd_control: MutexGuard<'a, GCCommandStruct>) -> MutexGuard<'a, GCCommandStruct> {
-    let submitted_count = cmd_control.submit_count;
-    while submitted_count > cmd_control.execute_count {
+  fn wait_for_gc<'a>(&'a self, submit_count: Option<u64>, cmd_control: Option<MutexGuard<'a, GCCommandStruct>>) -> MutexGuard<'a, GCCommandStruct> {
+    let mut cmd_control = cmd_control
+      .or_else(|| Some(self.inner_state.command.lock().unwrap()))
+      .unwrap();
+    
+    let submit_count = submit_count
+      .or(Some(cmd_control.submit_count))
+      .unwrap();
+    
+    while submit_count > cmd_control.execute_count {
       cmd_control = self.inner_state.cmd_executed_event.wait(cmd_control).unwrap();
     }
     return cmd_control;
@@ -62,12 +69,12 @@ impl GCState {
   
   fn call_gc(&self, cmd: GCCommand) {
     // Wait for any previous command to be executed
-    let mut cmd_control = self.wait_for_gc(self.inner_state.command.lock().unwrap());
+    let mut cmd_control = self.wait_for_gc(None, None);
     cmd_control.submit_count += 1;
     cmd_control.command = Some(cmd);
     
     // Wait for current command to be executed
-    drop(self.wait_for_gc(cmd_control));
+    drop(self.wait_for_gc(Some(cmd_control.submit_count), Some(cmd_control)));
   }
   
   pub fn new(params: GCParams, owner: Weak<Heap>) -> GCState {

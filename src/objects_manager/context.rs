@@ -56,7 +56,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn try_alloc<T: Any + Sync + Send + 'static>(&self, func: impl FnOnce() -> T) -> Result<*mut Object, AllocError> {
+  pub fn try_alloc<T: Any + Sync + Send + 'static>(&self, func: &mut dyn FnMut() -> T) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
     let total_size = size_of::<Object>() + size_of::<T>();
     let mut current_usage = manager.used_size.load(Ordering::Relaxed);

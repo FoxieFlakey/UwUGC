@@ -192,10 +192,21 @@ impl<'a> ContextHandle<'a> {
   }
   
   pub fn alloc<T: Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRef<T> {
+    // Shouldn't panic if try_alloc succeded once, and with this
+    // method this function shouldnt try alloc again
+    let mut inited = Some(initer);
+    let mut must_init_once = || inited.take().unwrap()();
+    
     let gc_lock_cookie = self.owner.gc_state.block_gc();
+    let obj = self.obj_manager_ctx.try_alloc(&mut must_init_once);
+    
+    if let Err(_) = &obj {
+      panic!("Heap run out of memory!");
+    }
+    
     // SAFETY: Object is newly allocated and GC blocked, so the object
     // can't disappear and protected from seeing half modified root set
-    let root_ref = unsafe { self.new_root_ref_from_ptr(self.obj_manager_ctx.try_alloc(initer).unwrap()) };
+    let root_ref = unsafe { self.new_root_ref_from_ptr(obj.unwrap()) };
     drop(gc_lock_cookie);
     return root_ref;
   }
