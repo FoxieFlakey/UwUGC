@@ -124,7 +124,13 @@ impl GCState {
             }
           } else {
             // Does default watching rate before running GC
-            let heap = inner.owner.upgrade().unwrap();
+            let heap = {
+              if let Some(x) = inner.owner.upgrade() {
+                x
+              } else {
+                continue 'poll_loop;
+              }
+            };
             
             // If above trigger run the GC
             if heap.get_usage() > inner.params.trigger_size {
