@@ -4,6 +4,7 @@
 
 use std::{ffi::{c_int, c_long}, hint::black_box, io::{self, Write}, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
+use gc::GCParams;
 use heap::Heap;
 use mimalloc::MiMalloc;
 use portable_atomic::AtomicBool;
@@ -16,24 +17,11 @@ mod gc;
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 512 * 1024 * 1024;
+const POLL_RATE: u64 = 10;
 const TRIGGER_SIZE: usize = 256 * 1024 * 1024;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
-
-fn start_gc_thread(heap: Arc<Heap>) -> JoinHandle<()> {
-  return thread::spawn(move ||{
-    let heap = heap;
-    while !QUIT_THREADS.load(Ordering::Relaxed) {
-      // If usage is larger than 128 MiB trigger GC
-      if heap.get_usage() > TRIGGER_SIZE {
-        heap.run_gc();
-      }
-      
-      thread::sleep(Duration::from_millis(1000 / 10));
-    }
-  });
-}
 
 fn start_stat_thread(heap: Arc<Heap>, stat_collector: Arc<DataCollector<HeapStatRecord>>) -> JoinHandle<()> {
   return thread::spawn(move || {
@@ -104,7 +92,10 @@ fn main() {
     println!("Prepared the memory!");
   }
   
-  let heap = Heap::new();
+  let heap = Heap::new(GCParams {
+    poll_rate: POLL_RATE,
+    trigger_size: TRIGGER_SIZE
+  });
   let stat_collector = Arc::new(DataCollector::new(4096));
   
   stat_collector.add_consumer_fn(|data: &HeapStatRecord| {
@@ -115,14 +106,6 @@ fn main() {
     print!("Usage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  Trigger: {trigger_size: >8.2} MiB\r");
     io::stdout().flush().unwrap();
   });
-  
-  let gc_thread = {
-    if true {
-      Some(start_gc_thread(heap.clone()))
-    } else {
-      None
-    }
-  };
   
   let stat_thread = {
     if true {
@@ -137,7 +120,7 @@ fn main() {
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
   let temp = [198; 1024];
-  black_box(for _ in 1..1_000_000 {
+  black_box(for _ in 1..200_000 {
     let mut res = ctx.alloc(|| temp);
     black_box(do_test(res.borrow_inner_mut()));
     black_box(res);
@@ -150,9 +133,6 @@ fn main() {
   println!("");
   println!("Shutting down!");
   
-  if let Some(thrd) = gc_thread {
-    thrd.join().unwrap();
-  }
   if let Some(thrd) = stat_thread {
     thrd.join().unwrap();
   }

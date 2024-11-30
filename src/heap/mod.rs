@@ -2,7 +2,7 @@ use std::{cell::SyncUnsafeCell, collections::HashMap, sync::{Arc, Mutex}, thread
 
 use context::Context;
 
-use crate::{gc::GCState, objects_manager::{Object, ObjectManager}};
+use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
 
 pub use context::ContextHandle;
 pub use context::RootRef;
@@ -52,11 +52,11 @@ pub struct Heap {
 }
 
 impl Heap {
-  pub fn new() -> Arc<Self> {
-    return Arc::new(Self {
+  pub fn new(gc_params: GCParams) -> Arc<Self> {
+    return Arc::new_cyclic(|weak_self| Self {
       object_manager: ObjectManager::new(),
       contexts: Mutex::new(HashMap::new()),
-      gc_state: GCState::new()
+      gc_state: GCState::new(gc_params, weak_self.clone())
     });
   }
   
@@ -88,7 +88,7 @@ impl Heap {
   }
   
   pub fn run_gc(&self) {
-    self.gc_state.run_gc(self);
+    self.gc_state.run_gc();
   }
   
   pub fn get_usage(&self) -> usize {
