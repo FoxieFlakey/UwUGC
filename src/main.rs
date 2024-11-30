@@ -16,7 +16,7 @@ mod gc;
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 512 * 1024 * 1024;
-const TRIGGER_SIZE: usize = 128 * 1024 * 1024;
+const TRIGGER_SIZE: usize = 256 * 1024 * 1024;
 
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
@@ -97,7 +97,7 @@ fn main() {
   }
   
   // Need to use the half a gig to actually commits it
-  {
+  if !true {
     // Alloc half a gig and zero it and dealloc it
     let mut tmp =unsafe { black_box(Box::<[u8; 768 * 1024 * 1024]>::new_uninit().assume_init()) };
     tmp.fill(0xFC);
@@ -125,7 +125,7 @@ fn main() {
   };
   
   let stat_thread = {
-    if !true {
+    if true {
       Some(start_stat_thread(heap.clone(), stat_collector.clone()))
     } else {
       None
@@ -137,7 +137,7 @@ fn main() {
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
   let temp = [198; 1024];
-  black_box(for _ in 1..400_000 {
+  black_box(for _ in 1..1_000_000 {
     let mut res = ctx.alloc(|| temp);
     black_box(do_test(res.borrow_inner_mut()));
     black_box(res);
