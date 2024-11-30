@@ -104,7 +104,7 @@ fn main() {
     println!("Prepared the memory!");
   }
   
-  let heap = Arc::new(Heap::new());
+  let heap = Heap::new();
   let stat_collector = Arc::new(DataCollector::new(4096));
   
   stat_collector.add_consumer_fn(|data: &HeapStatRecord| {

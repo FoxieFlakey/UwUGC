@@ -52,12 +52,12 @@ pub struct Heap {
 }
 
 impl Heap {
-  pub fn new() -> Self {
-    return Self {
+  pub fn new() -> Arc<Self> {
+    return Arc::new(Self {
       object_manager: ObjectManager::new(),
       contexts: Mutex::new(HashMap::new()),
       gc_state: GCState::new()
-    };
+    });
   }
   
   pub fn create_context(&self) -> ContextHandle {
