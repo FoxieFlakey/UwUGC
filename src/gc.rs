@@ -113,6 +113,8 @@ impl GCState {
           if let Some(cmd) = cmd {
             match cmd {
               GCCommand::RunGC => {
+                // It is intended to panic because if 'heap' is gone
+                // it must be sending 'Shutdown' command
                 let heap = inner.owner.upgrade().unwrap();
                 heap.gc_state.run_gc_internal(&heap);
                 report_as_executed();
