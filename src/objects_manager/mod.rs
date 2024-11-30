@@ -39,6 +39,10 @@ impl Object {
   pub fn borrow_inner<T: Any>(&self) -> Option<&T> {
     return self.data.downcast_ref::<T>();
   }
+  
+  pub fn borrow_inner_mut<T: Any>(&mut self) -> Option<&mut T> {
+    return self.data.downcast_mut::<T>();
+  }
 }
 
 impl ObjectManager {

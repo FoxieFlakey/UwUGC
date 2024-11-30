@@ -111,6 +111,14 @@ impl<'a, T: Any + Send + Sync + 'static> RootRef<'a, T> {
     let root_entry = unsafe { &*self.entry_ref };
     return unsafe { (*root_entry.obj).borrow_inner().unwrap() };
   }
+  
+  pub fn borrow_inner_mut(&mut self) -> &mut T {
+    // SAFETY: root_entry is managed by current thread
+    // so it can only be allocated and deallocated on
+    // same thread
+    let root_entry = unsafe { &*self.entry_ref };
+    return unsafe { (*root_entry.obj).borrow_inner_mut().unwrap() };
+  }
 }
 
 impl<T: Any + Send + Sync + 'static> Drop for RootRef<'_, T> {
