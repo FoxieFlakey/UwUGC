@@ -1,7 +1,8 @@
 // Its job is to receive record containg N numberic fields,
 // and broadcast to each consumers
 
-use std::{sync::{mpsc, Arc, Mutex}, thread::{self, JoinHandle}};
+use std::{sync::{mpsc, Arc}, thread::{self, JoinHandle}};
+use parking_lot::Mutex;
 
 pub trait Consumer<T: Send + 'static>: Send {
   fn consume(&mut self, data: &T);
@@ -31,7 +32,7 @@ impl<T: Send + 'static> DataCollector<T> {
     let consumers2 = new_self.consumers.clone();
     new_self.thread = Some(thread::spawn(move || {
       while let Message::ProcessData(data) = receiver.recv().unwrap() {
-        let mut list_of_consumers = consumers2.lock().unwrap();
+        let mut list_of_consumers = consumers2.lock();
         for consumer in list_of_consumers.iter_mut() {
           consumer.consume(&data);
         }
@@ -45,7 +46,7 @@ impl<T: Send + 'static> DataCollector<T> {
   }
   
   pub fn add_consumer(&self, consumer: Box<dyn Consumer<T>>) {
-    self.consumers.lock().unwrap().push(consumer);
+    self.consumers.lock().push(consumer);
   }
   
   pub fn add_consumer_fn(&self, consumer: impl FnMut(&T) + Send + 'static) {

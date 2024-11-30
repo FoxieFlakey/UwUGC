@@ -1,4 +1,5 @@
-use std::{sync::{Arc, Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard, Weak}, thread::{self, JoinHandle}, time::Duration};
+use std::{sync::{Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::heap::Heap;
 
@@ -54,7 +55,7 @@ impl GCState {
   // Wait for any currently executing command to be completed
   fn wait_for_gc<'a>(&'a self, submit_count: Option<u64>, cmd_control: Option<MutexGuard<'a, GCCommandStruct>>) -> MutexGuard<'a, GCCommandStruct> {
     let mut cmd_control = cmd_control
-      .or_else(|| Some(self.inner_state.command.lock().unwrap()))
+      .or_else(|| Some(self.inner_state.command.lock()))
       .unwrap();
     
     let submit_count = submit_count
@@ -62,7 +63,7 @@ impl GCState {
       .unwrap();
     
     while submit_count > cmd_control.execute_count {
-      cmd_control = self.inner_state.cmd_executed_event.wait(cmd_control).unwrap();
+      self.inner_state.cmd_executed_event.wait(&mut cmd_control);
     }
     return cmd_control;
   }
@@ -103,7 +104,7 @@ impl GCState {
         // Increment execute_count by one and wake others
         // that a command is executed
         let report_as_executed = || {
-          let mut cmd_control = inner.command.lock().unwrap();
+          let mut cmd_control = inner.command.lock();
           cmd_control.command = None;
           cmd_control.execute_count += 1;
           drop(cmd_control);
@@ -112,7 +113,7 @@ impl GCState {
         };
         
         'poll_loop: loop {
-          let cmd = inner.command.lock().unwrap().command.clone();
+          let cmd = inner.command.lock().command.take();
           if let Some(cmd) = cmd {
             match cmd {
               GCCommand::RunGC => {
@@ -153,13 +154,13 @@ impl GCState {
   
   pub fn block_gc(&self) -> GCLockCookie {
     return GCLockCookie {
-      _cookie: self.inner_state.gc_lock.read().unwrap()
+      _cookie: self.inner_state.gc_lock.read()
     }
   }
   
   pub fn block_mutators(&self) -> GCExclusiveLockCookie {
     return GCExclusiveLockCookie {
-      _cookie: self.inner_state.gc_lock.write().unwrap()
+      _cookie: self.inner_state.gc_lock.write()
     }
   }
   

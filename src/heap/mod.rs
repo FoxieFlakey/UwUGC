@@ -1,4 +1,5 @@
-use std::{cell::SyncUnsafeCell, collections::HashMap, sync::{Arc, Mutex}, thread::{self, ThreadId}};
+use std::{cell::SyncUnsafeCell, collections::HashMap, sync::Arc, thread::{self, ThreadId}};
+use parking_lot::Mutex;
 
 use context::Context;
 
@@ -66,7 +67,7 @@ impl Heap {
   }
   
   pub fn create_context(&self) -> ContextHandle {
-    let mut contexts = self.contexts.lock().unwrap();
+    let mut contexts = self.contexts.lock();
     let ctx = contexts.entry(thread::current().id())
       .or_insert_with(|| Arc::new(Context::new()));
     
@@ -76,7 +77,7 @@ impl Heap {
   // SAFETY: Caller must ensure that mutators arent actively trying
   // to use the root concurrently
   pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<*mut Object>) {
-    let contexts = self.contexts.lock().unwrap();
+    let contexts = self.contexts.lock();
     for ctx in contexts.values() {
       // SAFETY: Its caller responsibility to make sure there are no
       // concurrent modification to the root set

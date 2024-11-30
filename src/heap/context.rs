@@ -215,7 +215,7 @@ impl<'a> ContextHandle<'a> {
 impl Drop for ContextHandle<'_> {
   fn drop(&mut self) {
     // Remove context belonging to current thread
-    self.owner.contexts.lock().unwrap().remove(&thread::current().id());
+    self.owner.contexts.lock().remove(&thread::current().id());
   }
 }
 

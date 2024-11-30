@@ -1,4 +1,5 @@
-use std::{any::Any, collections::HashMap, ptr, sync::{atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}, Arc, Mutex}, thread::{self, ThreadId}};
+use std::{any::Any, collections::HashMap, ptr, sync::{atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use parking_lot::Mutex;
 
 use context::LocalObjectsChain;
 pub use context::ContextHandle;
@@ -90,7 +91,7 @@ impl ObjectManager {
   }
   
   pub fn create_context(&self) -> ContextHandle {
-    let mut contexts = self.contexts.lock().unwrap();
+    let mut contexts = self.contexts.lock();
     let ctx = contexts.entry(thread::current().id())
       .or_insert(Arc::new(LocalObjectsChain::new()))
       .clone();
@@ -99,10 +100,10 @@ impl ObjectManager {
   }
   
   pub fn create_sweeper(&self) -> Sweeper {
-    let sweeper_lock_guard = self.sweeper_protect_mutex.lock().unwrap();
+    let sweeper_lock_guard = self.sweeper_protect_mutex.lock();
     
     // Flush all contexts' local chain to global before sweeping
-    for ctx in self.contexts.lock().unwrap().values() {
+    for ctx in self.contexts.lock().values() {
       // SAFETY: 'self' owns the objects chain
       unsafe { ctx.flush_to_global(self) };
     }

@@ -121,7 +121,7 @@ impl Drop for ContextHandle<'_> {
     // Move all objects in current local chain to global list
     self.flush_to_global();
     
-    let mut contexts = self.owner.contexts.lock().unwrap();
+    let mut contexts = self.owner.contexts.lock();
     
     // Remove context belonging to current thread
     contexts.remove(&thread::current().id());
