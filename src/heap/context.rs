@@ -1,7 +1,7 @@
 use std::{any::Any, cell::SyncUnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
-use crate::objects_manager::ContextHandle as ObjectManagerContextHandle;
+use crate::objects_manager::{ContextHandle as ObjectManagerContextHandle, Object};
 
 pub struct ContextInner {
   head: Pin<Box<RootEntry>>
@@ -168,13 +168,12 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRef<T> {
-    let gc_lock_cookie = self.owner.gc_state.block_gc();
-    let new_obj = self.obj_manager_ctx.alloc(initer);
-    
+  // SAFETY: Caller must ensure that 'ptr' is valid Object pointer
+  // and properly blocks GC from running
+  pub(crate) unsafe fn new_root_ref_from_ptr<T: Any + Sync + Send + 'static>(&self, ptr: *mut Object) -> RootRef<T> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
-      obj: new_obj,
+      obj: ptr,
       next: SyncUnsafeCell::new(ptr::null_mut()),
       prev: SyncUnsafeCell::new(ptr::null_mut())
     });
@@ -186,11 +185,19 @@ impl<'a> ContextHandle<'a> {
     // Allow GC to run again and Release fence to allow newly added value to be
     // visible to the GC
     atomic::fence(atomic::Ordering::Release);
-    drop(gc_lock_cookie);
     return RootRef {
       entry_ref: entry,
       phantom: PhantomData {}
     };
+  }
+  
+  pub fn alloc<T: Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRef<T> {
+    let gc_lock_cookie = self.owner.gc_state.block_gc();
+    // SAFETY: Object is newly allocated and GC blocked, so the object
+    // can't disappear and protected from seeing half modified root set
+    let root_ref = unsafe { self.new_root_ref_from_ptr(self.obj_manager_ctx.alloc(initer)) };
+    drop(gc_lock_cookie);
+    return root_ref;
   }
 }
 
