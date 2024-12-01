@@ -1,4 +1,4 @@
-use std::{sync::{atomic::Ordering, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use std::{sync::{Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::heap::Heap;
