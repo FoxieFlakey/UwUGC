@@ -119,38 +119,38 @@ fn main() {
   
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
-  // let temp = [198; 1024];
-  // black_box(for _ in 1..200_000 {
-  //   let mut res = ctx.alloc(|| temp);
-  //   black_box(do_test(res.borrow_inner_mut()));
-  //   black_box(res);
-  // });
-  
-  struct Message {
-    uwu: u8
-  }
-  
-  static MESSAGE_DESCRIPTOR: Descriptor = Descriptor {
-    fields: Vec::new()
-  };
-  
-  unsafe impl Describeable for Message {
-    fn get_descriptor() -> Option<&'static Descriptor> {
-      return Some(&MESSAGE_DESCRIPTOR)
-    }
-  }
-  
-  let mut msg = ctx.alloc(|| Message {
-    uwu: 0x8
+  let temp = [198; 1024];
+  black_box(for _ in 1..200_000 {
+    let mut res = ctx.alloc(|| temp);
+    black_box(do_test(res.borrow_inner_mut()));
+    black_box(res);
   });
   
-  let mut a = msg.borrow_inner().uwu;
-  println!("UwU: {a}");
-  msg.borrow_inner_mut().uwu = 12;
-  a = msg.borrow_inner().uwu;
-  println!("UwU: {a}");
+  // struct Message {
+  //   uwu: u8
+  // }
   
-  drop(msg);
+  // static MESSAGE_DESCRIPTOR: Descriptor = Descriptor {
+  //   fields: Vec::new()
+  // };
+  
+  // unsafe impl Describeable for Message {
+  //   fn get_descriptor() -> Option<&'static Descriptor> {
+  //     return Some(&MESSAGE_DESCRIPTOR)
+  //   }
+  // }
+  
+  // let mut msg = ctx.alloc(|| Message {
+  //   uwu: 0x8
+  // });
+  
+  // let mut a = msg.borrow_inner().uwu;
+  // println!("UwU: {a}");
+  // msg.borrow_inner_mut().uwu = 12;
+  // a = msg.borrow_inner().uwu;
+  // println!("UwU: {a}");
+  
+  // drop(msg);
   drop(ctx);
   
   let complete_time = (start_time.elapsed().as_millis() as f32) / 1024.0;

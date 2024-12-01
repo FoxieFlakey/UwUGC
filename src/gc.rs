@@ -8,12 +8,12 @@ pub struct GCParams {
   pub poll_rate: u64
 }
 
-#[derive(Clone)]
+#[derive(Clone, Copy, PartialEq, Eq)]
 enum GCCommand {
-  Shutdown,
   RunGC
 }
 
+#[derive(Clone)]
 struct GCCommandStruct {
   command: Option<GCCommand>,
   submit_count: u64,
@@ -46,7 +46,9 @@ pub struct GCExclusiveLockCookie<'a> {
 
 impl Drop for GCState {
   fn drop(&mut self) {
-    self.call_gc(GCCommand::Shutdown);
+    // Weak now failed to be turned into Arc<Heap>
+    // in the GC poll loop and it tells the poll
+    // to shutdown as it observe Heap is being dropped
     self.thread.take().unwrap().join().unwrap();
   }
 }
@@ -69,8 +71,26 @@ impl GCState {
   }
   
   fn call_gc(&self, cmd: GCCommand) {
+    let mut cmd_control = self.inner_state.command.lock();
+    if let Some(current_cmd) = cmd_control.command {
+      let combine_command =  match cmd {
+        // GCCommand::RunGC can be combined with potentially
+        // in progress RunGC command because there no need
+        // to fire multiple GCs in a row because multiple
+        // thread coincidentally attempt to do that when one
+        // is really enough until next time
+        GCCommand::RunGC => true
+      };
+      
+      if combine_command && current_cmd == cmd {
+        let _ = self.wait_for_gc(None, Some(cmd_control));
+        return;
+      }
+    }
+    
     // Wait for any previous command to be executed
-    let mut cmd_control = self.wait_for_gc(None, None);
+    cmd_control = self.wait_for_gc(None, Some(cmd_control));
+    
     // There must not be any command in execution, GC replace it
     // with None after completing a command
     assert_eq!(cmd_control.command.is_none(), true);
@@ -79,6 +99,28 @@ impl GCState {
     
     // Wait for current command to be executed
     drop(self.wait_for_gc(Some(cmd_control.submit_count), Some(cmd_control)));
+  }
+  
+  fn process_command(gc_state: &Arc<GCInnerState>, heap: &Heap, cmd_struct: GCCommandStruct) {
+    match cmd_struct.command.unwrap() {
+      GCCommand::RunGC => {
+        heap.gc_state.run_gc_internal(&heap);
+      }
+    }
+    
+    let mut cmd_control = gc_state.command.lock();
+    cmd_control.command = None;
+    cmd_control.execute_count += 1;
+    drop(cmd_control);
+    
+    gc_state.cmd_executed_event.notify_all();
+  }
+  
+  fn do_gc_heuristics(gc_state: &Arc<GCInnerState>, heap: &Heap, cmd_control: &mut GCCommandStruct) {
+    if heap.get_usage() >= gc_state.params.trigger_size {
+      cmd_control.submit_count += 1;
+      cmd_control.command = Some(GCCommand::RunGC);
+    }
   }
   
   pub fn new(params: GCParams, owner: Weak<Heap>) -> GCState {
@@ -101,47 +143,27 @@ impl GCState {
         let inner = inner_state;
         let sleep_delay_milisec = 1000 / inner.params.poll_rate;
         
-        // Increment execute_count by one and wake others
-        // that a command is executed
-        let report_as_executed = || {
+        // If 'heap' can't be upgraded, that signals the GC thread
+        // to shutdown
+        while let Some(heap) = inner.owner.upgrade() {
           let mut cmd_control = inner.command.lock();
-          cmd_control.command = None;
-          cmd_control.execute_count += 1;
+          
+          // If there no command to be executed
+          // let 'do_gc_heuristics' decide what
+          // to do next based on heuristics, it
+          // may injects a new command into cmd_control
+          // to send command, instead relying other
+          // if statement and special conditions
+          if cmd_control.command.is_none() {
+            Self::do_gc_heuristics(&inner, &heap, &mut cmd_control);
+          }
+          
+          let cmd_struct = cmd_control.clone();
+          let cmd = cmd_control.command;
           drop(cmd_control);
           
-          inner.cmd_executed_event.notify_all();
-        };
-        
-        'poll_loop: loop {
-          let cmd = inner.command.lock().command.take();
-          if let Some(cmd) = cmd {
-            match cmd {
-              GCCommand::RunGC => {
-                // It is intended to panic because if 'heap' is gone
-                // it must be sending 'Shutdown' command
-                let heap = inner.owner.upgrade().unwrap();
-                heap.gc_state.run_gc_internal(&heap);
-                report_as_executed();
-              },
-              GCCommand::Shutdown => {
-                report_as_executed();
-                break 'poll_loop
-              }
-            }
-          } else {
-            // Does default watching rate before running GC
-            let heap = {
-              if let Some(x) = inner.owner.upgrade() {
-                x
-              } else {
-                continue 'poll_loop;
-              }
-            };
-            
-            // If above trigger run the GC
-            if heap.get_usage() > inner.params.trigger_size {
-              heap.gc_state.run_gc_internal(&heap);
-            }
+          if let Some(_) = cmd {
+            Self::process_command(&inner, &heap, cmd_struct);
           }
           
           thread::sleep(Duration::from_millis(sleep_delay_milisec));
