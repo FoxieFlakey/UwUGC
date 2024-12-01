@@ -4,6 +4,7 @@
 
 use std::{ffi::{c_int, c_long}, hint::black_box, io::{self, Write}, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
+use descriptor::{Descriptor, Describeable};
 use gc::GCParams;
 use heap::{Heap, HeapParams};
 use mimalloc::MiMalloc;
@@ -14,6 +15,7 @@ mod objects_manager;
 mod util;
 mod heap;
 mod gc;
+mod descriptor;
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 512 * 1024 * 1024;
@@ -117,12 +119,38 @@ fn main() {
   
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
-  let temp = [198; 1024];
-  black_box(for _ in 1..200_000 {
-    let mut res = ctx.alloc(|| temp);
-    black_box(do_test(res.borrow_inner_mut()));
-    black_box(res);
+  // let temp = [198; 1024];
+  // black_box(for _ in 1..200_000 {
+  //   let mut res = ctx.alloc(|| temp);
+  //   black_box(do_test(res.borrow_inner_mut()));
+  //   black_box(res);
+  // });
+  
+  struct Message {
+    uwu: u8
+  }
+  
+  static MESSAGE_DESCRIPTOR: Descriptor = Descriptor {
+    fields: Vec::new()
+  };
+  
+  unsafe impl Describeable for Message {
+    fn get_descriptor() -> Option<&'static Descriptor> {
+      return Some(&MESSAGE_DESCRIPTOR)
+    }
+  }
+  
+  let mut msg = ctx.alloc(|| Message {
+    uwu: 0x8
   });
+  
+  let mut a = msg.borrow_inner().uwu;
+  println!("UwU: {a}");
+  msg.borrow_inner_mut().uwu = 12;
+  a = msg.borrow_inner().uwu;
+  println!("UwU: {a}");
+  
+  drop(msg);
   drop(ctx);
   
   let complete_time = (start_time.elapsed().as_millis() as f32) / 1024.0;

@@ -4,6 +4,8 @@ use parking_lot::Mutex;
 use context::LocalObjectsChain;
 pub use context::ContextHandle;
 
+use crate::descriptor::Descriptor;
+
 mod context;
 
 #[derive(Debug)]
@@ -13,6 +15,7 @@ pub struct Object {
   next: AtomicPtr<Object>,
   marked: AtomicBool,
   total_size: usize,
+  descriptor: Option<&'static Descriptor>,
   
   // Data can only contain owned structs
   data: Box<dyn Any + Send + Sync + 'static>

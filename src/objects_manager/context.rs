@@ -1,6 +1,6 @@
 use std::{any::Any, ptr, sync::{atomic::{AtomicBool, AtomicPtr, Ordering}, Arc}, thread};
 
-use crate::{objects_manager::Object, util::double_atomic_ptr::AtomicDoublePtr};
+use crate::{descriptor::Describeable, objects_manager::Object, util::double_atomic_ptr::AtomicDoublePtr};
 
 use super::{AllocError, ObjectManager};
 
@@ -56,7 +56,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn try_alloc<T: Any + Sync + Send + 'static>(&self, func: &mut dyn FnMut() -> T) -> Result<*mut Object, AllocError> {
+  pub fn try_alloc<T: Describeable + Any + Sync + Send + 'static>(&self, func: &mut dyn FnMut() -> T) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
     let total_size = size_of::<Object>() + size_of::<T>();
     let mut current_usage = manager.used_size.load(Ordering::Relaxed);
@@ -77,6 +77,7 @@ impl<'a> ContextHandle<'a> {
       data: Box::new(func()),
       marked: AtomicBool::new(false),
       next: AtomicPtr::new(ptr::null_mut()),
+      descriptor: T::get_descriptor(),
       total_size
     }));
     

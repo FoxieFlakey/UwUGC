@@ -1,7 +1,7 @@
 use std::{any::Any, cell::SyncUnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
-use crate::objects_manager::{ContextHandle as ObjectManagerContextHandle, Object};
+use crate::{descriptor::Describeable, objects_manager::{ContextHandle as ObjectManagerContextHandle, Object}};
 
 pub struct ContextInner {
   head: Pin<Box<RootEntry>>
@@ -191,7 +191,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRef<T> {
+  pub fn alloc<T: Describeable + Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRef<T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut inited = Some(initer);
