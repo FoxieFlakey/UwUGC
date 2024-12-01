@@ -200,7 +200,7 @@ impl<'a> ContextHandle<'a> {
     let gc_lock_cookie = self.owner.gc_state.block_gc();
     let obj = self.obj_manager_ctx.try_alloc(&mut must_init_once);
     
-    if let Err(_) = &obj {
+    if obj.is_err() {
       panic!("Heap run out of memory!");
     }
     
