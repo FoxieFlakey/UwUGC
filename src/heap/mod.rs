@@ -59,11 +59,15 @@ pub struct Heap {
 
 impl Heap {
   pub fn new(heap_params: HeapParams) -> Arc<Self> {
-    return Arc::new_cyclic(|weak_self| Self {
+    let this = Arc::new_cyclic(|weak_self| Self {
       object_manager: ObjectManager::new(heap_params.max_size),
       contexts: Mutex::new(HashMap::new()),
       gc_state: GCState::new(heap_params.gc_params, weak_self.clone())
     });
+    
+    // Let GC run
+    this.gc_state.unpause_gc();
+    return this;
   }
   
   pub fn create_context(&self) -> ContextHandle {

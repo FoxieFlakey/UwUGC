@@ -1,4 +1,4 @@
-use std::{sync::{Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use std::{sync::{atomic::Ordering, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::heap::Heap;
@@ -13,6 +13,13 @@ enum GCCommand {
   RunGC
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum GCRunState {
+  Paused,
+  Running,
+  Stopped
+}
+
 #[derive(Clone)]
 struct GCCommandStruct {
   command: Option<GCCommand>,
@@ -24,6 +31,9 @@ struct GCInnerState {
   gc_lock: RwLock<()>,
   owner: Weak<Heap>,
   params: GCParams,
+  
+  run_state: Mutex<GCRunState>,
+  run_state_changed_event: Condvar,
   
   // GC will regularly checks this and execute command
   // then wake other
@@ -46,14 +56,20 @@ pub struct GCExclusiveLockCookie<'a> {
 
 impl Drop for GCState {
   fn drop(&mut self) {
-    // Weak now failed to be turned into Arc<Heap>
-    // in the GC poll loop and it tells the poll
-    // to shutdown as it observe Heap is being dropped
+    self.set_gc_run_state(GCRunState::Stopped);
     self.thread.take().unwrap().join().unwrap();
   }
 }
 
 impl GCState {
+  fn set_gc_run_state(&self, state: GCRunState) {
+    *self.inner_state.run_state.lock() = state;
+    
+    // Notify the GC of run state change, there will be
+    // only one primary thread so notify_one is better choice
+    self.inner_state.run_state_changed_event.notify_one();
+  }
+  
   // Wait for any currently executing command to be completed
   fn wait_for_gc<'a>(&'a self, submit_count: Option<u64>, cmd_control: Option<MutexGuard<'a, GCCommandStruct>>) -> MutexGuard<'a, GCCommandStruct> {
     let mut cmd_control = cmd_control
@@ -123,11 +139,40 @@ impl GCState {
     }
   }
   
+  fn gc_poll(inner: &Arc<GCInnerState>, heap: &Heap) {
+    let mut cmd_control = inner.command.lock();
+    
+    // If there no command to be executed
+    // let 'do_gc_heuristics' decide what
+    // to do next based on heuristics, it
+    // may injects a new command into cmd_control
+    // to send command, instead relying other
+    // if statement and special conditions
+    if cmd_control.command.is_none() {
+      Self::do_gc_heuristics(&inner, &heap, &mut cmd_control);
+    }
+    
+    let cmd_struct = cmd_control.clone();
+    let cmd = cmd_control.command;
+    drop(cmd_control);
+    
+    if let Some(_) = cmd {
+      Self::process_command(&inner, &heap, cmd_struct);
+    }
+  }
+  
+  pub fn unpause_gc(&self) {
+    self.set_gc_run_state(GCRunState::Running);
+  }
+  
   pub fn new(params: GCParams, owner: Weak<Heap>) -> GCState {
     let inner_state = Arc::new(GCInnerState {
       gc_lock: RwLock::new(()),
       owner,
       params,
+      
+      run_state: Mutex::new(GCRunState::Paused),
+      run_state_changed_event: Condvar::new(),
       
       command: Mutex::new(GCCommandStruct {
         command: None,
@@ -143,29 +188,31 @@ impl GCState {
         let inner = inner_state;
         let sleep_delay_milisec = 1000 / inner.params.poll_rate;
         
-        // If 'heap' can't be upgraded, that signals the GC thread
-        // to shutdown
-        while let Some(heap) = inner.owner.upgrade() {
-          let mut cmd_control = inner.command.lock();
-          
-          // If there no command to be executed
-          // let 'do_gc_heuristics' decide what
-          // to do next based on heuristics, it
-          // may injects a new command into cmd_control
-          // to send command, instead relying other
-          // if statement and special conditions
-          if cmd_control.command.is_none() {
-            Self::do_gc_heuristics(&inner, &heap, &mut cmd_control);
+        'poll_loop: loop {
+          // Check GC run state
+          let mut run_state = inner.run_state.lock();
+          'run_state_poll_loop: loop {
+            match *run_state {
+              // If GC paused, continue waiting for state changed event
+              // or GC got spurious wake up during paused
+              GCRunState::Paused => (),
+              // If GC running, break out of this loop to execute normally
+              GCRunState::Running => break 'run_state_poll_loop,
+              // If GC is stopped, break of of outer poll loop to quit
+              GCRunState::Stopped => break 'poll_loop
+            }
+            
+            inner.run_state_changed_event.wait(&mut run_state);
           }
+          drop(run_state);
           
-          let cmd_struct = cmd_control.clone();
-          let cmd = cmd_control.command;
-          drop(cmd_control);
-          
-          if let Some(_) = cmd {
-            Self::process_command(&inner, &heap, cmd_struct);
-          }
-          
+          // If 'heap' can't be upgraded, that signals the GC thread
+          // to shutdown, incase if Heap is dropped after run state check
+          let heap = match inner.owner.upgrade() {
+            Some(x) => x,
+            None => break
+          };
+          Self::gc_poll(&inner, &heap);
           thread::sleep(Duration::from_millis(sleep_delay_milisec));
         }
         
