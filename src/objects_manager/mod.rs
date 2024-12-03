@@ -31,7 +31,7 @@ pub struct Object {
 impl Object {
   // Called by garbage collection code and
   // never be called by mutator
-  pub fn mark(&self, owner: &ObjectManager) {
+  pub fn set_mark_bit(&self, owner: &ObjectManager) {
     self.flags.store(OBJECT_FLAGS_MARK_BIT, Ordering::Relaxed);
   }
   

@@ -255,7 +255,7 @@ impl GCState {
       let obj = unsafe { &*obj };
       
       // Mark it
-      obj.mark(&heap.object_manager);
+      obj.set_mark_bit(&heap.object_manager);
     }
     
     // Step 3 (Concurrent): Sweep dead objects and reset mark flags 
