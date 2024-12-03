@@ -246,6 +246,9 @@ impl GCState {
     unsafe { heap.take_root_snapshot_unlocked(&mut root_snapshot) };
     let sweeper = heap.object_manager.create_sweeper();
     
+    // Step 1.1: Flip the new marked bit value, so that mutator by default
+    // creates new objects which is "marked" to GC perspective
+    heap.object_manager.flip_new_marked_bit_value();
     drop(block_mutator_cookie);
     
     // Step 2 (Concurrent): Mark objects
@@ -262,6 +265,15 @@ impl GCState {
     // SAFETY: just marked live objects and dead objects
     // is well dead
     unsafe { sweeper.sweep_and_reset_mark_flag() };
+    
+    // Step 4 (STW): Finalizations of various stuffs
+    let block_mutator_cookie = self.block_mutators();
+    
+    // Flip the meaning of marked bit value, so on next cycle GC sees new
+    // objects which was looking like "marked" to current cycle to be
+    // "unmarked"
+    heap.object_manager.flip_marked_bit_value();
+    drop(block_mutator_cookie);
   }
 }
 

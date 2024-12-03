@@ -32,16 +32,23 @@ impl Object {
   // Called by garbage collection code and
   // never be called by mutator
   pub fn set_mark_bit(&self, owner: &ObjectManager) {
-    self.flags.store(OBJECT_FLAGS_MARK_BIT, Ordering::Relaxed);
+    self.flags.store(
+      owner.marked_bit_value.load(Ordering::Relaxed)
+        .then_some(OBJECT_FLAGS_MARK_BIT)
+        .unwrap_or(0x00),
+      Ordering::Relaxed
+    );
   }
   
   fn is_marked(&self, owner: &ObjectManager) -> bool {
     let mark_bit = (self.flags.load(Ordering::Relaxed) & OBJECT_FLAGS_MARK_BIT) != 0;
-    return mark_bit;
+    return mark_bit == owner.marked_bit_value.load(Ordering::Relaxed);
   }
   
   fn compute_new_flags(owner: &ObjectManager) -> u8 {
-    return 0x00;
+    return owner.new_object_mark_value.load(Ordering::Relaxed)
+    .then_some(OBJECT_FLAGS_MARK_BIT)
+    .unwrap_or(0x00);
   }
 }
 
@@ -53,7 +60,13 @@ pub struct ObjectManager {
   
   // Used to prevent concurrent creation of sweeper, as at the
   // moment two invocation of it going to fight with each other
-  sweeper_protect_mutex: Mutex<()>
+  sweeper_protect_mutex: Mutex<()>,
+  
+  // What bit to initialize mark_bit to
+  new_object_mark_value: AtomicBool,
+  
+  // What bit value to consider an object to be marked
+  marked_bit_value: AtomicBool,
 }
 
 pub struct Sweeper<'a> {
@@ -78,8 +91,18 @@ impl ObjectManager {
       used_size: AtomicUsize::new(0),
       contexts: Mutex::new(HashMap::new()),
       sweeper_protect_mutex: Mutex::new(()),
+      marked_bit_value: AtomicBool::new(true),
+      new_object_mark_value: AtomicBool::new(false),
       max_size
     };
+  }
+  
+  pub fn flip_marked_bit_value(&self) {
+    self.marked_bit_value.fetch_not(Ordering::Relaxed);
+  }
+  
+  pub fn flip_new_marked_bit_value(&self) {
+    self.new_object_mark_value.fetch_not(Ordering::Relaxed);
   }
   
   // SAFETY: Caller ensures that 'start' and 'end' is valid Object
@@ -175,8 +198,6 @@ impl Sweeper<'_> {
       iter_current_ptr = current.next.load(Ordering::Acquire);
       
       if !current.is_marked(self.owner) {
-        current.flags.store(Object::compute_new_flags(self.owner), Ordering::Relaxed);
-        
         // 'predicate' determine that 'current' object is to be deallocated
         self.owner.dealloc(current);
         
