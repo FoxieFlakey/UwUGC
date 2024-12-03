@@ -1,8 +1,9 @@
-use std::{any::Any, collections::HashMap, ptr, sync::{atomic::{AtomicBool, AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use std::{any::Any, collections::HashMap, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
 use context::LocalObjectsChain;
 pub use context::ContextHandle;
+use portable_atomic::{AtomicBool, AtomicU8};
 
 use crate::descriptor::Descriptor;
 
@@ -11,9 +12,15 @@ mod context;
 #[derive(Debug)]
 pub struct AllocError;
 
+// Do not manually masked the bit, the meaning
+// always invert every cycle, as new objects
+// will be either has 0x01 or 0x00 as mark bit
+// depends on "invert_mark_bit_meaning" in ObjectManager
+const OBJECT_FLAGS_MARK_BIT: u8 = 0x01;
+
 pub struct Object {
   next: AtomicPtr<Object>,
-  marked: AtomicBool,
+  flags: AtomicU8,
   total_size: usize,
   descriptor: Option<&'static Descriptor>,
   
@@ -22,8 +29,19 @@ pub struct Object {
 }
 
 impl Object {
-  pub fn mark(&self) {
-    self.marked.store(true, Ordering::Relaxed);
+  // Called by garbage collection code and
+  // never be called by mutator
+  pub fn mark(&self, owner: &ObjectManager) {
+    self.flags.store(OBJECT_FLAGS_MARK_BIT, Ordering::Relaxed);
+  }
+  
+  fn is_marked(&self, owner: &ObjectManager) -> bool {
+    let mark_bit = (self.flags.load(Ordering::Relaxed) & OBJECT_FLAGS_MARK_BIT) != 0;
+    return mark_bit;
+  }
+  
+  fn compute_new_flags(owner: &ObjectManager) -> u8 {
+    return 0x00;
   }
 }
 
@@ -156,7 +174,9 @@ impl Sweeper<'_> {
       let current = unsafe { &mut *current_ptr };
       iter_current_ptr = current.next.load(Ordering::Acquire);
       
-      if !current.marked.swap(false, Ordering::Relaxed) {
+      if !current.is_marked(self.owner) {
+        current.flags.store(Object::compute_new_flags(self.owner), Ordering::Relaxed);
+        
         // 'predicate' determine that 'current' object is to be deallocated
         self.owner.dealloc(current);
         
