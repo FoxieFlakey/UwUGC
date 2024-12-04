@@ -1,6 +1,6 @@
 use std::{any::Any, ptr, sync::{atomic::{AtomicPtr, Ordering}, Arc}, thread};
 
-use portable_atomic::AtomicU8;
+use portable_atomic::AtomicBool;
 
 use crate::{descriptor::Describeable, objects_manager::Object, util::double_atomic_ptr::AtomicDoublePtr};
 
@@ -77,7 +77,7 @@ impl<'a> ContextHandle<'a> {
     // Leak it and we'll handle it here
     let obj = Box::leak(Box::new(Object {
       data: Box::new(func()),
-      flags: AtomicU8::new(Object::compute_new_flags(self.owner)),
+      marked: AtomicBool::new(Object::compute_new_flags(self.owner)),
       next: AtomicPtr::new(ptr::null_mut()),
       descriptor: T::get_descriptor(),
       total_size

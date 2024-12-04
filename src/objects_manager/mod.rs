@@ -3,7 +3,7 @@ use parking_lot::Mutex;
 
 use context::LocalObjectsChain;
 pub use context::ContextHandle;
-use portable_atomic::{AtomicBool, AtomicU8};
+use portable_atomic::AtomicBool;
 
 use crate::descriptor::Descriptor;
 
@@ -12,15 +12,11 @@ mod context;
 #[derive(Debug)]
 pub struct AllocError;
 
-// Do not manually masked the bit, the meaning
-// always invert every cycle, as new objects
-// will be either has 0x01 or 0x00 as mark bit
-// depends on "invert_mark_bit_meaning" in ObjectManager
-const OBJECT_FLAGS_MARK_BIT: u8 = 0x01;
-
 pub struct Object {
   next: AtomicPtr<Object>,
-  flags: AtomicU8,
+  // WARNING: Do not rely on this, always use is_marked
+  // function, the 'marked' meaning on this always changes
+  marked: AtomicBool,
   total_size: usize,
   descriptor: Option<&'static Descriptor>,
   
@@ -29,26 +25,21 @@ pub struct Object {
 }
 
 impl Object {
-  // Called by garbage collection code and
-  // never be called by mutator
-  pub fn set_mark_bit(&self, owner: &ObjectManager) {
-    self.flags.store(
-      owner.marked_bit_value.load(Ordering::Relaxed)
-        .then_some(OBJECT_FLAGS_MARK_BIT)
-        .unwrap_or(0x00),
+  // Return old 'marked' value and set as 'marked'
+  pub fn set_mark_bit(&self, owner: &ObjectManager) -> bool {
+    return self.marked.swap(
+      owner.marked_bit_value.load(Ordering::Relaxed),
       Ordering::Relaxed
     );
   }
   
   fn is_marked(&self, owner: &ObjectManager) -> bool {
-    let mark_bit = (self.flags.load(Ordering::Relaxed) & OBJECT_FLAGS_MARK_BIT) != 0;
+    let mark_bit = self.marked.load(Ordering::Relaxed);
     return mark_bit == owner.marked_bit_value.load(Ordering::Relaxed);
   }
   
-  fn compute_new_flags(owner: &ObjectManager) -> u8 {
-    return owner.new_object_mark_value.load(Ordering::Relaxed)
-    .then_some(OBJECT_FLAGS_MARK_BIT)
-    .unwrap_or(0x00);
+  fn compute_new_flags(owner: &ObjectManager) -> bool {
+    return owner.new_object_mark_value.load(Ordering::Relaxed);
   }
 }
 
