@@ -1,7 +1,7 @@
-use std::{sync::{Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use std::{sync::{mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
-use crate::heap::Heap;
+use crate::{heap::Heap, objects_manager::{Object, ObjectManager}};
 
 pub struct GCParams {
   pub trigger_size: usize,
@@ -27,6 +27,17 @@ struct GCCommandStruct {
   execute_count: u64
 }
 
+#[derive(Clone, Copy, PartialEq, Eq)]
+struct ObjectPtrSend(*const Object);
+impl From<&Object> for ObjectPtrSend {
+  fn from(value: &Object) -> Self {
+    return Self(value as *const Object);
+  }
+}
+
+// SAFETY: Its safe just need a wrapper
+unsafe impl Send for ObjectPtrSend {}
+
 struct GCInnerState {
   gc_lock: RwLock<()>,
   owner: Weak<Heap>,
@@ -38,7 +49,11 @@ struct GCInnerState {
   // GC will regularly checks this and execute command
   // then wake other
   command: Mutex<GCCommandStruct>,
-  cmd_executed_event: Condvar
+  cmd_executed_event: Condvar,
+  
+  // Remark queue for unmarked object
+  // encountered by the load barrier
+  remark_queue_sender: mpsc::Sender<ObjectPtrSend>
 }
 
 pub struct GCState {
@@ -52,6 +67,13 @@ pub struct GCLockCookie<'a> {
 
 pub struct GCExclusiveLockCookie<'a> {
   _cookie: RwLockWriteGuard<'a, ()>
+}
+
+// An structure only for containing stuffs neede to run GC
+// at the GC thread (mostly containing receiver side of queues
+// which can't be put into monolithic GCInnerState structure)
+struct GCThreadPrivate {
+  remark_queue_receiver: mpsc::Receiver<ObjectPtrSend>
 }
 
 impl Drop for GCState {
@@ -117,10 +139,10 @@ impl GCState {
     drop(self.wait_for_gc(Some(cmd_control.submit_count), Some(cmd_control)));
   }
   
-  fn process_command(gc_state: &Arc<GCInnerState>, heap: &Heap, cmd_struct: GCCommandStruct) {
+  fn process_command(gc_state: &Arc<GCInnerState>, heap: &Heap, cmd_struct: GCCommandStruct, private: &GCThreadPrivate) {
     match cmd_struct.command.unwrap() {
       GCCommand::RunGC => {
-        heap.gc_state.run_gc_internal(&heap);
+        heap.gc_state.run_gc_internal(&heap, private);
       }
     }
     
@@ -139,7 +161,7 @@ impl GCState {
     }
   }
   
-  fn gc_poll(inner: &Arc<GCInnerState>, heap: &Heap) {
+  fn gc_poll(inner: &Arc<GCInnerState>, heap: &Heap, private: &GCThreadPrivate) {
     let mut cmd_control = inner.command.lock();
     
     // If there no command to be executed
@@ -157,7 +179,7 @@ impl GCState {
     drop(cmd_control);
     
     if let Some(_) = cmd {
-      Self::process_command(&inner, &heap, cmd_struct);
+      Self::process_command(&inner, &heap, cmd_struct, private);
     }
   }
   
@@ -165,11 +187,26 @@ impl GCState {
     self.set_gc_run_state(GCRunState::Running);
   }
   
+  pub fn load_barrier(&self, object: &Object, obj_manager: &ObjectManager) -> bool {
+    if !object.set_mark_bit(obj_manager) {
+      return false;
+    }
+    
+    // 'unwrap' should not cause panic because the receiver end will
+    // only be destroyed if Heap is no longer exist anywhere and there
+    // can't be a way this be called as load barrier only can be triggered
+    // by Heap existing on mutator code
+    self.inner_state.remark_queue_sender.send(object.into()).unwrap();
+    return true;
+  }
+  
   pub fn new(params: GCParams, owner: Weak<Heap>) -> GCState {
+    let (remark_queue_sender, remark_queue_receiver) = mpsc::channel();
     let inner_state = Arc::new(GCInnerState {
       gc_lock: RwLock::new(()),
       owner,
       params,
+      remark_queue_sender,
       
       run_state: Mutex::new(GCRunState::Paused),
       run_state_changed_event: Condvar::new(),
@@ -182,6 +219,9 @@ impl GCState {
       cmd_executed_event: Condvar::new()
     });
     
+    let private_data = GCThreadPrivate {
+      remark_queue_receiver
+    };
     return GCState {
       inner_state: inner_state.clone(),
       thread: Some(thread::spawn(move || {
@@ -212,7 +252,7 @@ impl GCState {
             Some(x) => x,
             None => break
           };
-          Self::gc_poll(&inner, &heap);
+          Self::gc_poll(&inner, &heap, &private_data);
           thread::sleep(Duration::from_millis(sleep_delay_milisec));
         }
         
@@ -237,7 +277,7 @@ impl GCState {
     self.call_gc(GCCommand::RunGC);
   }
   
-  fn run_gc_internal(&self, heap: &Heap) {
+  fn run_gc_internal(&self, heap: &Heap, private: &GCThreadPrivate) {
     // Step 1 (STW): Take root snapshot and take objects in heap snapshot
     let block_mutator_cookie = self.block_mutators();
     
@@ -260,6 +300,27 @@ impl GCState {
       // Mark it
       obj.set_mark_bit(&heap.object_manager);
     }
+    
+    // Step 2.1 (STW): Final remark (to catchup with potentially missed objects)
+    // TODO: Move this into independent thread executing along with normal mark
+    // so to keep this final remark time to be as low as just signaling that thread
+    // and wait that thread
+    let block_mutator_cookie = self.block_mutators();
+    for obj in private.remark_queue_receiver.try_iter() {
+      // SAFETY: Object is was loaded by mutator therefore
+      // it must be alive at this point so safe
+      let obj = unsafe { &*obj.0 };
+      
+      // Unmark it, so the code for marking can be shared
+      // for non final remark and normal mark, because both
+      // is exactly the same except that in here it started
+      // as marked, so unmark it to remark it later
+      obj.unset_mark_bit(&heap.object_manager);
+      
+      // Mark it
+      obj.set_mark_bit(&heap.object_manager);
+    }
+    drop(block_mutator_cookie);
     
     // Step 3 (Concurrent): Sweep dead objects and reset mark flags 
     // SAFETY: just marked live objects and dead objects

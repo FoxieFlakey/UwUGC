@@ -25,12 +25,15 @@ pub struct Object {
 }
 
 impl Object {
-  // Return old 'marked' value and set as 'marked'
+  pub fn unset_mark_bit(&self, owner: &ObjectManager) {
+    let marked_bit_value = owner.marked_bit_value.load(Ordering::Relaxed);
+    self.marked.store(!marked_bit_value, Ordering::Relaxed);
+  }
+  
+  // Return if object was unmark or marked
   pub fn set_mark_bit(&self, owner: &ObjectManager) -> bool {
-    return self.marked.swap(
-      owner.marked_bit_value.load(Ordering::Relaxed),
-      Ordering::Relaxed
-    );
+    let marked_bit_value = owner.marked_bit_value.load(Ordering::Relaxed);
+    return self.marked.swap(marked_bit_value, Ordering::Relaxed) == marked_bit_value;
   }
   
   fn is_marked(&self, owner: &ObjectManager) -> bool {
