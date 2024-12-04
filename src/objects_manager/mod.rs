@@ -38,7 +38,7 @@ impl Object {
     return mark_bit == owner.marked_bit_value.load(Ordering::Relaxed);
   }
   
-  fn compute_new_flags(owner: &ObjectManager) -> bool {
+  fn compute_new_object_mark_bit(owner: &ObjectManager) -> bool {
     return owner.new_object_mark_value.load(Ordering::Relaxed);
   }
 }

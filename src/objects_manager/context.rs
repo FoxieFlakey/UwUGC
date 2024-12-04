@@ -77,7 +77,7 @@ impl<'a> ContextHandle<'a> {
     // Leak it and we'll handle it here
     let obj = Box::leak(Box::new(Object {
       data: Box::new(func()),
-      marked: AtomicBool::new(Object::compute_new_flags(self.owner)),
+      marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
       next: AtomicPtr::new(ptr::null_mut()),
       descriptor: T::get_descriptor(),
       total_size
