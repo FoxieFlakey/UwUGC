@@ -7,6 +7,7 @@ use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
 
 pub use context::ContextHandle;
 pub use context::RootRefMut;
+pub use context::RootRef;
 
 mod context;
 
