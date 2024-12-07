@@ -2,7 +2,7 @@ use std::{any::Any, marker::PhantomData, sync::atomic::Ordering};
 
 use portable_atomic::AtomicPtr;
 
-use crate::{heap::{ContextHandle, RootRef}, objects_manager::Object};
+use crate::{heap::{ContextHandle, RootRefMut}, objects_manager::Object};
 
 // An in object GCRef basically AtomicPtr in disguise
 // and it is nonnullable
@@ -13,14 +13,14 @@ pub struct GCRef<T: Any + Send + Sync + 'static> {
 }
 
 impl<T: Any + Send + Sync + 'static> GCRef<T> {
-  pub fn new<'a>(content: &mut RootRef<T>) -> GCRef<T> {
+  pub fn new<'a>(content: &mut RootRefMut<T>) -> GCRef<T> {
     return Self {
       ptr: AtomicPtr::new(content.get_object_borrow() as *const Object as *mut Object),
       phantom: PhantomData {}
     }
   }
   
-  pub fn load<'a>(&self, ctx: &'a ContextHandle) -> RootRef<'a, T> {
+  pub fn load<'a>(&self, ctx: &'a ContextHandle) -> RootRefMut<'a, T> {
     let gc_state = &ctx.get_heap().gc_state;
     let blocked_gc_cookie = gc_state.block_gc();
     // SAFETY: Just blocked the GC from running and also
@@ -35,7 +35,7 @@ impl<T: Any + Send + Sync + 'static> GCRef<T> {
     return root_ref;
   }
   
-  pub fn store<'a>(&mut self, _ctx: &'a ContextHandle, content: &mut RootRef<T>) {
+  pub fn store<'a>(&mut self, _ctx: &'a ContextHandle, content: &mut RootRefMut<T>) {
     self.ptr.store(content.get_object_borrow() as *const Object as *mut Object, Ordering::Relaxed);
   }
 }
