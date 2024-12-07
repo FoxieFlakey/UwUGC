@@ -4,7 +4,7 @@ use std::{any::Any, marker::PhantomData, ptr, sync::atomic::Ordering};
 
 use portable_atomic::AtomicPtr;
 
-use crate::{heap::{ContextHandle, RootRefMut}, objects_manager::Object};
+use crate::{heap::{ContextHandle, RootRef, RootRefMut}, objects_manager::Object};
 
 // Nonnullable mutable reference to an object
 // basically acts like &mut T
@@ -20,9 +20,14 @@ impl<T: Any + Send + Sync + 'static> GCRef<T> {
     }
   }
   
-  pub fn load<'a>(&self, ctx: &'a ContextHandle) -> RootRefMut<'a, T> {
+  pub fn load<'a, 'b: 'a>(&'b mut self, ctx: &'a ContextHandle) -> RootRefMut<'a, T> {
     // SAFETY: This type enforces nonnull content
-    return unsafe { self.inner.load(ctx).unwrap_unchecked() };
+    return unsafe { self.inner.load_mut(ctx).unwrap_unchecked() };
+  }
+  
+  pub fn load_immut<'a, 'b: 'a>(&'b self, ctx: &'a ContextHandle) -> RootRef<'a, T> {
+    // SAFETY: This type enforces nonnull content
+    return unsafe { self.inner.load_immut(ctx).unwrap_unchecked() };
   }
   
   pub fn store<'a>(&mut self, ctx: &'a ContextHandle, content: &mut RootRefMut<T>) {
@@ -56,7 +61,28 @@ impl<T: Any + Send + Sync + 'static> GCNullableMutRef<T> {
     return Self::new_impl(Self::turn_optional_root_ref_mut_to_nullable_object_pointer(&content));
   }
   
-  pub fn load<'a>(&self, ctx: &'a ContextHandle) -> Option<RootRefMut<'a, T>> {
+  pub fn load_mut<'a, 'b: 'a>(&'b mut self, ctx: &'a ContextHandle) -> Option<RootRefMut<'a, T>> {
+    // SAFETY: Because it is return mutable reference and already ensure
+    // &mut on self then it is safe
+    return unsafe { self.load_common(ctx) };
+  }
+  
+  pub fn load_immut<'a, 'b: 'a>(&'b self, ctx: &'a ContextHandle) -> Option<RootRef<'a, T>> {
+    // SAFETY: Safe because downgrading as needed to immutable prevent
+    // mutable access from escaping
+    return unsafe { self.load_common(ctx).map(|x| x.downgrade()) };
+  }
+  
+  // SAFETY: caller will properly downgrade/leave as it is correctly
+  // to ensure creation mutable pointers requires &mut reference to this
+  // which thus requires RootRefMut thus requires one thread own it and
+  // a truly exclusive reference
+  //
+  // The 'b: 'a can be translated to RootRefMut must live shorter than
+  // than the owning reference and this where the Rust can assist to make
+  // sure there are no mutable reference to data pointed by this GCRef can't
+  // escape when the underlying RootRefMut of the container type downgraded
+  unsafe fn load_common<'a, 'b: 'a>(&'b self, ctx: &'a ContextHandle) -> Option<RootRefMut<'a, T>> {
     let gc_state = &ctx.get_heap().gc_state;
     let blocked_gc_cookie = gc_state.block_gc();
     let ptr = self.ptr.load(Ordering::Relaxed);

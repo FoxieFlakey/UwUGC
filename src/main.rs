@@ -178,6 +178,10 @@ fn main() {
     println!("Container: {container_data}");
     container_temp.borrow_inner_mut().msg_mut_ref.store(&ctx, &mut msg);
     
+    let mut message_ref = container_temp.borrow_inner_mut().msg_mut_ref.load(&ctx);
+    message_ref.borrow_inner_mut().uwu = 872;
+    drop(message_ref);
+    
     container_ref = container_temp.downgrade();
     drop(msg);
   }
@@ -196,7 +200,7 @@ fn main() {
     let container_data = container.data;
     println!("Container: {container_data}");
     
-    let msg_ref = container.msg_mut_ref.load(&ctx);
+    let msg_ref = container.msg_mut_ref.load_immut(&ctx);
     let msg  = msg_ref.borrow_inner();
     let msg_data = msg.uwu;
     println!("Msg: {msg_data}");
