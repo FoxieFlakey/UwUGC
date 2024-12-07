@@ -2,7 +2,7 @@
 #![feature(sync_unsafe_cell)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::{ffi::{c_int, c_long}, hint::black_box, io::{self, Write}, mem::offset_of, sync::{atomic::Ordering, Arc, LazyLock}, thread::{self, JoinHandle}, time::{Duration, Instant}};
+use std::{ffi::{c_int, c_long}, hint::black_box, mem::offset_of, sync::{atomic::Ordering, Arc, LazyLock}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
 use descriptor::{Describeable, Descriptor, Field};
 use gc::GCParams;
@@ -43,6 +43,7 @@ fn start_stat_thread(heap: Arc<Heap>, stat_collector: Arc<DataCollector<HeapStat
 
 // Information of heap at a point
 #[derive(Clone)]
+#[allow(dead_code)]
 struct HeapStatRecord {
   max_size: usize,
   usage: usize,
