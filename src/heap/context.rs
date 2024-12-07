@@ -104,6 +104,14 @@ impl<T> !Sync for RootRef<'_, T> {}
 impl<T> !Send for RootRef<'_, T> {}
 
 impl<'a, T: Any + Send + Sync + 'static> RootRef<'a, T> {
+  pub fn get_object_borrow(&self) -> &Object {
+    // SAFETY: root_entry is managed by current thread
+    // so it can only be allocated and deallocated on
+    // same thread
+    let root_entry = unsafe { &*self.entry_ref };
+    return unsafe { &*root_entry.obj };
+  }
+  
   pub fn borrow_inner(&self) -> &T {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
@@ -166,6 +174,10 @@ impl<'a> ContextHandle<'a> {
       owner,
       obj_manager_ctx
     };
+  }
+  
+  pub fn get_heap(&self) -> &Heap {
+    return &self.owner;
   }
   
   // SAFETY: Caller must ensure that 'ptr' is valid Object pointer

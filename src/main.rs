@@ -2,13 +2,14 @@
 #![feature(sync_unsafe_cell)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::{ffi::{c_int, c_long}, hint::black_box, io::{self, Write}, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
+use std::{ffi::{c_int, c_long}, hint::black_box, io::{self, Write}, mem::offset_of, sync::{atomic::Ordering, Arc, LazyLock}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
-use descriptor::{Descriptor, Describeable};
+use descriptor::{Describeable, Descriptor, Field};
 use gc::GCParams;
 use heap::{Heap, HeapParams};
 use mimalloc::MiMalloc;
 use portable_atomic::AtomicBool;
+use refs::GCRef;
 use util::data_collector::DataCollector;
 
 mod objects_manager;
@@ -16,6 +17,7 @@ mod util;
 mod heap;
 mod gc;
 mod descriptor;
+mod refs;
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 512 * 1024 * 1024;
@@ -60,9 +62,13 @@ fn main() {
   // Reserve 512 MiB from mimalloc
   // mimalloc crate does not expose
   // necessary mi_reserve_os_memory function for this
+  #[allow(dead_code)]
   const MI_OPTION_SHOW_ERRORS: c_int = 0;
+  #[allow(dead_code)]
   const MI_OPTION_VERBOSE: c_int = 2;
+  #[allow(dead_code)]
   const MI_OPTION_ARENA_EAGER_COMMIT: c_int = 4;
+  #[allow(dead_code)]
   const MI_OPTION_PURGE_DELAY: c_int = 15;
   
   extern "C" {
@@ -117,6 +123,62 @@ fn main() {
   
   let ctx = heap.create_context();
   
+  struct RefContainer {
+    data: u16,
+    msg: GCRef<Message>
+  }
+  
+  struct Message {
+    uwu: u32
+  }
+  
+  let mut container_ref;
+  {
+    static REF_CONTAINER_DESCRIPTOR: LazyLock<Descriptor> = LazyLock::new(|| {
+      Descriptor {
+        fields: vec![
+          Field { offset: offset_of!(RefContainer, msg) }
+        ]
+      }
+    });
+    
+    unsafe impl Describeable for RefContainer {
+      fn get_descriptor() -> Option<&'static Descriptor> {
+        return Some(&REF_CONTAINER_DESCRIPTOR)
+      }
+    }
+    
+    static MESSAGE_DESCRIPTOR: Descriptor = Descriptor {
+      fields: Vec::new()
+    };
+    
+    unsafe impl Describeable for Message {
+      fn get_descriptor() -> Option<&'static Descriptor> {
+        return Some(&MESSAGE_DESCRIPTOR)
+      }
+    }
+    
+    let mut msg = ctx.alloc(|| Message {
+      uwu: 8086
+    });
+    
+    let mut a = msg.borrow_inner().uwu;
+    println!("Message: {a}");
+    msg.borrow_inner_mut().uwu = 12;
+    a = msg.borrow_inner().uwu;
+    println!("Message: {a}");
+    
+    container_ref = ctx.alloc(|| RefContainer {
+      data: 8462,
+      msg: GCRef::new(&mut msg)
+    });
+    
+    let container_data = container_ref.borrow_inner().data;
+    println!("Container: {container_data}");
+    container_ref.borrow_inner_mut().msg.store(&ctx, &mut msg);
+    drop(msg);
+  }
+  
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
   let temp = [198; 1024];
@@ -126,31 +188,17 @@ fn main() {
     black_box(res);
   });
   
-  // struct Message {
-  //   uwu: u8
-  // }
-  
-  // static MESSAGE_DESCRIPTOR: Descriptor = Descriptor {
-  //   fields: Vec::new()
-  // };
-  
-  // unsafe impl Describeable for Message {
-  //   fn get_descriptor() -> Option<&'static Descriptor> {
-  //     return Some(&MESSAGE_DESCRIPTOR)
-  //   }
-  // }
-  
-  // let mut msg = ctx.alloc(|| Message {
-  //   uwu: 0x8
-  // });
-  
-  // let mut a = msg.borrow_inner().uwu;
-  // println!("UwU: {a}");
-  // msg.borrow_inner_mut().uwu = 12;
-  // a = msg.borrow_inner().uwu;
-  // println!("UwU: {a}");
-  
-  // drop(msg);
+  {
+    let container = container_ref.borrow_inner();
+    let container_data = container.data;
+    println!("Container: {container_data}");
+    
+    let msg_ref = container.msg.load(&ctx);
+    let msg  = msg_ref.borrow_inner();
+    let msg_data = msg.uwu;
+    println!("Msg: {msg_data}");
+  }
+  drop(container_ref);
   drop(ctx);
   
   let complete_time = (start_time.elapsed().as_millis() as f32) / 1024.0;
