@@ -164,7 +164,7 @@ fn main() {
     });
     
     let mut a = msg.borrow_inner().uwu;
-    println!("Message: {a}");
+    println!("Message initial: {a}");
     msg.borrow_inner_mut().uwu = 12;
     a = msg.borrow_inner().uwu;
     println!("Message: {a}");
