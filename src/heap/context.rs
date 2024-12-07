@@ -94,6 +94,30 @@ pub struct ContextHandle<'a> {
 impl !Sync for ContextHandle<'_> {}
 impl !Send for ContextHandle<'_> {}
 
+// Downgraded mut to help Rust enforce strict single mutable
+// reference for cross thread boundry as RootRef will be only
+// way that this library allows transferring of object references.
+// and that reasons that there won't be concurrently modifications
+// short of safely through atomics (which basically the purpose
+// of it)
+// 
+// This one intentionally lacking methods to get mutable refs
+// as it might be already transferred to other thread. Best to
+// think this one as Rc or Arc
+pub struct RootRef<'a, T: Any + Send + Sync + 'static> {
+  mut_ref: RootRefMut<'a, T>
+}
+
+impl<'a, T: Any + Send + Sync + 'static> RootRef<'a, T> {
+  pub fn borrow_inner(&self) -> &T {
+    return self.mut_ref.borrow_inner();
+  }
+}
+
+// This is more like Box (but can't be transferred to other thread)
+// and immutability checks perform the same way if there &mut to it
+// then its safe as Rust can reason that its only reference in whole
+// threads and program
 pub struct RootRefMut<'a, T: Any + Send + Sync + 'static> {
   entry_ref: *mut RootEntry,
   phantom: PhantomData<&'a T>
@@ -129,6 +153,14 @@ impl<'a, T: Any + Send + Sync + 'static> RootRefMut<'a, T> {
     // same thread
     let root_entry = unsafe { &*self.entry_ref };
     return unsafe { (*root_entry.obj).borrow_inner_mut().unwrap() };
+  }
+  
+  // Downgrades mutable reference to immutable
+  // reference, it is one way process
+  pub fn downgrade(self) -> RootRef<'a, T> {
+    return RootRef {
+      mut_ref: self
+    }
   }
 }
 

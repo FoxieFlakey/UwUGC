@@ -133,7 +133,7 @@ fn main() {
     uwu: u32
   }
   
-  let mut container_ref;
+  let container_ref;
   {
     static REF_CONTAINER_DESCRIPTOR: LazyLock<Descriptor> = LazyLock::new(|| {
       Descriptor {
@@ -169,14 +169,16 @@ fn main() {
     a = msg.borrow_inner().uwu;
     println!("Message: {a}");
     
-    container_ref = ctx.alloc(|| RefContainer {
+    let mut container_temp = ctx.alloc(|| RefContainer {
       data: 8462,
       msg: GCRef::new(&mut msg)
     });
     
-    let container_data = container_ref.borrow_inner().data;
+    let container_data = container_temp.borrow_inner().data;
     println!("Container: {container_data}");
-    container_ref.borrow_inner_mut().msg.store(&ctx, &mut msg);
+    container_temp.borrow_inner_mut().msg.store(&ctx, &mut msg);
+    
+    container_ref = container_temp.downgrade();
     drop(msg);
   }
   
