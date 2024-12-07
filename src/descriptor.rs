@@ -1,9 +1,31 @@
+use portable_atomic::AtomicPtr;
+
+use crate::objects_manager::Object;
+
 pub struct Field {
   pub offset: usize
 }
 
 pub struct Descriptor {
   pub fields: Vec<Field>
+}
+
+impl Descriptor {
+  // SAFETY: Caller must properly match the descriptor,
+  // to applicate descriptor for data pointed by raw pointer
+  pub unsafe fn trace(&self, data: *const (), mut tracer: impl FnMut(&AtomicPtr<Object>)) {
+    for field in &self.fields {
+      let field_ptr = (data as usize + field.offset) as *const AtomicPtr<Object>;
+      // SAFETY: The code which constructs this descriptor must give correct offsets
+      //
+      // in this program/library, it is ensured to be safe because the underlying type
+      // must also implements Describeable which is unsafe trait because of that and
+      // safety of this is responsibility of the implementor, and its impossible to pass
+      // any constructed descriptor from safe code to create arbitrary potentially unsafe
+      // descriptors for object allocations
+      tracer(unsafe { &*field_ptr });
+    }
+  }
 }
 
 // The result will be shared by heaps

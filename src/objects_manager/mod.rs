@@ -25,6 +25,26 @@ pub struct Object {
 }
 
 impl Object {
+  fn get_raw_ptr_to_data(&self) -> *const () {
+    // LOOKING at downcast_ref_unchecked method in dyn Any
+    // it looked like &dyn Any can be casted to pointer to
+    // T directly therefore can be casted to get untyped
+    // pointer to underlying data T
+    //
+    // TODO: Is this correct?
+    return self.data.as_ref() as *const (dyn Any + Send + Sync + 'static) as *const ();
+  }
+  
+  pub fn trace(&self, tracer: impl FnMut(&portable_atomic::AtomicPtr<Object>)) {
+    if self.descriptor.is_some() {
+      // SAFETY: The safety that descriptor is the one needed is enforced by
+      // type system and unsafe contract of the getting descriptor for a type
+      unsafe {
+        self.descriptor.unwrap().trace(self.get_raw_ptr_to_data(), tracer);
+      }
+    }
+  }
+  
   pub fn unset_mark_bit(&self, owner: &ObjectManager) {
     let marked_bit_value = owner.marked_bit_value.load(Ordering::Relaxed);
     self.marked.store(!marked_bit_value, Ordering::Relaxed);

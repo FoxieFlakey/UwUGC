@@ -1,4 +1,4 @@
-use std::{sync::{mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use std::{sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 
 use crate::{heap::Heap, objects_manager::{Object, ObjectManager}};
@@ -277,6 +277,22 @@ impl GCState {
     self.call_gc(GCCommand::RunGC);
   }
   
+  fn do_mark(&self, heap: &Heap, obj: &Object) {
+    let mut queue = Vec::new();
+    queue.push(obj as *const Object);
+    
+    while let Some(obj) = queue.pop() {
+      // SAFETY: It is reachable by GC and GC controls
+      // the lifetime of it, so if it reachs here, then
+      // its guaranteed to be alive
+      let obj = unsafe { &*obj };
+      obj.set_mark_bit(&heap.object_manager);
+      obj.trace(|reference| {
+        queue.push(reference.load(Ordering::Relaxed));
+      });
+    }
+  }
+  
   fn run_gc_internal(&self, heap: &Heap, private: &GCThreadPrivate) {
     // Step 1 (STW): Take root snapshot and take objects in heap snapshot
     let block_mutator_cookie = self.block_mutators();
@@ -298,7 +314,7 @@ impl GCState {
       let obj = unsafe { &*obj };
       
       // Mark it
-      obj.set_mark_bit(&heap.object_manager);
+      self.do_mark(heap, obj);
     }
     
     // Step 2.1 (STW): Final remark (to catchup with potentially missed objects)
@@ -318,7 +334,7 @@ impl GCState {
       obj.unset_mark_bit(&heap.object_manager);
       
       // Mark it
-      obj.set_mark_bit(&heap.object_manager);
+      self.do_mark(heap, obj);
     }
     drop(block_mutator_cookie);
     
