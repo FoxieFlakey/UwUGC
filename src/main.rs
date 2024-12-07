@@ -121,7 +121,7 @@ fn main() {
     }
   };
   
-  let ctx = heap.create_context();
+  let mut ctx = heap.create_context();
   
   struct RefContainer {
     data: u16,

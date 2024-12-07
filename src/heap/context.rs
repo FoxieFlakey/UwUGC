@@ -185,7 +185,7 @@ impl<'a> ContextHandle<'a> {
   
   // SAFETY: Caller must ensure that 'ptr' is valid Object pointer
   // and properly blocks GC from running
-  pub(crate) unsafe fn new_root_ref_from_ptr<T: Any + Sync + Send + 'static>(&self, ptr: *mut Object) -> RootRefMut<T> {
+  pub(crate) unsafe fn new_root_ref_from_ptr<T: Any + Sync + Send + 'static>(&self, ptr: *mut Object) -> RootRefMut<'a, T> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
       obj: ptr,
@@ -206,7 +206,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Describeable + Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRefMut<T> {
+  pub fn alloc<T: Describeable + Any + Sync + Send + 'static>(&mut self, initer: impl FnOnce() -> T) -> RootRefMut<'a, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut inited = Some(initer);
