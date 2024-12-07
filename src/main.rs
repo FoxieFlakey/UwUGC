@@ -104,13 +104,13 @@ fn main() {
   });
   let stat_collector = Arc::new(DataCollector::new(4096));
   
-  stat_collector.add_consumer_fn(|data: &HeapStatRecord| {
-    let HeapStatRecord { max_size, usage, trigger_size } = data.clone();
-    let usage = (usage as f32) / 1024.0 / 1024.0;
-    let max_size = (max_size as f32) / 1024.0 / 1024.0;
-    let trigger_size = (trigger_size as f32) / 1024.0 / 1024.0;
-    print!("Usage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  Trigger: {trigger_size: >8.2} MiB\r");
-    io::stdout().flush().unwrap();
+  stat_collector.add_consumer_fn(|_data: &HeapStatRecord| {
+    // let HeapStatRecord { max_size, usage, trigger_size } = data.clone();
+    // let usage = (usage as f32) / 1024.0 / 1024.0;
+    // let max_size = (max_size as f32) / 1024.0 / 1024.0;
+    // let trigger_size = (trigger_size as f32) / 1024.0 / 1024.0;
+    // print!("Usage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  Trigger: {trigger_size: >8.2} MiB\r");
+    // io::stdout().flush().unwrap();
   });
   
   let stat_thread = {
