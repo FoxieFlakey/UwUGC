@@ -1,7 +1,7 @@
 use std::{cell::SyncUnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
-use crate::{descriptor::Describeable, objects_manager::{ContextHandle as ObjectManagerContextHandle, ObjectLikeTrait, Object}};
+use crate::{descriptor::Describeable, objects_manager::{ContextHandle as ObjectManagerContextHandle, ObjectLikeTrait, Object}, root_refs::RootRefExclusive};
 
 pub struct ContextInner {
   head: Pin<Box<RootEntry>>
@@ -104,7 +104,7 @@ impl<T> !Sync for RootRefRaw<'_, T> {}
 impl<T> !Send for RootRefRaw<'_, T> {}
 
 impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
-  pub fn borrow_inner(&self) -> &T {
+  pub unsafe fn borrow_inner(&self) -> &T {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
     // same thread
@@ -112,7 +112,7 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     return unsafe { (*root_entry.obj).borrow_inner().unwrap() };
   }
   
-  pub fn borrow_inner_mut(&mut self) -> &mut T {
+  pub unsafe fn borrow_inner_mut(&mut self) -> &mut T {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
     // same thread
@@ -191,7 +191,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Describeable + ObjectLikeTrait>(&self, initer: impl FnOnce() -> T) -> RootRefRaw<T> {
+  pub fn alloc<T: Describeable + ObjectLikeTrait>(&self, initer: impl FnOnce() -> T) -> RootRefExclusive<T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut inited = Some(initer);
@@ -216,7 +216,8 @@ impl<'a> ContextHandle<'a> {
     // can't disappear and protected from seeing half modified root set
     let root_ref = unsafe { self.new_root_ref_from_ptr(obj.unwrap()) };
     drop(gc_lock_cookie);
-    return root_ref;
+    // SAFETY: The object reference is exclusively owned by this thread
+    return unsafe { RootRefExclusive::new(root_ref) };
   }
 }
 

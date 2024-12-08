@@ -17,6 +17,7 @@ mod util;
 mod heap;
 mod gc;
 mod descriptor;
+mod root_refs;
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 512 * 1024 * 1024;
@@ -123,7 +124,7 @@ fn main() {
   let temp = [198; 1024];
   black_box(for _ in 1..200_000 {
     let mut res = ctx.alloc(|| temp);
-    black_box(do_test(res.borrow_inner_mut()));
+    black_box(do_test(&mut res));
     black_box(res);
   });
   
