@@ -172,6 +172,10 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
+  pub fn get_heap(&self) -> &Heap {
+    return &self.owner;
+  }
+  
   // SAFETY: Caller must ensure that 'ptr' is valid Object pointer
   // and properly blocks GC from running
   pub(crate) unsafe fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object) -> RootRefRaw<T> {
