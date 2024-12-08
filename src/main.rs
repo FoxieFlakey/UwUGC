@@ -1,5 +1,6 @@
 #![feature(negative_impls)]
 #![feature(sync_unsafe_cell)]
+#![feature(trait_alias)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use std::{ffi::{c_int, c_long}, hint::black_box, io::{self, Write}, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};

@@ -1,7 +1,7 @@
-use std::{any::Any, cell::SyncUnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
+use std::{cell::SyncUnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
-use crate::{descriptor::Describeable, objects_manager::{ContextHandle as ObjectManagerContextHandle, Object}};
+use crate::{descriptor::Describeable, objects_manager::{ContextHandle as ObjectManagerContextHandle, ObjectLikeTrait, Object}};
 
 pub struct ContextInner {
   head: Pin<Box<RootEntry>>
@@ -94,7 +94,7 @@ pub struct ContextHandle<'a> {
 impl !Sync for ContextHandle<'_> {}
 impl !Send for ContextHandle<'_> {}
 
-pub struct RootRefRaw<'a, T: Any + Send + Sync + 'static> {
+pub struct RootRefRaw<'a, T: ObjectLikeTrait> {
   entry_ref: *mut RootEntry,
   phantom: PhantomData<&'a T>
 }
@@ -103,7 +103,7 @@ pub struct RootRefRaw<'a, T: Any + Send + Sync + 'static> {
 impl<T> !Sync for RootRefRaw<'_, T> {}
 impl<T> !Send for RootRefRaw<'_, T> {}
 
-impl<'a, T: Any + Send + Sync + 'static> RootRefRaw<'a, T> {
+impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
   pub fn borrow_inner(&self) -> &T {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
@@ -121,7 +121,7 @@ impl<'a, T: Any + Send + Sync + 'static> RootRefRaw<'a, T> {
   }
 }
 
-impl<T: Any + Send + Sync + 'static> Drop for RootRefRaw<'_, T> {
+impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
   fn drop(&mut self) {
     // Corresponding RootEntry and RootRef are free'd together
     // therefore its safe after removing reference from root set
@@ -170,7 +170,7 @@ impl<'a> ContextHandle<'a> {
   
   // SAFETY: Caller must ensure that 'ptr' is valid Object pointer
   // and properly blocks GC from running
-  pub(crate) unsafe fn new_root_ref_from_ptr<T: Any + Sync + Send + 'static>(&self, ptr: *mut Object) -> RootRefRaw<T> {
+  pub(crate) unsafe fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object) -> RootRefRaw<T> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
       obj: ptr,
@@ -191,7 +191,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Describeable + Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRefRaw<T> {
+  pub fn alloc<T: Describeable + ObjectLikeTrait>(&self, initer: impl FnOnce() -> T) -> RootRefRaw<T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut inited = Some(initer);

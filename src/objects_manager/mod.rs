@@ -9,6 +9,10 @@ use crate::descriptor::Descriptor;
 
 mod context;
 
+// What the data type need to implement before it is
+// adequate for GC system to use
+pub trait ObjectLikeTrait = Any + Send + Sync + 'static;
+
 #[derive(Debug)]
 pub struct AllocError;
 
@@ -21,7 +25,7 @@ pub struct Object {
   descriptor: Option<&'static Descriptor>,
   
   // Data can only contain owned structs
-  data: Box<dyn Any + Send + Sync + 'static>
+  data: Box<dyn ObjectLikeTrait>
 }
 
 impl Object {
@@ -32,7 +36,7 @@ impl Object {
     // pointer to underlying data T
     //
     // TODO: Is this correct?
-    return self.data.as_ref() as *const (dyn Any + Send + Sync + 'static) as *const ();
+    return self.data.as_ref() as *const dyn ObjectLikeTrait as *const ();
   }
   
   pub fn trace(&self, tracer: impl FnMut(&portable_atomic::AtomicPtr<Object>)) {
@@ -89,11 +93,11 @@ pub struct Sweeper<'a> {
 }
 
 impl Object {
-  pub fn borrow_inner<T: Any>(&self) -> Option<&T> {
+  pub fn borrow_inner<T: ObjectLikeTrait>(&self) -> Option<&T> {
     return self.data.downcast_ref::<T>();
   }
   
-  pub fn borrow_inner_mut<T: Any>(&mut self) -> Option<&mut T> {
+  pub fn borrow_inner_mut<T: ObjectLikeTrait>(&mut self) -> Option<&mut T> {
     return self.data.downcast_mut::<T>();
   }
 }

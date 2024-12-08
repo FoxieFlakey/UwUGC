@@ -1,8 +1,8 @@
-use std::{any::Any, ptr, sync::{atomic::{AtomicPtr, Ordering}, Arc}, thread};
+use std::{ptr, sync::{atomic::{AtomicPtr, Ordering}, Arc}, thread};
 
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::Describeable, objects_manager::Object, util::double_atomic_ptr::AtomicDoublePtr};
+use crate::{descriptor::Describeable, objects_manager::{ObjectLikeTrait, Object}, util::double_atomic_ptr::AtomicDoublePtr};
 
 use super::{AllocError, ObjectManager};
 
@@ -58,7 +58,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn try_alloc<T: Describeable + Any + Sync + Send + 'static>(&self, func: &mut dyn FnMut() -> T) -> Result<*mut Object, AllocError> {
+  pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
     let total_size = size_of::<Object>() + size_of::<T>();
     let mut current_usage = manager.used_size.load(Ordering::Relaxed);
