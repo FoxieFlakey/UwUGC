@@ -11,9 +11,7 @@ pub struct RootRefExclusive<'a, T: ObjectLikeTrait> {
 }
 
 impl<'a, T: ObjectLikeTrait> RootRefExclusive<'a, T> {
-  // SAFETY: The caller has to ensure that the given root
-  // reference is safe to use exclusively and ensure there
-  // no other exclusive reference to it exists
+  // SAFETY: The caller must ensure that the reference is exclusive
   //
   // Acts like Rust's Box<T>
   pub(crate) unsafe fn new(inner: RootRefRaw<'a, T>) -> Self {
