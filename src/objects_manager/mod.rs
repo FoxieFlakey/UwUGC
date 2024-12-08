@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use std::{any::Any, collections::HashMap, ops::{Deref, DerefMut}, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
 use context::LocalObjectsChain;
@@ -11,10 +11,48 @@ mod context;
 
 // What the data type need to implement before it is
 // adequate for GC system to use
-pub trait ObjectLikeTrait = Any + Send + Sync + 'static;
+pub trait ObjectLikeTrait = Any + 'static;
 
 #[derive(Debug)]
 pub struct AllocError;
+
+// Another struct layer of indirection
+// to force implement Send + Sync as its
+// not required to Send + Sync and GC
+// only needs to safe sync access to the
+// reference fields
+pub struct ObjectDataContainer {
+  data: Box<dyn ObjectLikeTrait>
+}
+
+// SAFETY: The Send + Sync is forced because
+// the GC designed for multiple threads usage
+// and the Send + Sync for the data contained
+// by it is enforced at higher level not here
+unsafe impl Send for ObjectDataContainer {}
+unsafe impl Sync for ObjectDataContainer {}
+
+impl ObjectDataContainer {
+  pub fn new(data: Box<dyn ObjectLikeTrait>) -> Self {
+    return Self {
+      data
+    };
+  }
+}
+
+impl Deref for ObjectDataContainer {
+  type Target = Box<dyn ObjectLikeTrait>;
+  
+  fn deref(&self) -> &Self::Target {
+    return &self.data;
+  }
+}
+
+impl DerefMut for ObjectDataContainer {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    return &mut self.data;
+  }
+}
 
 pub struct Object {
   next: AtomicPtr<Object>,
@@ -25,7 +63,7 @@ pub struct Object {
   descriptor: Option<&'static Descriptor>,
   
   // Data can only contain owned structs
-  data: Box<dyn ObjectLikeTrait>
+  data: ObjectDataContainer
 }
 
 impl Object {

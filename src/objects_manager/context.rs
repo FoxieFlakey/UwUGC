@@ -4,7 +4,7 @@ use portable_atomic::AtomicBool;
 
 use crate::{descriptor::Describeable, objects_manager::{ObjectLikeTrait, Object}, util::double_atomic_ptr::AtomicDoublePtr};
 
-use super::{AllocError, ObjectManager};
+use super::{AllocError, ObjectDataContainer, ObjectManager};
 
 pub struct LocalObjectsChain {
   // Maintains start and end of chain
@@ -76,7 +76,7 @@ impl<'a> ContextHandle<'a> {
     
     // Leak it and we'll handle it here
     let obj = Box::leak(Box::new(Object {
-      data: Box::new(func()),
+      data: ObjectDataContainer::new(Box::new(func())),
       marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
       next: AtomicPtr::new(ptr::null_mut()),
       descriptor: T::get_descriptor(),
