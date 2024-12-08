@@ -6,6 +6,8 @@ use std::ops::{Deref, DerefMut};
 use crate::objects_manager::ObjectLikeTrait;
 use crate::heap::RootRefRaw;
 
+// This is like &mut but the reference is locked on
+// current thread (due !Sync + !Send from RootRefRaw)
 pub struct RootRefExclusive<'a, T: ObjectLikeTrait> {
   inner: RootRefRaw<'a, T>
 }
@@ -43,6 +45,8 @@ impl<'a, T: ObjectLikeTrait> DerefMut for RootRefExclusive<'a, T> {
   }
 }
 
+// This is like & but the reference is locked on
+// current thread (due !Sync + !Send from RootRefRaw)
 pub struct RootRefShared<'a, T: ObjectLikeTrait> {
   inner: RootRefRaw<'a, T>
 }
