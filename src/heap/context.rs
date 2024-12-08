@@ -104,6 +104,8 @@ impl<T> !Sync for RootRefRaw<'_, T> {}
 impl<T> !Send for RootRefRaw<'_, T> {}
 
 impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
+  // SAFETY: The root reference may not be safe in face of
+  // data race, it is up to caller to ensure its safe
   pub unsafe fn borrow_inner(&self) -> &T {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
@@ -112,6 +114,8 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     return unsafe { (*root_entry.obj).borrow_inner().unwrap() };
   }
   
+  // SAFETY: The root reference may not be safe in face of
+  // data race, it is up to caller to ensure its safe
   pub unsafe fn borrow_inner_mut(&mut self) -> &mut T {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
