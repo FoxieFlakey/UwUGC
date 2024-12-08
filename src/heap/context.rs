@@ -94,16 +94,16 @@ pub struct ContextHandle<'a> {
 impl !Sync for ContextHandle<'_> {}
 impl !Send for ContextHandle<'_> {}
 
-pub struct RootRef<'a, T: Any + Send + Sync + 'static> {
+pub struct RootRefRaw<'a, T: Any + Send + Sync + 'static> {
   entry_ref: *mut RootEntry,
   phantom: PhantomData<&'a T>
 }
 
 // RootRef will only stays at current thread
-impl<T> !Sync for RootRef<'_, T> {}
-impl<T> !Send for RootRef<'_, T> {}
+impl<T> !Sync for RootRefRaw<'_, T> {}
+impl<T> !Send for RootRefRaw<'_, T> {}
 
-impl<'a, T: Any + Send + Sync + 'static> RootRef<'a, T> {
+impl<'a, T: Any + Send + Sync + 'static> RootRefRaw<'a, T> {
   pub fn borrow_inner(&self) -> &T {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
@@ -121,7 +121,7 @@ impl<'a, T: Any + Send + Sync + 'static> RootRef<'a, T> {
   }
 }
 
-impl<T: Any + Send + Sync + 'static> Drop for RootRef<'_, T> {
+impl<T: Any + Send + Sync + 'static> Drop for RootRefRaw<'_, T> {
   fn drop(&mut self) {
     // Corresponding RootEntry and RootRef are free'd together
     // therefore its safe after removing reference from root set
@@ -170,7 +170,7 @@ impl<'a> ContextHandle<'a> {
   
   // SAFETY: Caller must ensure that 'ptr' is valid Object pointer
   // and properly blocks GC from running
-  pub(crate) unsafe fn new_root_ref_from_ptr<T: Any + Sync + Send + 'static>(&self, ptr: *mut Object) -> RootRef<T> {
+  pub(crate) unsafe fn new_root_ref_from_ptr<T: Any + Sync + Send + 'static>(&self, ptr: *mut Object) -> RootRefRaw<T> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
       obj: ptr,
@@ -185,13 +185,13 @@ impl<'a> ContextHandle<'a> {
     // Allow GC to run again and Release fence to allow newly added value to be
     // visible to the GC
     atomic::fence(atomic::Ordering::Release);
-    return RootRef {
+    return RootRefRaw {
       entry_ref: entry,
       phantom: PhantomData {}
     };
   }
   
-  pub fn alloc<T: Describeable + Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRef<T> {
+  pub fn alloc<T: Describeable + Any + Sync + Send + 'static>(&self, initer: impl FnOnce() -> T) -> RootRefRaw<T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut inited = Some(initer);

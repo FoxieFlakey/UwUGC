@@ -6,7 +6,7 @@ use context::Context;
 use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
 
 pub use context::ContextHandle;
-pub use context::RootRef;
+pub use context::RootRefRaw;
 
 mod context;
 
