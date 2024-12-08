@@ -9,6 +9,7 @@ use gc::GCParams;
 use heap::{Heap, HeapParams};
 use mimalloc::MiMalloc;
 use portable_atomic::AtomicBool;
+use root_refs::RootRefExclusive;
 use util::data_collector::DataCollector;
 
 mod objects_manager;
@@ -129,7 +130,7 @@ fn main() {
   black_box(for _ in 1..200_000 {
     let mut res = ctx.alloc(|| temp);
     black_box(do_test(&mut res));
-    black_box(res);
+    black_box(RootRefExclusive::downgrade(res));
   });
   
   // struct Message {
