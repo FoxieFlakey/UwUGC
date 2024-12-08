@@ -3,9 +3,8 @@
 #![feature(trait_alias)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::{ffi::{c_int, c_long}, hint::black_box, io::{self, Write}, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
+use std::{ffi::{c_int, c_long}, hint::black_box, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
-use descriptor::{Descriptor, Describeable};
 use gc::GCParams;
 use heap::{Heap, HeapParams};
 use mimalloc::MiMalloc;
@@ -43,6 +42,7 @@ fn start_stat_thread(heap: Arc<Heap>, stat_collector: Arc<DataCollector<HeapStat
 
 // Information of heap at a point
 #[derive(Clone)]
+#[allow(dead_code)]
 struct HeapStatRecord {
   max_size: usize,
   usage: usize,
@@ -62,9 +62,13 @@ fn main() {
   // Reserve 512 MiB from mimalloc
   // mimalloc crate does not expose
   // necessary mi_reserve_os_memory function for this
+  #[allow(dead_code)]
   const MI_OPTION_SHOW_ERRORS: c_int = 0;
+  #[allow(dead_code)]
   const MI_OPTION_VERBOSE: c_int = 2;
+  #[allow(dead_code)]
   const MI_OPTION_ARENA_EAGER_COMMIT: c_int = 4;
+  #[allow(dead_code)]
   const MI_OPTION_PURGE_DELAY: c_int = 15;
   
   extern "C" {

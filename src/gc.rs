@@ -187,6 +187,7 @@ impl GCState {
     self.set_gc_run_state(GCRunState::Running);
   }
   
+  #[expect(dead_code)]
   pub fn load_barrier(&self, object: &Object, obj_manager: &ObjectManager) -> bool {
     if !object.set_mark_bit(obj_manager) {
       return false;
