@@ -199,7 +199,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Describeable + ObjectLikeTrait>(&self, initer: impl FnOnce() -> T) -> RootRefExclusive<T> {
+  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce() -> T) -> RootRefExclusive<T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut inited = Some(initer);

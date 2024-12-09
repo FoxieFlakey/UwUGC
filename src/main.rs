@@ -122,7 +122,7 @@ fn main() {
     }
   };
   
-  let ctx = heap.create_context();
+  let mut ctx = heap.create_context();
   
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
