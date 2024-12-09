@@ -4,6 +4,7 @@ use portable_atomic::AtomicPtr;
 
 use crate::{gc::GCLockCookie, heap::{ContextHandle, RootRefRaw}, objects_manager::{Object, ObjectLikeTrait}};
 
+#[repr(transparent)]
 pub struct GCRefRaw<T: ObjectLikeTrait> {
   ptr: AtomicPtr<Object>,
   _phantom: PhantomData<T>
