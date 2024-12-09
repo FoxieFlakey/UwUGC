@@ -178,7 +178,7 @@ impl<'a> ContextHandle<'a> {
   
   // SAFETY: Caller must ensure that 'ptr' is valid Object pointer
   // and properly blocks GC from running
-  pub(crate) unsafe fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object) -> RootRefRaw<T> {
+  pub(crate) unsafe fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object) -> RootRefRaw<'a, T> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
       obj: ptr,
@@ -199,7 +199,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce() -> T) -> RootRefExclusive<T> {
+  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce() -> T) -> RootRefExclusive<'a, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut inited = Some(initer);
