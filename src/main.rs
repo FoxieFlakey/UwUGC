@@ -3,13 +3,16 @@
 #![feature(trait_alias)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::{ffi::{c_int, c_long}, hint::black_box, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
+use std::{ffi::{c_int, c_long}, hint::black_box, mem::offset_of, sync::{atomic::Ordering, Arc, LazyLock}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
+use descriptor::{Describeable, Descriptor, Field};
 use gc::GCParams;
 use heap::{Heap, HeapParams};
 use mimalloc::MiMalloc;
+use objects_manager::Object;
 use portable_atomic::AtomicBool;
-use root_refs::RootRefExclusive;
+use refs::GCRefRaw;
+use root_refs::{RootRefExclusive, RootRefShared};
 use util::data_collector::DataCollector;
 
 mod objects_manager;
@@ -18,6 +21,7 @@ mod heap;
 mod gc;
 mod descriptor;
 mod root_refs;
+mod refs;
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 512 * 1024 * 1024;
@@ -124,6 +128,52 @@ fn main() {
   
   let mut ctx = heap.create_context();
   
+  struct Child {
+    name: &'static str
+  }
+  
+  unsafe impl Describeable for Child {
+    fn get_descriptor() -> Option<&'static Descriptor> {
+      return None;
+    }
+  }
+  
+  struct Parent {
+    name: &'static str,
+    child: GCRefRaw<Child>
+  }
+  
+  static PARENT_DESCRIPTOR: LazyLock<Descriptor> = LazyLock::new(|| Descriptor {
+    fields: vec![
+      Field { offset: offset_of!(Parent, child) }
+    ]
+  });
+  
+  unsafe impl Describeable for Parent {
+    fn get_descriptor() -> Option<&'static Descriptor> {
+      return Some(&PARENT_DESCRIPTOR);
+    }
+  }
+  
+  let mut child = ctx.alloc(|| Child {
+    name: "Hello I'm a child UwU"
+  });
+  
+  let mut a = child.name;
+  println!("Child's name: {a}");
+  child.name = "Hello I'm a child OwO";
+  a = child.name;
+  println!("Child's name: {a}");
+  
+  let parent = ctx.alloc(|| Parent {
+    name: "Hello I'm a parent >w<",
+    child: GCRefRaw::new(
+      RootRefShared::into_raw(RootRefExclusive::downgrade(child)).get_object_borrow() as *const Object as *mut Object
+    )
+  });
+  let name = parent.name;
+  println!("Parent: Name: {name}");
+  
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
   let temp = [198; 1024];
@@ -133,31 +183,17 @@ fn main() {
     black_box(RootRefExclusive::downgrade(res));
   });
   
-  // struct Message {
-  //   uwu: u8
-  // }
+  println!("Doing sanity checks UwU...");
   
-  // static MESSAGE_DESCRIPTOR: Descriptor = Descriptor {
-  //   fields: Vec::new()
-  // };
+  let name = parent.name;
+  println!("Parent's name: {name}");
   
-  // unsafe impl Describeable for Message {
-  //   fn get_descriptor() -> Option<&'static Descriptor> {
-  //     return Some(&MESSAGE_DESCRIPTOR)
-  //   }
-  // }
+  let child = unsafe { RootRefExclusive::new(parent.child.load(&ctx, &mut ctx.get_heap().gc_state.block_gc()).unwrap()) };
+  let name = child.name;
+  println!("Child's name: {name}");
+  drop(child);
   
-  // let mut msg = ctx.alloc(|| Message {
-  //   uwu: 0x8
-  // });
-  
-  // let mut a = msg.borrow_inner().uwu;
-  // println!("UwU: {a}");
-  // msg.borrow_inner_mut().uwu = 12;
-  // a = msg.borrow_inner().uwu;
-  // println!("UwU: {a}");
-  
-  // drop(msg);
+  drop(parent);
   drop(ctx);
   
   let complete_time = (start_time.elapsed().as_millis() as f32) / 1024.0;

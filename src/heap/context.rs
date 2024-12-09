@@ -123,6 +123,16 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     let root_entry = unsafe { &*self.entry_ref };
     return unsafe { (*root_entry.obj).borrow_inner_mut().unwrap() };
   }
+  
+  pub fn get_object_borrow(&self) -> &Object {
+    // SAFETY: root_entry is managed by current thread
+    // so it can only be allocated and deallocated on
+    // same thread
+    let root_entry = unsafe { &*self.entry_ref };
+    // SAFETY: Objects accessible by this root reference guaranteed
+    // to be alive by the GC
+    return unsafe { &*root_entry.obj };
+  }
 }
 
 impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {

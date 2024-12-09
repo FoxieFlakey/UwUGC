@@ -61,6 +61,10 @@ impl<'a, T: ObjectLikeTrait> RootRefShared<'a, T> {
       inner
     }
   }
+  
+  pub fn into_raw(this: RootRefShared<'a, T>) -> RootRefRaw<'a, T> {
+    return this.inner;
+  }
 }
 
 impl<'a, T: ObjectLikeTrait> Deref for RootRefShared<'a, T> {
