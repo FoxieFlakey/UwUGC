@@ -11,9 +11,9 @@ pub struct GCRefRaw<T: ObjectLikeTrait> {
 }
 
 impl<T: ObjectLikeTrait> GCRefRaw<T> {
-  pub fn new(data: *mut Object) -> Self {
+  pub fn new(data: *const Object) -> Self {
     return Self {
-      ptr: AtomicPtr::new(data),
+      ptr: AtomicPtr::new(data as *mut Object),
       _phantom: PhantomData {}
     }
   }
