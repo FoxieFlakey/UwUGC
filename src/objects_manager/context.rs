@@ -2,7 +2,7 @@ use std::{ptr, sync::{atomic::{AtomicPtr, Ordering}, Arc}, thread};
 
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::Describeable, objects_manager::{ObjectLikeTrait, Object}, util::double_atomic_ptr::AtomicDoublePtr};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, util::double_atomic_ptr::AtomicDoublePtr};
 
 use super::{AllocError, ObjectDataContainer, ObjectManager};
 
@@ -58,7 +58,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T) -> Result<*mut Object, AllocError> {
+  pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, gc_lock_cookie: &mut GCLockCookie) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
     let total_size = size_of::<Object>() + size_of::<T>();
     let mut current_usage = manager.used_size.load(Ordering::Relaxed);
@@ -106,6 +106,8 @@ impl<'a> ContextHandle<'a> {
         Err(actual) => old = actual
       }
     }
+    
+    drop(gc_lock_cookie);
     return Ok(obj);
   }
   

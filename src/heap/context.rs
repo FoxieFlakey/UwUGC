@@ -216,7 +216,7 @@ impl<'a> ContextHandle<'a> {
     let mut must_init_once = || inited.take().unwrap()();
     
     let mut gc_lock_cookie = self.owner.gc_state.block_gc();
-    let mut obj = self.obj_manager_ctx.try_alloc(&mut must_init_once);
+    let mut obj = self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie);
     
     if obj.is_err() {
       drop(gc_lock_cookie);
@@ -224,7 +224,7 @@ impl<'a> ContextHandle<'a> {
       self.owner.run_gc();
       gc_lock_cookie = self.owner.gc_state.block_gc();
       
-      obj = self.obj_manager_ctx.try_alloc(&mut must_init_once);
+      obj = self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie);
       if obj.is_err() {
         panic!("Heap run out of memory!");
       }
