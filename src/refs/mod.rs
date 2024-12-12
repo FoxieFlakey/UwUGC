@@ -18,6 +18,7 @@ impl<T: ObjectLikeTrait> GCRefRaw<T> {
     }
   }
   
+  #[expect(dead_code)]
   pub unsafe fn store<'a>(&self, _ctx: &'a ContextHandle, root_ref: &RootRefRaw<'a, T>, _block_gc_cookie: &mut GCLockCookie) {
     self.ptr.swap(root_ref.get_object_borrow() as *const Object as *mut Object, Ordering::Relaxed);
   }
