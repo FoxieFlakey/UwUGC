@@ -101,21 +101,17 @@ impl Drop for Context {
 pub struct ContextHandle<'a> {
   ctx: Arc<Context>,
   obj_manager_ctx: ObjectManagerContextHandle<'a>,
-  owner: &'a Heap
+  owner: &'a Heap,
+  // ContextHandle will only stays at current thread
+  _phantom: PhantomData<*const ()>
 }
-
-// ContextHandle will only stays at current thread
-impl !Sync for ContextHandle<'_> {}
-impl !Send for ContextHandle<'_> {}
 
 pub struct RootRefRaw<'a, T: ObjectLikeTrait> {
   entry_ref: *mut RootEntry,
-  phantom: PhantomData<&'a T>
+  phantom: PhantomData<&'a T>,
+  // RootRef will only stays at current thread
+  _force_not_send_sync: PhantomData<*const ()>
 }
-
-// RootRef will only stays at current thread
-impl<T> !Sync for RootRefRaw<'_, T> {}
-impl<T> !Send for RootRefRaw<'_, T> {}
 
 impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
   // SAFETY: The root reference may not be safe in face of
@@ -192,7 +188,8 @@ impl<'a> ContextHandle<'a> {
     return Self {
       ctx,
       owner,
-      obj_manager_ctx
+      obj_manager_ctx,
+      _phantom: PhantomData {}
     };
   }
   
@@ -221,7 +218,8 @@ impl<'a> ContextHandle<'a> {
     atomic::fence(atomic::Ordering::Release);
     return RootRefRaw {
       entry_ref: entry,
-      phantom: PhantomData {}
+      phantom: PhantomData {},
+      _force_not_send_sync: PhantomData {}
     };
   }
   

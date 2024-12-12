@@ -1,4 +1,4 @@
-use std::{ptr, sync::{atomic::{AtomicPtr, Ordering}, Arc}, thread};
+use std::{marker::PhantomData, ptr, sync::{atomic::{AtomicPtr, Ordering}, Arc}, thread};
 
 use portable_atomic::AtomicBool;
 
@@ -42,19 +42,18 @@ impl LocalObjectsChain {
 
 pub struct ContextHandle<'a> {
   ctx: Arc<LocalObjectsChain>,
-  owner: &'a ObjectManager
+  owner: &'a ObjectManager,
+  // Ensure that ContextHandle stays on same thread
+  // by disallowing it to be Send or Sync
+  _phantom: PhantomData<*const ()>
 }
-
-// Ensure that ContextHandle stays on same thread
-// by disallowing it to be Send or Sync
-impl !Send for ContextHandle<'_> {}
-impl !Sync for ContextHandle<'_> {}
 
 impl<'a> ContextHandle<'a> {
   pub(super) fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager) -> Self {
     return Self {
       owner,
-      ctx
+      ctx,
+      _phantom: PhantomData {}
     };
   }
   
