@@ -155,7 +155,7 @@ fn main() {
     }
   }
   
-  let mut child = ctx.alloc(|| Child {
+  let mut child = ctx.alloc(|_| Child {
     name: "Hello I'm a child UwU"
   });
   
@@ -165,7 +165,7 @@ fn main() {
   a = child.name;
   println!("Child's name: {a}");
   
-  let parent = ctx.alloc(|| Parent {
+  let parent = ctx.alloc(|_| Parent {
     name: "Hello I'm a parent >w<",
     child: GCRefRaw::new(
       RootRefShared::into_raw(RootRefExclusive::downgrade(child)).get_object_borrow() as *const Object as *mut Object
@@ -178,7 +178,7 @@ fn main() {
   let start_time = Instant::now();
   let temp = [198; 1024];
   black_box(for _ in 1..200_000 {
-    let mut res = ctx.alloc(|| temp);
+    let mut res = ctx.alloc(|_| temp);
     black_box(do_test(&mut res));
     black_box(RootRefExclusive::downgrade(res));
   });

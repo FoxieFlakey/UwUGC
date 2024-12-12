@@ -11,6 +11,15 @@ pub struct Context {
   inner: SyncUnsafeCell<ContextInner>
 }
 
+// This type exists so that any API can enforce that
+// it is being constructed/called inside a special context which
+// only be made available by the 'alloc' function as creating
+// GC refs anywhere else is always unsafe due the assumptions
+// it needs
+pub struct ObjectConstructorContext {
+  private: ()
+}
+
 impl Context {
   pub fn new() -> Self {
     let mut head = Box::pin(RootEntry {
@@ -209,11 +218,12 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce() -> T) -> RootRefExclusive<'a, T> {
+  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ObjectConstructorContext) -> T) -> RootRefExclusive<'a, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
+    let mut special_ctx = ObjectConstructorContext { private: () };
     let mut inited = Some(initer);
-    let mut must_init_once = || inited.take().unwrap()();
+    let mut must_init_once = || inited.take().unwrap()(&mut special_ctx);
     
     let mut gc_lock_cookie = self.owner.gc_state.block_gc();
     let mut obj = self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie);
