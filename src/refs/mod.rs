@@ -22,10 +22,9 @@ impl<T: ObjectLikeTrait> GCRefRaw<T> {
     self.ptr.swap(root_ref.get_object_borrow() as *const Object as *mut Object, Ordering::Relaxed);
   }
   
-  pub unsafe fn load<'a>(&self, ctx: &'a ContextHandle, _block_gc_cookie: &mut GCLockCookie) -> Option<RootRefRaw<'a, T>>{
+  pub unsafe fn load<'a>(&self, ctx: &'a ContextHandle, block_gc_cookie: &mut GCLockCookie) -> Option<RootRefRaw<'a, T>>{
     let ptr = self.ptr.load(Ordering::Relaxed);
-    // SAFETY: Have blocked the GC UwU due existence of mutable borrow of GCLockCookie
-    return Some(unsafe { ctx.new_root_ref_from_ptr(ptr) });
+    return Some(ctx.new_root_ref_from_ptr(ptr, block_gc_cookie));
   }
 }
 

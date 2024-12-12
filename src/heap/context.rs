@@ -195,9 +195,7 @@ impl<'a> ContextHandle<'a> {
     return &self.owner;
   }
   
-  // SAFETY: Caller must ensure that 'ptr' is valid Object pointer
-  // and properly blocks GC from running
-  pub(crate) unsafe fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object) -> RootRefRaw<'a, T> {
+  pub(crate) fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie) -> RootRefRaw<'a, T> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
       obj: ptr,
@@ -206,7 +204,8 @@ impl<'a> ContextHandle<'a> {
     });
     
     // SAFETY: Current thread is only owner of the head, and modification to it
-    // is protected by GC locks
+    // is protected by GC locks by requirement of '_gc_lock_cookie' mutable reference
+    // which requires that GC is blocked to have a reference to it
     let entry = unsafe { (*self.ctx.inner.get()).head.insert(entry) };
     
     // Allow GC to run again and Release fence to allow newly added value to be
@@ -240,10 +239,7 @@ impl<'a> ContextHandle<'a> {
       }
     }
     
-    // SAFETY: Object is newly allocated and GC blocked, so the object
-    // can't disappear and protected from seeing half modified root set
-    let root_ref = unsafe { self.new_root_ref_from_ptr(obj.unwrap()) };
-    drop(gc_lock_cookie);
+    let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
     // SAFETY: The object reference is exclusively owned by this thread
     return unsafe { RootRefExclusive::new(root_ref) };
   }
