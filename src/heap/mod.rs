@@ -51,10 +51,10 @@ impl RootEntry {
 }
 
 pub struct Heap {
-  pub(crate) object_manager: ObjectManager,
-  pub(crate) contexts: Mutex<HashMap<ThreadId, Arc<Context>>>,
+  pub object_manager: ObjectManager,
+  pub contexts: Mutex<HashMap<ThreadId, Arc<Context>>>,
   
-  pub(crate) gc_state: GCState
+  pub gc_state: GCState
 }
 
 impl Heap {

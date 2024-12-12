@@ -195,7 +195,7 @@ impl<'a> ContextHandle<'a> {
     return &self.owner;
   }
   
-  pub(crate) fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie) -> RootRefRaw<'a, T> {
+  pub fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie) -> RootRefRaw<'a, T> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
       obj: ptr,
