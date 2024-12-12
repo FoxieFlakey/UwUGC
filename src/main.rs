@@ -1,5 +1,4 @@
 #![feature(negative_impls)]
-#![feature(sync_unsafe_cell)]
 #![feature(trait_alias)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
