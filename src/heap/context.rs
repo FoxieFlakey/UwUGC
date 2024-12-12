@@ -1,4 +1,4 @@
-use std::{cell::SyncUnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
+use std::{cell::UnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
 use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{context::ContextHandle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::RootRefExclusive};
@@ -8,8 +8,13 @@ pub struct ContextInner {
 }
 
 pub struct Context {
-  inner: SyncUnsafeCell<ContextInner>
+  inner: UnsafeCell<ContextInner>
 }
+
+// SAFETY: Manually enforces safety of concurrently accessing it
+// by GC lock, and GC is only the other thread which reads this
+// while the owning thread is the only writer
+unsafe impl Sync for Context {}
 
 // This type exists so that any API can enforce that
 // it is being constructed/called inside a special context which
@@ -33,7 +38,7 @@ impl Context {
     head.prev = &mut *head;
     
     return Self {
-      inner: SyncUnsafeCell::new(ContextInner {
+      inner: UnsafeCell::new(ContextInner {
         head
       })
     };
@@ -45,8 +50,7 @@ impl Context {
   pub unsafe fn for_each_root(&self, mut iterator: impl FnMut(&RootEntry)) {
     // Make sure any newly added/removed root entry is visible
     atomic::fence(atomic::Ordering::Acquire);
-    // SAFETY: Context is owned by the thread and only deallocated
-    // by the same thread and no mutation
+    // SAFETY: Caller ensured mutators are blocked so nothing modifies this
     let inner = unsafe { &*self.inner.get() };
     let head = inner.head.as_ref().get_ref();
     
@@ -67,7 +71,8 @@ impl Context {
     // Make sure any newly added/removed root entry is visible
     atomic::fence(atomic::Ordering::Acquire);
     
-    let inner = &*self.inner.get();
+    // SAFETY: Caller ensured mutators are blocked so nothing modifies this
+    let inner = unsafe { &*self.inner.get() };
     let head = inner.head.as_ref().get_ref();
     
     let mut current = head.next;
@@ -206,6 +211,9 @@ impl<'a> ContextHandle<'a> {
     // SAFETY: Current thread is only owner of the head, and modification to it
     // is protected by GC locks by requirement of '_gc_lock_cookie' mutable reference
     // which requires that GC is blocked to have a reference to it
+    //
+    // therefore, current thread modifies it and GC won't be able to concurrently
+    // access it
     let entry = unsafe { (*self.ctx.inner.get()).head.insert(entry) };
     
     // Release fence to allow newly added value to be
