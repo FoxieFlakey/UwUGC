@@ -58,7 +58,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, gc_lock_cookie: &mut GCLockCookie) -> Result<*mut Object, AllocError> {
+  pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
     let total_size = size_of::<Object>() + size_of::<T>();
     let mut current_usage = manager.used_size.load(Ordering::Relaxed);
@@ -107,7 +107,6 @@ impl<'a> ContextHandle<'a> {
       }
     }
     
-    drop(gc_lock_cookie);
     return Ok(obj);
   }
   
