@@ -25,12 +25,12 @@ impl Context {
     let mut head = Box::pin(RootEntry {
       gc_state: ptr::null_mut(),
       obj: ptr::null_mut(),
-      next: SyncUnsafeCell::new(ptr::null_mut()),
-      prev: SyncUnsafeCell::new(ptr::null_mut())
+      next: ptr::null_mut(),
+      prev: ptr::null_mut()
     });
     
-    *(head.next.get_mut()) = &mut *head;
-    *(head.prev.get_mut()) = &mut *head;
+    head.next = &mut *head;
+    head.prev = &mut *head;
     
     return Self {
       inner: SyncUnsafeCell::new(ContextInner {
@@ -51,12 +51,12 @@ impl Context {
     let head = inner.head.as_ref().get_ref();
     
     // SAFETY: In circular buffer 'next' is always valid
-    let mut current = unsafe { &**head.next.get() };
+    let mut current = unsafe { &*head.next };
     // While 'current' is not the head as this linked list is circular
     while current as *const RootEntry != head as *const RootEntry {
       iterator(current);
       // SAFETY: In circular buffer 'next' is always valid
-      current = unsafe { &**current.next.get() };
+      current = unsafe { &*current.next };
     }
   }
   
@@ -70,10 +70,10 @@ impl Context {
     let inner = &*self.inner.get();
     let head = inner.head.as_ref().get_ref();
     
-    let mut current = *head.next.get();
+    let mut current = head.next;
     // While 'current' is not the head as this linked list is circular
     while current as *const RootEntry != head as *const RootEntry {
-      let next = *(*current).next.get();
+      let next = (*current).next;
       
       let entry_ptr = current as usize;
       println!("Freed entry: {entry_ptr}");
@@ -156,12 +156,12 @@ impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
     
     // SAFETY: Circular linked list is special that every next and prev
     // is valid so its safe
-    let next_ref = unsafe { &mut **entry.next.get_mut() };
-    let prev_ref = unsafe { &mut **entry.prev.get_mut() };
+    let next_ref = unsafe { &mut *entry.next };
+    let prev_ref = unsafe { &mut *entry.prev };
     
     // Actually removes
-    *next_ref.prev.get_mut() = prev_ref;
-    *prev_ref.next.get_mut() = next_ref;
+    next_ref.prev = prev_ref;
+    prev_ref.next = next_ref;
     
     // Let GC run again and Release fence to allow GC to see
     // removal of current entry (Acquire not needed as there
@@ -199,8 +199,8 @@ impl<'a> ContextHandle<'a> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
       obj: ptr,
-      next: SyncUnsafeCell::new(ptr::null_mut()),
-      prev: SyncUnsafeCell::new(ptr::null_mut())
+      next: ptr::null_mut(),
+      prev: ptr::null_mut()
     });
     
     // SAFETY: Current thread is only owner of the head, and modification to it
