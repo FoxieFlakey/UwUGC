@@ -14,8 +14,6 @@ pub struct RootRefExclusive<'a, T: ObjectLikeTrait> {
 
 impl<'a, T: ObjectLikeTrait> RootRefExclusive<'a, T> {
   // SAFETY: The caller must ensure that the reference is exclusive
-  //
-  // Acts like Rust's Box<T>
   pub(crate) unsafe fn new(inner: RootRefRaw<'a, T>) -> Self {
     return Self {
       inner
@@ -54,8 +52,6 @@ pub struct RootRefShared<'a, T: ObjectLikeTrait> {
 impl<'a, T: ObjectLikeTrait> RootRefShared<'a, T> {
   // SAFETY: The caller must ensure that the reference can be
   // safely shared and is is another name for immutable reference
-  //
-  // Acts like Rust's Box<T>
   pub(crate) unsafe fn new(inner: RootRefRaw<'a, T>) -> Self {
     return Self {
       inner
