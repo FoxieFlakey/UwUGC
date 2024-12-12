@@ -1,14 +1,11 @@
 use std::{cell::SyncUnsafeCell, collections::HashMap, sync::Arc, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
-use context::Context;
+use context::{Context, ContextHandle};
 
 use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
 
-pub use context::ContextHandle;
-pub use context::RootRefRaw;
-
-mod context;
+pub mod context;
 
 pub struct HeapParams {
   pub gc_params: GCParams,

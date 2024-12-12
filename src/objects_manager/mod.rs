@@ -1,13 +1,12 @@
 use std::{any::Any, collections::HashMap, ops::{Deref, DerefMut}, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
-use context::LocalObjectsChain;
-pub use context::ContextHandle;
+use context::{ContextHandle, LocalObjectsChain};
 use portable_atomic::AtomicBool;
 
 use crate::descriptor::Descriptor;
 
-mod context;
+pub mod context;
 
 // What the data type need to implement before it is
 // adequate for GC system to use

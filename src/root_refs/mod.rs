@@ -4,7 +4,7 @@
 use std::ops::{Deref, DerefMut};
 
 use crate::objects_manager::ObjectLikeTrait;
-use crate::heap::RootRefRaw;
+use crate::heap::context::RootRefRaw;
 
 // This is like &mut but the reference is locked on
 // current thread (due !Sync + !Send from RootRefRaw)

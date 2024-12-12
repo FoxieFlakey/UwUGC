@@ -1,7 +1,7 @@
 use std::{cell::SyncUnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
-use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{ContextHandle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::RootRefExclusive};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{context::ContextHandle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::RootRefExclusive};
 
 pub struct ContextInner {
   head: Pin<Box<RootEntry>>
