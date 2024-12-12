@@ -1,7 +1,7 @@
 use std::{cell::SyncUnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
-use crate::{descriptor::Describeable, objects_manager::{ContextHandle as ObjectManagerContextHandle, ObjectLikeTrait, Object}, root_refs::RootRefExclusive};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{ContextHandle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::RootRefExclusive};
 
 pub struct ContextInner {
   head: Pin<Box<RootEntry>>
@@ -208,7 +208,7 @@ impl<'a> ContextHandle<'a> {
     // which requires that GC is blocked to have a reference to it
     let entry = unsafe { (*self.ctx.inner.get()).head.insert(entry) };
     
-    // Allow GC to run again and Release fence to allow newly added value to be
+    // Release fence to allow newly added value to be
     // visible to the GC
     atomic::fence(atomic::Ordering::Release);
     return RootRefRaw {
