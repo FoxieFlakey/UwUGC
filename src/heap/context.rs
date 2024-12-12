@@ -17,7 +17,7 @@ pub struct Context {
 // GC refs anywhere else is always unsafe due the assumptions
 // it needs
 pub struct ObjectConstructorContext {
-  private: ()
+  _private: ()
 }
 
 impl Context {
@@ -220,7 +220,7 @@ impl<'a> ContextHandle<'a> {
   pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ObjectConstructorContext) -> T) -> RootRefExclusive<'a, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
-    let mut special_ctx = ObjectConstructorContext { private: () };
+    let mut special_ctx = ObjectConstructorContext { _private: () };
     let mut inited = Some(initer);
     let mut must_init_once = || inited.take().unwrap()(&mut special_ctx);
     
