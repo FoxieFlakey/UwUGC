@@ -108,7 +108,7 @@ pub struct ContextHandle<'a> {
 
 pub struct RootRefRaw<'a, T: ObjectLikeTrait> {
   entry_ref: *mut RootEntry,
-  phantom: PhantomData<&'a T>,
+  _phantom: PhantomData<&'a T>,
   // RootRef will only stays at current thread
   _force_not_send_sync: PhantomData<*const ()>
 }
@@ -218,7 +218,7 @@ impl<'a> ContextHandle<'a> {
     atomic::fence(atomic::Ordering::Release);
     return RootRefRaw {
       entry_ref: entry,
-      phantom: PhantomData {},
+      _phantom: PhantomData {},
       _force_not_send_sync: PhantomData {}
     };
   }

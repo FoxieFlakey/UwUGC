@@ -10,7 +10,7 @@ use portable_atomic::AtomicU64;
 // two pointers
 pub struct AtomicDoublePtr<T1, T2> {
   double_ptr: AtomicDPointers,
-  phantom: PhantomData<(T1, T2)>
+  _phantom: PhantomData<(T1, T2)>
 }
 
 #[cfg(target_pointer_width = "64")]
@@ -27,7 +27,7 @@ impl<T1, T2> AtomicDoublePtr<T1, T2> {
   pub fn new(ptrs: (*mut T1, *mut T2)) -> Self {
     return Self {
       double_ptr: AtomicDPointers::new(Self::pack_pointers(ptrs)),
-      phantom: PhantomData {}
+      _phantom: PhantomData {}
     };
   }
   
