@@ -1,0 +1,43 @@
+A. Object manager
+  Lets start with the underlying crucial part of GC.
+Which is a mean for mutator thread to allocate objects
+and for library to keep track list of allocated objects.
+  
+  The object manager looked like
+  ```rust
+  struct ObjectManager {
+    // Singly linked list of catched all objects
+    catch_all_list: Atomic<Object>
+    // List of contexts
+    // it is used to keep track contexts used by threads
+    // and each context will "logically" owned by threads
+    // in a sense they have control when to deallocate them
+    contexts: Mutex<HashMap<ThreadId, Arc<ContextData>>>
+  }
+  ```
+
+    The catch all list can be filled under few conditions
+  which are:
+  1. A living object after sweep operation (it doesn't add any
+    value by returning it back to originating context as the
+    context only ever appends to the list, never reads it)
+  2. A dead context, in this case when context has no user and
+    if it comtains objects, it to be moved to this list because
+    the owning context died and the objects has nowhere to go to
+
+A.1 Object metadata
+    A structure containing informations about the object the
+basic content of it is.
+  ```rust
+  struct Object {
+    // Points to next object in a list of objects
+    // the list might be per context (see A.2 Context)
+    // or the catch all list (located in object manager)
+    next: Atomic<Object>,
+
+    // The data which this metadata represents
+    data: Box<dyn Any>
+  }
+  ```
+
+
