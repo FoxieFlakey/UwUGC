@@ -121,7 +121,10 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     // so it can only be allocated and deallocated on
     // same thread
     let root_entry = unsafe { &*self.entry_ref };
-    return unsafe { (*root_entry.obj).borrow_inner().unwrap() };
+    
+    // SAFETY: Type already statically checked by Rust
+    // via this type's T
+    return unsafe { (*root_entry.obj).borrow_inner::<T>() };
   }
   
   // SAFETY: The root reference may not be safe in face of
@@ -131,7 +134,10 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     // so it can only be allocated and deallocated on
     // same thread
     let root_entry = unsafe { &*self.entry_ref };
-    return unsafe { (*root_entry.obj).borrow_inner_mut().unwrap() };
+    
+    // SAFETY: Type already statically checked by Rust
+    // via this type's T
+    return unsafe { (*root_entry.obj).borrow_inner_mut() };
   }
   
   pub fn get_object_borrow(&self) -> &Object {

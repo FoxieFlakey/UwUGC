@@ -130,12 +130,16 @@ pub struct Sweeper<'a> {
 }
 
 impl Object {
-  pub fn borrow_inner<T: ObjectLikeTrait>(&self) -> Option<&T> {
-    return self.data.downcast_ref::<T>();
+  // SAFETY: Caller must ensure the T is correct type for given
+  // object
+  pub unsafe fn borrow_inner<T: ObjectLikeTrait>(&self) -> &T {
+    return self.data.downcast_ref::<T>().unwrap();
   }
   
-  pub fn borrow_inner_mut<T: ObjectLikeTrait>(&mut self) -> Option<&mut T> {
-    return self.data.downcast_mut::<T>();
+  // SAFETY: Caller must ensure the T is correct type for given
+  // object
+  pub unsafe fn borrow_inner_mut<T: ObjectLikeTrait>(&mut self) -> &mut T {
+    return self.data.downcast_mut::<T>().unwrap();
   }
 }
 
