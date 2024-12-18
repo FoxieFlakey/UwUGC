@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap, ops::{Deref, DerefMut}, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use std::{collections::HashMap, ops::{Deref, DerefMut}, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
 use context::{ContextHandle, LocalObjectsChain};
@@ -10,7 +10,11 @@ pub mod context;
 
 // What the data type need to implement before it is
 // adequate for GC system to use
-pub trait ObjectLikeTrait = Any + 'static;
+pub trait ObjectLikeTrait: 'static {
+}
+
+impl<T: 'static> ObjectLikeTrait for T {
+}
 
 #[derive(Debug)]
 pub struct AllocError;
@@ -133,13 +137,15 @@ impl Object {
   // SAFETY: Caller must ensure the T is correct type for given
   // object
   pub unsafe fn borrow_inner<T: ObjectLikeTrait>(&self) -> &T {
-    return self.data.downcast_ref::<T>().unwrap();
+    // SAFETY: Caller already provided correct T
+    return unsafe { &*(self.data.as_ref() as *const _ as *const T) };
   }
   
   // SAFETY: Caller must ensure the T is correct type for given
   // object
   pub unsafe fn borrow_inner_mut<T: ObjectLikeTrait>(&mut self) -> &mut T {
-    return self.data.downcast_mut::<T>().unwrap();
+    // SAFETY: Caller already provided correct T
+    return unsafe { &mut *(self.data.as_mut() as *const _ as *mut T) };
   }
 }
 
