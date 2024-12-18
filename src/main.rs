@@ -1,4 +1,3 @@
-#![feature(trait_alias)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use std::{ffi::{c_int, c_long}, hint::black_box, mem::offset_of, sync::{atomic::Ordering, Arc, LazyLock}, thread::{self, JoinHandle}, time::{Duration, Instant}};
