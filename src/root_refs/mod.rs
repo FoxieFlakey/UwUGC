@@ -28,8 +28,6 @@ impl RefKind for Shared {}
 pub type RootRefExclusive<'a, T> = RootRef<'a, Exclusive, T>;
 pub type RootRefShared<'a, T> = RootRef<'a, Shared, T>;
 
-// This is like &mut but the reference is locked on
-// current thread (due !Sync + !Send from RootRefRaw)
 pub struct RootRef<'a, Kind: RefKind, T: ObjectLikeTrait> {
   inner: RootRefRaw<'a, T>,
   _kind: Kind
