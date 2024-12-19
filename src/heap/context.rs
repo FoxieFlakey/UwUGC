@@ -1,7 +1,7 @@
 use std::{cell::UnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
-use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{context::ContextHandle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::RootRefExclusive};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{context::ContextHandle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::{Exclusive, RootRef}};
 
 pub struct ContextInner {
   head: Pin<Box<RootEntry>>
@@ -229,7 +229,7 @@ impl<'a> ContextHandle<'a> {
     };
   }
   
-  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ObjectConstructorContext) -> T) -> RootRefExclusive<'a, T> {
+  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ObjectConstructorContext) -> T) -> RootRef<'a, Exclusive, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut special_ctx = ObjectConstructorContext { _private: () };
@@ -253,7 +253,7 @@ impl<'a> ContextHandle<'a> {
     
     let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
     // SAFETY: The object reference is exclusively owned by this thread
-    return unsafe { RootRefExclusive::new(root_ref) };
+    return unsafe { RootRef::<'_, Exclusive, _>::new(root_ref) };
   }
 }
 

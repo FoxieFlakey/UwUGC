@@ -9,7 +9,7 @@ use mimalloc::MiMalloc;
 use objects_manager::Object;
 use portable_atomic::AtomicBool;
 use refs::GCRefRaw;
-use root_refs::{RootRefExclusive, RootRefShared};
+use root_refs::{RootRef, Exclusive};
 use util::data_collector::DataCollector;
 
 mod objects_manager;
@@ -165,7 +165,7 @@ fn main() {
   let parent = ctx.alloc(|_| Parent {
     name: "Hello I'm a parent >w<",
     child: GCRefRaw::new(
-      RootRefShared::into_raw(RootRefExclusive::downgrade(child)).get_object_borrow() as *const Object as *mut Object
+      RootRef::into_raw(child).get_object_borrow() as *const Object as *mut Object
     )
   });
   let name = parent.name;
@@ -177,7 +177,7 @@ fn main() {
   black_box(for _ in 1..200_000 {
     let mut res = ctx.alloc(|_| temp);
     black_box(do_test(&mut res));
-    black_box(RootRefExclusive::downgrade(res));
+    black_box(RootRef::downgrade(res));
   });
   
   println!("Doing sanity checks UwU...");
@@ -185,7 +185,7 @@ fn main() {
   let name = parent.name;
   println!("Parent's name: {name}");
   
-  let child = unsafe { RootRefExclusive::new(parent.child.load(&ctx, &mut ctx.get_heap().gc_state.block_gc()).unwrap()) };
+  let child = unsafe { RootRef::<'_, Exclusive, _>::new(parent.child.load(&ctx, &mut ctx.get_heap().gc_state.block_gc()).unwrap()) };
   let name = child.name;
   println!("Child's name: {name}");
   drop(child);

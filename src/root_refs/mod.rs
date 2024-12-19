@@ -25,9 +25,6 @@ pub struct Shared {}
 #[sealed]
 impl RefKind for Shared {}
 
-pub type RootRefExclusive<'a, T> = RootRef<'a, Exclusive, T>;
-pub type RootRefShared<'a, T> = RootRef<'a, Shared, T>;
-
 pub struct RootRef<'a, Kind: RefKind, T: ObjectLikeTrait> {
   inner: RootRefRaw<'a, T>,
   _kind: Kind
