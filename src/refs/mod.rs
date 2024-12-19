@@ -19,11 +19,11 @@ impl<T: ObjectLikeTrait> GCRefRaw<T> {
   }
   
   #[expect(dead_code)]
-  pub unsafe fn store<'a>(&self, _ctx: &'a ContextHandle, root_ref: &RootRefRaw<'a, T>, _block_gc_cookie: &mut GCLockCookie) {
+  pub fn store<'a>(&self, _ctx: &'a ContextHandle, root_ref: &RootRefRaw<'a, T>, _block_gc_cookie: &mut GCLockCookie) {
     self.ptr.swap(root_ref.get_object_borrow() as *const Object as *mut Object, Ordering::Relaxed);
   }
   
-  pub unsafe fn load<'a>(&self, ctx: &'a ContextHandle, block_gc_cookie: &mut GCLockCookie) -> Option<RootRefRaw<'a, T>> {
+  pub fn load<'a>(&self, ctx: &'a ContextHandle, block_gc_cookie: &mut GCLockCookie) -> Option<RootRefRaw<'a, T>> {
     let ptr = self.ptr.load(Ordering::Relaxed);
     return Some(ctx.new_root_ref_from_ptr(ptr, block_gc_cookie));
   }
