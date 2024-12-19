@@ -8,10 +8,6 @@ use sealed::sealed;
 use crate::objects_manager::ObjectLikeTrait;
 use crate::heap::context::RootRefRaw;
 
-// Sealed because there no need
-// for other things to implement more kinds as there only
-// two kinds which are Shared (or immutable) and Exclusive (or mutable)
-// both can be sent to other thread
 #[sealed]
 pub trait RefKind: Default {}
 
