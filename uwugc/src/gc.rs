@@ -1,5 +1,6 @@
 use std::{sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
+use portable_atomic::AtomicBool;
 
 use crate::{heap::Heap, objects_manager::{Object, ObjectManager}};
 
@@ -50,6 +51,9 @@ struct GCInnerState {
   // then wake other
   command: Mutex<GCCommandStruct>,
   cmd_executed_event: Condvar,
+  
+  // Whether or not to active load barrier
+  activate_load_barrier: AtomicBool,
   
   // Remark queue for unmarked object
   // encountered by the load barrier
@@ -188,6 +192,11 @@ impl GCState {
   }
   
   pub fn load_barrier(&self, object: &Object, obj_manager: &ObjectManager) -> bool {
+    // Load barrier is deactivated
+    if !self.inner_state.activate_load_barrier.load(Ordering::Relaxed) {
+      return false;
+    }
+    
     if !object.set_mark_bit(obj_manager) {
       return false;
     }
@@ -210,6 +219,8 @@ impl GCState {
       
       run_state: Mutex::new(GCRunState::Paused),
       run_state_changed_event: Condvar::new(),
+      
+      activate_load_barrier: AtomicBool::new(false),
       
       command: Mutex::new(GCCommandStruct {
         command: None,
@@ -305,6 +316,10 @@ impl GCState {
     // Step 1.1: Flip the new marked bit value, so that mutator by default
     // creates new objects which is "marked" to GC perspective
     heap.object_manager.flip_new_marked_bit_value();
+    
+    // Step 1.2: Active load barrier so mutator can start assisting GC
+    // during mark process
+    self.inner_state.activate_load_barrier.store(false, Ordering::Relaxed);
     drop(block_mutator_cookie);
     
     // Step 2 (Concurrent): Mark objects
@@ -317,11 +332,15 @@ impl GCState {
       self.do_mark(heap, obj);
     }
     
-    // Step 2.1 (STW): Final remark (to catchup with potentially missed objects)
+    // Step 2 (STW): Final remark (to catchup with potentially missed objects)
     // TODO: Move this into independent thread executing along with normal mark
     // so to keep this final remark time to be as low as just signaling that thread
     // and wait that thread
     let block_mutator_cookie = self.block_mutators();
+    
+    // Step 2.1: Deactivate load barrier, GC does not need mutator assistant anymore
+    self.inner_state.activate_load_barrier.store(false, Ordering::Relaxed);
+    
     for obj in private.remark_queue_receiver.try_iter() {
       // SAFETY: Object is was loaded by mutator therefore
       // it must be alive at this point so safe
