@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::atomic::Ordering};
+use std::{marker::PhantomData, ptr, sync::atomic::Ordering};
 
 use portable_atomic::AtomicPtr;
 
@@ -25,6 +25,10 @@ impl<T: ObjectLikeTrait> GCRefRaw<T> {
   
   pub fn load<'a>(&self, ctx: &'a ContextHandle, block_gc_cookie: &mut GCLockCookie) -> Option<RootRefRaw<'a, T>> {
     let ptr = self.ptr.load(Ordering::Relaxed);
+    if ptr == ptr::null_mut() {
+      return None;
+    }
+    
     return Some(ctx.new_root_ref_from_ptr(ptr, block_gc_cookie));
   }
 }
