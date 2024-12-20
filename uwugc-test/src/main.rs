@@ -3,20 +3,12 @@
 use std::{ffi::{c_int, c_long}, hint::black_box, mem::offset_of, sync::{atomic::Ordering, Arc, LazyLock}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
 use mimalloc::MiMalloc;
-use portable_atomic::AtomicBool;
-use root_refs::RootRef;
-use util::data_collector::DataCollector;
+use std::sync::atomic::AtomicBool;
+use data_collector::DataCollector;
 
-// Publicize the API
-pub mod api;
-pub use api::*;
+use uwugc::{root_refs::RootRef, Describeable, Descriptor, Field, GCBox, GCParams, HeapArc, HeapParams};
 
-mod objects_manager;
-mod util;
-mod heap;
-mod gc;
-mod descriptor;
-mod refs;
+mod data_collector;
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 512 * 1024 * 1024;

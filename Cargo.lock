@@ -177,6 +177,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "uwugc-test"
+version = "0.1.0"
+dependencies = [
+ "mimalloc",
+ "uwugc",
+]
+
+[[package]]
 name = "windows-targets"
 version = "0.52.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"

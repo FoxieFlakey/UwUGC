@@ -1,5 +1,6 @@
 [workspace]
 members = [
-  "uwugc"
+  "uwugc",
+  "uwugc-test"
 ]
 resolver = "2"

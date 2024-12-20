@@ -1,0 +1,9 @@
+[package]
+name = "uwugc-test"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mimalloc = "0.1.43"
+uwugc = { path = "../uwugc" }
+
