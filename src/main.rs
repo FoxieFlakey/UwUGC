@@ -6,10 +6,9 @@ use descriptor::{Describeable, Descriptor, Field};
 use gc::GCParams;
 use heap::{Heap, HeapParams};
 use mimalloc::MiMalloc;
-use objects_manager::Object;
 use portable_atomic::AtomicBool;
-use refs::GCRefRaw;
-use root_refs::{Exclusive, RootRef, Unsendable};
+use refs::gc_box::GCBox;
+use root_refs::RootRef;
 use util::data_collector::DataCollector;
 
 mod objects_manager;
@@ -137,7 +136,7 @@ fn main() {
   
   struct Parent {
     name: &'static str,
-    child: GCRefRaw<Child>
+    child: GCBox<Child>
   }
   
   static PARENT_DESCRIPTOR: LazyLock<Descriptor> = LazyLock::new(|| Descriptor {
@@ -162,11 +161,9 @@ fn main() {
   a = child.name;
   println!("Child's name: {a}");
   
-  let parent = ctx.alloc(|_| Parent {
+  let parent = ctx.alloc(|alloc_ctx| Parent {
     name: "Hello I'm a parent >w<",
-    child: GCRefRaw::new(
-      RootRef::into_raw(child).get_object_borrow() as *const Object as *mut Object
-    )
+    child: GCBox::new(child, alloc_ctx)
   });
   let name = parent.name;
   println!("Parent: Name: {name}");
@@ -185,7 +182,7 @@ fn main() {
   let name = parent.name;
   println!("Parent's name: {name}");
   
-  let child = unsafe { RootRef::<'_, Unsendable, Exclusive, _>::new(parent.child.load(&ctx, &mut ctx.get_heap().gc_state.block_gc()).unwrap()) };
+  let child = parent.child.load(&ctx);
   let name = child.name;
   println!("Child's name: {name}");
   drop(child);
