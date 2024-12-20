@@ -31,7 +31,10 @@ impl<T: ObjectLikeTrait> GCRefRaw<T> {
       return None;
     }
     
-    return Some(ctx.new_root_ref_from_ptr(ptr, block_gc_cookie));
+    let root_ref = ctx.new_root_ref_from_ptr(ptr, block_gc_cookie);
+    let heap = ctx.get_heap();
+    heap.gc_state.load_barrier(root_ref.get_object_borrow(), &heap.object_manager);
+    return Some(root_ref);
   }
 }
 
