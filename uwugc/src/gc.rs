@@ -4,6 +4,7 @@ use portable_atomic::AtomicBool;
 
 use crate::{heap::Heap, objects_manager::{Object, ObjectManager}};
 
+#[derive(Clone)]
 pub struct GCParams {
   pub trigger_size: usize,
   pub poll_rate: u64

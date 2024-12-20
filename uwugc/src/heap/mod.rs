@@ -7,6 +7,7 @@ use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
 
 pub mod context;
 
+#[derive(Clone)]
 pub struct HeapParams {
   pub gc_params: GCParams,
   pub max_size: usize
