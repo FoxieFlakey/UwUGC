@@ -181,7 +181,7 @@ fn main() {
   let name = parent.name;
   println!("Parent's name: {name}");
   
-  let child = parent.child.load(&ctx.inner);
+  let child = parent.child.load(&ctx);
   let name = child.name;
   println!("Child's name: {name}");
   drop(child);
