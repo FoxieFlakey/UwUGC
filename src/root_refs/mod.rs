@@ -1,6 +1,7 @@
 // A abstraction layer which can specialize RootRef
 // into various level of exclusiveness
 
+use std::marker::PhantomData;
 use std::ops::{Deref, DerefMut};
 
 use sealed::sealed;
@@ -9,28 +10,26 @@ use crate::objects_manager::ObjectLikeTrait;
 use crate::heap::context::RootRefRaw;
 
 #[sealed]
-pub trait RefKind: Default {}
+pub trait RefKind {}
 
-#[derive(Default)]
 pub struct Exclusive {}
 #[sealed]
 impl RefKind for Exclusive {}
 
-#[derive(Default)]
 pub struct Shared {}
 #[sealed]
 impl RefKind for Shared {}
 
 pub struct RootRef<'a, Kind: RefKind, T: ObjectLikeTrait> {
   inner: RootRefRaw<'a, T>,
-  _kind: Kind
+  _kind: PhantomData<Kind>
 }
 
 impl<'a, Kind: RefKind, T: ObjectLikeTrait> RootRef<'a, Kind, T> {
   pub unsafe fn new(inner: RootRefRaw<'a, T>) -> Self {
     return Self {
       inner,
-      _kind: Kind::default()
+      _kind: PhantomData {}
     }
   }
   
