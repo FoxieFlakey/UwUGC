@@ -2,14 +2,14 @@
 
 use std::{ffi::{c_int, c_long}, hint::black_box, mem::offset_of, sync::{atomic::Ordering, Arc, LazyLock}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
-use descriptor::{Describeable, Descriptor, Field};
-use gc::GCParams;
-use heap::{Heap, HeapParams};
 use mimalloc::MiMalloc;
 use portable_atomic::AtomicBool;
 use refs::gc_box::GCBox;
-use root_refs::RootRef;
 use util::data_collector::DataCollector;
+
+// Publicize the API
+pub mod api;
+pub use api::*;
 
 mod objects_manager;
 mod util;
@@ -27,7 +27,7 @@ const TRIGGER_SIZE: usize = 256 * 1024 * 1024;
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
-fn start_stat_thread(heap: Arc<Heap>, stat_collector: Arc<DataCollector<HeapStatRecord>>) -> JoinHandle<()> {
+fn start_stat_thread(heap: HeapArc, stat_collector: Arc<DataCollector<HeapStatRecord>>) -> JoinHandle<()> {
   return thread::spawn(move || {
     while !QUIT_THREADS.load(Ordering::Relaxed) {
       let usage = heap.get_usage();
@@ -96,7 +96,7 @@ fn main() {
     println!("Prepared the memory!");
   }
   
-  let heap = Heap::new(HeapParams {
+  let heap = HeapArc::new(HeapParams {
     gc_params: GCParams {
       poll_rate: POLL_RATE,
       trigger_size: TRIGGER_SIZE
@@ -182,7 +182,7 @@ fn main() {
   let name = parent.name;
   println!("Parent's name: {name}");
   
-  let child = parent.child.load(&ctx);
+  let child = parent.child.load(&ctx.inner);
   let name = child.name;
   println!("Child's name: {name}");
   drop(child);

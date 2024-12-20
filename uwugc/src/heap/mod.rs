@@ -7,6 +7,8 @@ use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
 
 pub mod context;
 
+// NOTE: This is considered public API
+// therefore be careful with breaking changes
 #[derive(Clone)]
 pub struct HeapParams {
   pub gc_params: GCParams,

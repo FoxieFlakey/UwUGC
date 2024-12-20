@@ -1,3 +1,5 @@
+// NOTE: Everything in this file is considered to be part of public API
+
 use portable_atomic::AtomicPtr;
 
 use crate::objects_manager::Object;

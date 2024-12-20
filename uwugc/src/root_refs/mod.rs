@@ -9,32 +9,39 @@ use sealed::sealed;
 use crate::objects_manager::ObjectLikeTrait;
 use crate::heap::context::RootRefRaw;
 
+// NOTE: This type is considered to be part of public API
 #[sealed]
 pub trait RefKind {}
 
+// NOTE: This type is considered to be part of public API
 pub struct Exclusive {}
 #[sealed]
 impl RefKind for Exclusive {}
 
+// NOTE: This type is considered to be part of public API
 pub struct Shared {}
 #[sealed]
 impl RefKind for Shared {}
 
+// NOTE: This type is considered to be part of public API
 #[sealed]
 pub trait RestrictType: Default {}
 
 // The given root reference cannot be sent to other thread
+// NOTE: This type is considered to be part of public API
 #[derive(Default)]
 pub struct Unsendable {}
 #[sealed]
 impl RestrictType for Unsendable {}
 
 // The given root reference can be sent to other thread
+// NOTE: This type is considered to be part of public API
 #[derive(Default)]
 pub struct Sendable {}
 #[sealed]
 impl RestrictType for Sendable {}
 
+// NOTE: This type is considered to be part of public API
 pub struct RootRef<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> {
   inner: RootRefRaw<'a, T>,
   _kind: PhantomData<(Restriction, Kind)>

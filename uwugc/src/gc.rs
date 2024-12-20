@@ -4,6 +4,8 @@ use portable_atomic::AtomicBool;
 
 use crate::{heap::Heap, objects_manager::{Object, ObjectManager}};
 
+// NOTE: This is considered public API
+// therefore be careful with breaking changes
 #[derive(Clone)]
 pub struct GCParams {
   pub trigger_size: usize,

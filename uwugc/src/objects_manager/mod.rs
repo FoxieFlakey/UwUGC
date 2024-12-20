@@ -10,6 +10,7 @@ pub mod context;
 
 // What the data type need to implement before it is
 // adequate for GC system to use
+// NOTE: This type is considered to be part of public API
 pub trait ObjectLikeTrait: 'static {
 }
 
