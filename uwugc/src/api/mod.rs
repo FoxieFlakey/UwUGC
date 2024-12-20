@@ -14,7 +14,6 @@ pub use crate::objects_manager::ObjectLikeTrait;
 pub use crate::heap::context::ObjectConstructorContext;
 
 pub mod root_refs;
-pub use root_refs::*;
 
 helper::export_type_as_wrapper!(HeapArc, Arc<HeapInternal>);
 mod heap;
