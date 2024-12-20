@@ -1,6 +1,6 @@
 mod api;
 mod objects_manager;
-mod util;
+mod double_atomic_ptr;
 mod heap;
 mod gc;
 mod descriptor;

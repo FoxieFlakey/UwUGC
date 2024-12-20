@@ -2,7 +2,7 @@ use std::{marker::PhantomData, ptr, sync::{atomic::{AtomicPtr, Ordering}, Arc}, 
 
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, util::double_atomic_ptr::AtomicDoublePtr};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, double_atomic_ptr::AtomicDoublePtr};
 
 use super::{AllocError, ObjectDataContainer, ObjectManager};
 
