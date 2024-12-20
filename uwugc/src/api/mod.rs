@@ -15,6 +15,9 @@ pub use crate::heap::context::ObjectConstructorContext;
 
 pub mod root_refs;
 
+mod gc_box;
+pub use gc_box::GCBox;
+
 helper::export_type_as_wrapper!(HeapArc, Arc<HeapInternal>);
 mod heap;
 

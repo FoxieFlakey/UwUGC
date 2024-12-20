@@ -4,7 +4,6 @@ use std::{ffi::{c_int, c_long}, hint::black_box, mem::offset_of, sync::{atomic::
 
 use mimalloc::MiMalloc;
 use portable_atomic::AtomicBool;
-use refs::gc_box::GCBox;
 use root_refs::RootRef;
 use util::data_collector::DataCollector;
 
