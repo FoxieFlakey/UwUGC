@@ -48,14 +48,14 @@ pub struct RootRef<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTr
 }
 
 impl<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> RootRef<'a, Restriction, Kind, T> {
-  pub unsafe fn new(inner: RootRefRaw<'a, T>) -> Self {
+  pub(crate) unsafe fn new(inner: RootRefRaw<'a, T>) -> Self {
     return Self {
       inner,
       _kind: PhantomData {}
     }
   }
   
-  pub fn into_raw(this: Self) -> RootRefRaw<'a, T> {
+  pub(crate) fn into_raw(this: Self) -> RootRefRaw<'a, T> {
     return this.inner;
   }
 }
