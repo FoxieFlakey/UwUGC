@@ -13,8 +13,8 @@ pub use crate::descriptor::{Describeable, Descriptor, Field};
 pub use crate::objects_manager::ObjectLikeTrait;
 pub use crate::heap::context::ObjectConstructorContext;
 
-// Temporary exports
-pub use crate::root_refs::{RootRef, RefKind, Shared, Exclusive, RestrictType, Sendable, Unsendable};
+pub mod root_refs;
+pub use root_refs::*;
 
 helper::export_type_as_wrapper!(HeapArc, Arc<HeapInternal>);
 mod heap;

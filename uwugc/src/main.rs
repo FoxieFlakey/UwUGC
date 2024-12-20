@@ -16,7 +16,6 @@ mod util;
 mod heap;
 mod gc;
 mod descriptor;
-mod root_refs;
 mod refs;
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
