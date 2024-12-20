@@ -9,7 +9,7 @@ use mimalloc::MiMalloc;
 use objects_manager::Object;
 use portable_atomic::AtomicBool;
 use refs::GCRefRaw;
-use root_refs::{RootRef, Exclusive};
+use root_refs::{Exclusive, RootRef, Unsendable};
 use util::data_collector::DataCollector;
 
 mod objects_manager;
@@ -185,7 +185,7 @@ fn main() {
   let name = parent.name;
   println!("Parent's name: {name}");
   
-  let child = unsafe { RootRef::<'_, Exclusive, _>::new(parent.child.load(&ctx, &mut ctx.get_heap().gc_state.block_gc()).unwrap()) };
+  let child = unsafe { RootRef::<'_, Unsendable, Exclusive, _>::new(parent.child.load(&ctx, &mut ctx.get_heap().gc_state.block_gc()).unwrap()) };
   let name = child.name;
   println!("Child's name: {name}");
   drop(child);

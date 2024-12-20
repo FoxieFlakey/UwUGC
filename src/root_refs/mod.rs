@@ -20,12 +20,27 @@ pub struct Shared {}
 #[sealed]
 impl RefKind for Shared {}
 
-pub struct RootRef<'a, Kind: RefKind, T: ObjectLikeTrait> {
+#[sealed]
+pub trait RestrictType: Default {}
+
+// The given root reference cannot be sent to other thread
+#[derive(Default)]
+pub struct Unsendable {}
+#[sealed]
+impl RestrictType for Unsendable {}
+
+// The given root reference can be sent to other thread
+#[derive(Default)]
+pub struct Sendable {}
+#[sealed]
+impl RestrictType for Sendable {}
+
+pub struct RootRef<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> {
   inner: RootRefRaw<'a, T>,
-  _kind: PhantomData<Kind>
+  _kind: PhantomData<(Restriction, Kind)>
 }
 
-impl<'a, Kind: RefKind, T: ObjectLikeTrait> RootRef<'a, Kind, T> {
+impl<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> RootRef<'a, Restriction, Kind, T> {
   pub unsafe fn new(inner: RootRefRaw<'a, T>) -> Self {
     return Self {
       inner,
@@ -38,7 +53,7 @@ impl<'a, Kind: RefKind, T: ObjectLikeTrait> RootRef<'a, Kind, T> {
   }
 }
 
-impl<'a, Kind: RefKind, T: ObjectLikeTrait> Deref for RootRef<'a, Kind, T> {
+impl<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> Deref for RootRef<'a, Restriction, Kind, T> {
   type Target = T;
   
   fn deref(&self) -> &Self::Target {
@@ -50,15 +65,15 @@ impl<'a, Kind: RefKind, T: ObjectLikeTrait> Deref for RootRef<'a, Kind, T> {
   }
 }
 
-impl<'a, T: ObjectLikeTrait> RootRef<'a, Exclusive, T> {
-  pub fn downgrade(this: Self) -> RootRef<'a, Shared, T> {
+impl<'a, Restriction: RestrictType, T: ObjectLikeTrait> RootRef<'a, Restriction, Exclusive, T> {
+  pub fn downgrade(this: Self) -> RootRef<'a, Restriction, Shared, T> {
     // SAFETY: This is exclusive borrow and it is safe to downgrade
     // to shared
     return unsafe { RootRef::new(this.inner) };
   }
 }
 
-impl<'a, T: ObjectLikeTrait> DerefMut for RootRef<'a, Exclusive, T> {
+impl<'a, Restriction: RestrictType, T: ObjectLikeTrait> DerefMut for RootRef<'a, Restriction, Exclusive, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     // SAFETY: Only exclusive root ref can be mutably
     // borrowed and API design ensure there no other
