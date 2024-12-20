@@ -201,11 +201,13 @@ impl GCState {
       return false;
     }
     
-    // 'unwrap' should not cause panic because the receiver end will
+    // SAFETY: This always succeded because the receiver end will
     // only be destroyed if Heap is no longer exist anywhere and there
     // can't be a way this be called as load barrier only can be triggered
     // by Heap existing on mutator code
-    self.inner_state.remark_queue_sender.send(object.into()).unwrap();
+    unsafe {
+      self.inner_state.remark_queue_sender.send(object.into()).unwrap_unchecked();
+    }
     return true;
   }
   
