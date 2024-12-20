@@ -1,0 +1,10 @@
+[package]
+name = "uwugc"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+mimalloc = "0.1.43"
+parking_lot = "0.12.3"
+portable-atomic = "1.10.0"
+sealed = "0.6.0"
