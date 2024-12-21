@@ -174,7 +174,7 @@ impl ObjectManager {
   // SAFETY: Caller ensures that 'start' and 'end' is valid Object
   // and also valid chain
   pub(super) unsafe fn add_chain_to_list(&self, start: *mut Object, end: *mut Object) {
-    // NOTE: Relaxed ordering because don't need to access data pointed by "head"
+    // NOTE: Relaxed ordering because don't need to access next pointer of the 'head'
     let mut current_head = self.head.load(Ordering::Relaxed);
     loop {
       // Modify 'end' object's 'next' field so it connects to current head 
@@ -182,9 +182,9 @@ impl ObjectManager {
       unsafe { (*end).next.store(current_head, Ordering::Relaxed) };
       
       // Change head to point to 'start' of chain
-      // NOTE: Relaxed failure ordering because don't need to access the pointer in the head
-      // NOTE: Release success ordering because previous changes on the chain need to be visible
-      // along with modification to the "next" field of the 'end' object
+      // NOTE: Relaxed failure ordering because don't need to access the 'next' pointer in the head
+      // NOTE: Release success ordering because potential changes made by the caller
+      // to chain of objects should be visible to other threads now 
       match self.head.compare_exchange_weak(current_head, start, Ordering::Release, Ordering::Relaxed) {
         Ok(_) => break,
         Err(new_next) => current_head = new_next
