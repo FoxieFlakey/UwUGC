@@ -21,7 +21,7 @@ impl<T: 'static> ObjectLikeTrait for T {
 pub struct AllocError;
 
 pub struct Object {
-  next: UnsafeCell<*const Object>,
+  next: UnsafeCell<*mut Object>,
   // WARNING: Do not rely on this, always use is_marked
   // function, the 'marked' meaning on this always changes
   marked: AtomicBool,
@@ -97,7 +97,7 @@ pub struct ObjectManager {
 
 pub struct Sweeper<'a> {
   owner: &'a ObjectManager,
-  saved_chain: Option<*const Object>
+  saved_chain: Option<*mut Object>
 }
 
 impl ObjectManager {
@@ -221,8 +221,8 @@ impl Sweeper<'_> {
   // SAFETY: Caller must ensure live objects actually
   // marked!
   pub unsafe fn sweep_and_reset_mark_flag(mut self) {
-    let mut live_objects: *const Object = ptr::null_mut();
-    let mut last_live_objects: *const Object = ptr::null_mut();
+    let mut live_objects: *mut Object = ptr::null_mut();
+    let mut last_live_objects: *mut Object = ptr::null_mut();
     let mut next_ptr = self.saved_chain.take().unwrap();
     
     while next_ptr != ptr::null_mut() {

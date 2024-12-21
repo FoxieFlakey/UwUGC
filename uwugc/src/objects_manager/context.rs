@@ -8,8 +8,8 @@ use super::{AllocError, ObjectManager};
 
 pub struct LocalObjectsChain {
   // Maintains start and end of chain
-  start: UnsafeCell<Option<*const Object>>,
-  end: UnsafeCell<Option<*const Object>>
+  start: UnsafeCell<Option<*mut Object>>,
+  end: UnsafeCell<Option<*mut Object>>
 }
 
 // SAFETY: Accesses to this is protected by GC lock and lock on 'contexts'
