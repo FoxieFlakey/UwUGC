@@ -1,3 +1,5 @@
+#![expect(dead_code)]
+
 use std::{marker::PhantomData, sync::atomic::Ordering};
 
 #[cfg(target_pointer_width = "64")]

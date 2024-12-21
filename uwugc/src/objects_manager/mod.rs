@@ -221,7 +221,12 @@ impl ObjectManager {
     
     // Flush all contexts' local chain to global before sweeping
     for ctx in self.contexts.lock().values() {
-      // SAFETY: 'self' owns the objects chain
+      // SAFETY: 'self' owns the objects chain and is being protected
+      // from concurrent modification both by locking the 'contexts'
+      // and being in exclusive GC (which is assured by the caller)
+      //
+      // Because this need both being protected by 'contexts' and
+      // exclusive GC lock to be safe
       unsafe { ctx.flush_to_global(self) };
     }
     

@@ -1,20 +1,27 @@
-use std::{marker::PhantomData, ptr, sync::{atomic::{AtomicPtr, Ordering}, Arc}, thread};
+use std::{cell::UnsafeCell, marker::PhantomData, ptr, sync::{atomic::{self, AtomicPtr, Ordering}, Arc}, thread};
 
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, double_atomic_ptr::AtomicDoublePtr};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}};
 
 use super::{AllocError, ObjectDataContainer, ObjectManager};
 
 pub struct LocalObjectsChain {
   // Maintains start and end of chain
-  chain: AtomicDoublePtr<Object, Object>
+  start: UnsafeCell<Option<*mut Object>>,
+  end: UnsafeCell<Option<*mut Object>>
 }
+
+// SAFETY: Accesses to this is protected by GC lock and lock on 'contexts'
+// in ObjectManager structure
+unsafe impl Sync for LocalObjectsChain {}
+unsafe impl Send for LocalObjectsChain {}
 
 impl LocalObjectsChain {
   pub fn new() -> Self {
     return Self {
-      chain: AtomicDoublePtr::new((ptr::null_mut(), ptr::null_mut()))
+      start: UnsafeCell::new(None),
+      end: UnsafeCell::new(None)
     }
   }
   
@@ -22,22 +29,37 @@ impl LocalObjectsChain {
   // clearing local chain
   // SAFETY: Caller must ensure that 'owner' is actually the owner
   // and make sure that this chain isn't concurrently accessed
+  // Concurrent access can be protected either by
+  // 1. preventing Sweeper (the only other thing which concurrently access)
+  //     from getting exclusive GC lock
+  // 2. locks the 'contexts' as Sweeper also needs it
   pub unsafe fn flush_to_global(&self, owner: &ObjectManager) {
-    // Relaxed ordering because doesnt need to access the object itself
-    let (start, end) = self.chain.swap((ptr::null_mut(), ptr::null_mut()), Ordering::Acquire);
+    // Make sure newest object added by mutator visible to current thread
+    // (which might be other thread than the mutator)
+    atomic::fence(Ordering::Acquire);
+    
+    // SAFETY: Caller make sure that LocalObjectsChain not concurrently accessed
+    let (start, end) = unsafe { (&mut *self.start.get(), &mut *self.end.get()) };
     
     // Nothing to flush
-    if start == ptr::null_mut() {
-      assert_eq!(start, ptr::null_mut());
-      assert_eq!(end, ptr::null_mut());
+    if start.is_none() {
+      assert_eq!(start.is_none(), true);
+      assert_eq!(end.is_none(), true);
       return;
     }
     
     // SAFETY: All objects in chain are valid, by design random object in middle
     // of chain cannot be deallocated safely
     unsafe {
-      owner.add_chain_to_list(start, end);
+      owner.add_chain_to_list(start.unwrap(), end.unwrap());
     }
+    
+    // Clear the list
+    *start = None;
+    *end = None;
+    
+    // Make the changes visible to the mutator so it can properly start new chain
+    atomic::fence(Ordering::Release);
   }
 }
 
@@ -83,30 +105,28 @@ impl<'a> ContextHandle<'a> {
       total_size
     }));
     
+    // Ensure changes made previously by potential flush_to_global
+    // emptying the local list visible to this
+    atomic::fence(Ordering::Acquire);
+    
     // Add object to local chain
-    // NOTE: Relaxed because dont need to access data pointers returned by load
-    let mut old = self.ctx.chain.load(Ordering::Relaxed);
-    loop {
-      // Ordering::Relaxed because not yet to make changes visible
-      obj.next.store(old.0, Ordering::Relaxed);
+    // SAFETY: Safe because the concurrent access by other is protected by GC lock
+    // See comment for LocalObjectsChain#flush_to_global method
+    let start = unsafe { &mut *self.ctx.start.get() };
+    let end = unsafe { &mut *self.ctx.end.get() };
+    match start.as_mut() {
+      // The list has some objects, append current 'start' to end of this object
+      Some(x) => obj.next.store(*x, Ordering::Relaxed),
       
-      // NOTE: Ordering::Release on success because changes in the object should be visible
-      // NOTE: Ordering::Relaxed on success because dont need data returned by load
-      let new ;
-      if old.0 == ptr::null_mut() {
-        // Start of new chain, current object also is the last
-        new = (obj as *mut Object, obj as *mut Object);
-      } else {
-        // Continuation of chain, current object is prepended
-        new = (obj as *mut Object, old.1);
-      }
-      
-      match self.ctx.chain.compare_exchange_weak(old, new, Ordering::Release, Ordering::Relaxed) {
-        Ok(_) => break,
-        Err(actual) => old = actual
-      }
+      // The list was empty this object is the 'end' of current list
+      None => *end = Some(obj)
     }
     
+    // Update the 'start' so it point to newly made object
+    *start = Some(obj);
+    
+    // Make sure potential flush_to_global can see latest items
+    atomic::fence(Ordering::Release);
     return Ok(obj);
   }
 }
