@@ -39,7 +39,7 @@ unsafe impl Sync for Object {}
 unsafe impl Send for Object {}
 
 impl Object {
-  fn get_raw_ptr_to_data(&self) -> *const () {
+  pub fn get_raw_ptr_to_data(&self) -> *const () {
     // LOOKING at downcast_ref_unchecked method in dyn Any
     // it looked like &dyn Any can be casted to pointer to
     // T directly therefore can be casted to get untyped
@@ -98,26 +98,6 @@ pub struct ObjectManager {
 pub struct Sweeper<'a> {
   owner: &'a ObjectManager,
   saved_chain: Option<*const Object>
-}
-
-impl Object {
-  // SAFETY: Caller must ensure the T is correct type for given
-  // object and safe to create the reference of the type is enforced
-  // higher level than here
-  pub unsafe fn borrow_inner<T: ObjectLikeTrait>(&self) -> &T {
-    // SAFETY: Caller already provided correct T and ensure it is safe to
-    // get reference from
-    return unsafe { &*(self.get_raw_ptr_to_data() as *const T) };
-  }
-  
-  // SAFETY: Caller must ensure the T is correct type for given
-  // object and safe to create the reference of the type is enforced
-  // higher level than here
-  pub unsafe fn borrow_inner_mut<T: ObjectLikeTrait>(&mut self) -> &mut T {
-    // SAFETY: Caller already provided correct T and ensure it is safe to
-    // get reference from
-    return unsafe { &mut *(self.get_raw_ptr_to_data() as *mut T) };
-  }
 }
 
 impl ObjectManager {

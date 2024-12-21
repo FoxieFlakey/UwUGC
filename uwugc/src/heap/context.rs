@@ -123,8 +123,9 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     let root_entry = unsafe { &*self.entry_ref };
     
     // SAFETY: Type already statically checked by Rust
-    // via this type's T
-    return unsafe { (*root_entry.obj).borrow_inner::<T>() };
+    // via this type's T and caller ensure safetyness
+    // of making the reference
+    return unsafe { &*((*root_entry.obj).get_raw_ptr_to_data() as *const T) };
   }
   
   // SAFETY: The root reference may not be safe in face of
@@ -136,8 +137,9 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     let root_entry = unsafe { &*self.entry_ref };
     
     // SAFETY: Type already statically checked by Rust
-    // via this type's T
-    return unsafe { (*root_entry.obj).borrow_inner_mut() };
+    // via this type's T and caller ensure safetyness
+    // of making the reference
+    return unsafe { &mut *((*root_entry.obj).get_raw_ptr_to_data() as *mut T) };
   }
   
   pub fn get_object_borrow(&self) -> &Object {
