@@ -4,7 +4,7 @@ use parking_lot::Mutex;
 use context::{ContextHandle, LocalObjectsChain};
 use portable_atomic::AtomicBool;
 
-use crate::descriptor::Descriptor;
+use crate::{descriptor::Descriptor, gc::GCExclusiveLockCookie};
 
 pub mod context;
 
@@ -209,7 +209,14 @@ impl ObjectManager {
     return ContextHandle::new(ctx, self);
   }
   
-  pub fn create_sweeper(&self) -> Sweeper {
+  pub fn create_sweeper(&self, _mutator_lock_cookie: &mut GCExclusiveLockCookie) -> Sweeper {
+    // SAFETY: Already got exclusive GC lock
+    return unsafe { self.create_sweeper_impl() };
+  }
+  
+  // Unsafe because this need that the ctx isnt modified concurrently
+  // its being protected by exclusive GC lock by design
+  unsafe fn create_sweeper_impl(&self) -> Sweeper {
     let sweeper_lock_guard = self.sweeper_protect_mutex.lock();
     
     // Flush all contexts' local chain to global before sweeping
@@ -240,7 +247,7 @@ impl Drop for ObjectManager {
     // SAFETY: Rust lifetime limit on the Context and lifetime on
     // allocated object reference ensures that any ObjectRef does
     // not live longer than ObjectManager, therefore its safe
-    unsafe { self.create_sweeper().sweep_and_reset_mark_flag() };
+    unsafe { self.create_sweeper_impl().sweep_and_reset_mark_flag() };
   }
 }
 

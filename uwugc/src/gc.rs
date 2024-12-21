@@ -311,12 +311,12 @@ impl GCState {
   
   fn run_gc_internal(&self, heap: &Heap, private: &GCThreadPrivate) {
     // Step 1 (STW): Take root snapshot and take objects in heap snapshot
-    let block_mutator_cookie = self.block_mutators();
+    let mut block_mutator_cookie = self.block_mutators();
     
     let mut root_snapshot = Vec::new();
     // SAFETY: Just blocked the mutators
     unsafe { heap.take_root_snapshot_unlocked(&mut root_snapshot) };
-    let sweeper = heap.object_manager.create_sweeper();
+    let sweeper = heap.object_manager.create_sweeper(&mut block_mutator_cookie);
     
     // Step 1.1: Flip the new marked bit value, so that mutator by default
     // creates new objects which is "marked" to GC perspective
