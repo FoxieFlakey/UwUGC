@@ -285,24 +285,20 @@ impl Sweeper<'_> {
     while iter_current_ptr != ptr::null_mut() {
       let current_ptr = iter_current_ptr;
       
-      // Note: Ordering::Acquire because changes in 'next' object need to be visible
-      // SAFETY: 'current' is valid because is leaked and only deallocated by current
-      // thread and the list only ever appended outside of this method
-      let current = unsafe { &*current_ptr };
       // SAFETY: Sweeper "owns" the individual object's 'next' field
-      iter_current_ptr = unsafe { *current.next.get() };
+      iter_current_ptr = unsafe { *(*current_ptr).next.get() };
       
-      if !current.is_marked(self.owner) {
+      // SAFETY: 'current' is valid because its leaked
+      if unsafe { !(*current_ptr).is_marked(self.owner) } {
         // 'predicate' determine that 'current' object is to be deallocated
-        self.owner.dealloc(current as *const _ as *mut _);
-        
-        // 'current' reference now is invalid, drop it to let compiler
-        // know that it can't be used anymore and as a note to future
-        // me UwU
-        #[allow(dropping_references)]
-        drop(current);
+        // *const can be safely converted to *mut as unmarked object
+        // mean mutator has no way accesing it
+        self.owner.dealloc(current_ptr as *mut _);
         continue;
       }
+      
+      // SAFETY: 'current' is valid because its leaked
+      let current = unsafe { &*current_ptr };
       
       // First live object, init the chain
       if live_objects == ptr::null_mut() {
