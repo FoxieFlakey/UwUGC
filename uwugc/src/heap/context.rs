@@ -30,12 +30,12 @@ impl Context {
     let mut head = Box::pin(RootEntry {
       gc_state: ptr::null_mut(),
       obj: ptr::null_mut(),
-      next: ptr::null_mut(),
-      prev: ptr::null_mut()
+      next: UnsafeCell::new(ptr::null()),
+      prev: UnsafeCell::new(ptr::null())
     });
     
-    head.next = &mut *head;
-    head.prev = &mut *head;
+    *head.next.get_mut() = &*head;
+    *head.prev.get_mut() = &*head;
     
     return Self {
       inner: UnsafeCell::new(ContextInner {
@@ -55,12 +55,12 @@ impl Context {
     let head = inner.head.as_ref().get_ref();
     
     // SAFETY: In circular buffer 'next' is always valid
-    let mut current = unsafe { &*head.next };
+    let mut current = unsafe { &*(*head.next.get()) };
     // While 'current' is not the head as this linked list is circular
     while current as *const RootEntry != head as *const RootEntry {
       iterator(current);
       // SAFETY: In circular buffer 'next' is always valid
-      current = unsafe { &*current.next };
+      current = unsafe { &*(*current.next.get()) };
     }
   }
   
@@ -75,16 +75,17 @@ impl Context {
     let inner = unsafe { &*self.inner.get() };
     let head = inner.head.as_ref().get_ref();
     
-    let mut current = head.next;
+    // SAFETY: Caller ensured that nothing accessed the root set concurrently
+    let mut current = *head.next.get();
     // While 'current' is not the head as this linked list is circular
     while current as *const RootEntry != head as *const RootEntry {
-      let next = (*current).next;
+      let next = *(*current).next.get();
       
       let entry_ptr = current as usize;
       println!("Freed entry: {entry_ptr}");
       
       // Drop the root entry and remove it from set
-      let _ = Box::from_raw(current);
+      let _ = Box::from_raw(current as *mut RootEntry);
       current = next;
     }
   }
@@ -107,7 +108,7 @@ pub struct ContextHandle<'a> {
 }
 
 pub struct RootRefRaw<'a, T: ObjectLikeTrait> {
-  entry_ref: *mut RootEntry,
+  entry_ref: *const RootEntry,
   _phantom: PhantomData<&'a T>,
   // RootRef will only stays at current thread
   _force_not_send_sync: PhantomData<*const ()>
@@ -151,20 +152,27 @@ impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
   fn drop(&mut self) {
     // Corresponding RootEntry and RootRef are free'd together
     // therefore its safe after removing reference from root set
-    let entry = unsafe { &mut *self.entry_ref };
+    // SAFETY: The reference to the entry is managed by the same
+    // thread which created it
+    let entry = unsafe { &*self.entry_ref };
     
     // Block GC as GC would see half modified root set if without
     // SAFETY: GCState is always valid
     let cookie = unsafe { &*entry.gc_state }.block_gc();
     
     // SAFETY: Circular linked list is special that every next and prev
-    // is valid so its safe
-    let next_ref = unsafe { &mut *entry.next };
-    let prev_ref = unsafe { &mut *entry.prev };
+    // is valid so its safe and GC is blocked so GC does not attempting
+    // to access root set
+    let next_ref = unsafe { &*(*entry.next.get()) };
+    let prev_ref = unsafe { &*(*entry.prev.get()) };
     
     // Actually removes
-    next_ref.prev = prev_ref;
-    prev_ref.next = next_ref;
+    // SAFETY: GC is blocked so GC does not attempting
+    // to access root set
+    unsafe {
+      *next_ref.prev.get() = prev_ref;
+      *prev_ref.next.get() = next_ref
+    };
     
     // Let GC run again and Release fence to allow GC to see
     // removal of current entry (Acquire not needed as there
@@ -180,8 +188,8 @@ impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
     
     // Drop the "root_entry" itself as its unused now
     // SAFETY: Nothing reference it anymore so it is safe
-    // to be dropped
-    let _ = unsafe { Box::from_raw(self.entry_ref) };
+    // to be dropped and casted to *mut pointer
+    let _ = unsafe { Box::from_raw(self.entry_ref as *mut RootEntry) };
   }
 }
 
@@ -203,8 +211,8 @@ impl<'a> ContextHandle<'a> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc_state,
       obj: ptr,
-      next: ptr::null_mut(),
-      prev: ptr::null_mut()
+      next: UnsafeCell::new(ptr::null()),
+      prev: UnsafeCell::new(ptr::null())
     });
     
     // SAFETY: Current thread is only owner of the head, and modification to it

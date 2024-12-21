@@ -1,4 +1,4 @@
-use std::{collections::HashMap, sync::Arc, thread::{self, ThreadId}};
+use std::{cell::UnsafeCell, collections::HashMap, sync::Arc, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
 use context::{Context, ContextHandle};
@@ -16,8 +16,12 @@ pub struct HeapParams {
 }
 
 pub(super) struct RootEntry {
-  next: *mut RootEntry,
-  prev: *mut RootEntry,
+  // The RootEntry itself cannot be *mut
+  // but need to modify these fields because
+  // there would be aliasing *mut (one from prev's next
+  // and next's prev)
+  next: UnsafeCell<*const RootEntry>,
+  prev: UnsafeCell<*const RootEntry>,
   gc_state: *const GCState,
   obj: *mut Object
 }
@@ -30,21 +34,24 @@ unsafe impl Send for RootEntry {}
 impl RootEntry {
   // Insert 'val' to next of this entry
   // Returns a *mut pointer to it and leaks it
+  // SAFETY: The caller must ensures that the root set is not concurrently accessed
+  #[allow(unsafe_op_in_unsafe_fn)]
   pub unsafe fn insert(&mut self, val: Box<RootEntry>) -> *mut RootEntry {
     let val = Box::leak(val);
     
     // Make 'val' prev points to this entry
-    val.prev = self;
+    *val.prev.get() = self;
     
     // Make 'val' next points to entry next of this
-    val.next = self.next;
+    // SAFETY: The caller ensures that the root set is not concurrently accessed
+    *val.next.get() = *self.next.get();
     
     // Make next entry's prev to point to 'val'
-    // SAFETY: 'next' is always valid in circular list
-    unsafe { (*self.next).prev = val };
+    // NOTE: 'next' is always valid in circular list
+    *(**self.next.get()).prev.get() = val;
     
     // Make this entry's next to point to 'val'
-    self.next = val;
+    *self.next.get() = val;
     
     return val;
   }
