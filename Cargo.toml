@@ -4,3 +4,11 @@ members = [
   "uwugc-test"
 ]
 resolver = "2"
+
+[profile.release-lto]
+inherits = "release"
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+
+
