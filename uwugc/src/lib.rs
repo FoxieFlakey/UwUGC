@@ -1,3 +1,5 @@
+#![feature(box_as_ptr)]
+
 mod api;
 mod objects_manager;
 mod heap;

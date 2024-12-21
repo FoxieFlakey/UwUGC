@@ -44,7 +44,7 @@ impl Object {
     // it looked like &dyn Any can be casted to pointer to
     // T directly therefore can be casted to get untyped
     // pointer to underlying data T
-    return self.data.as_ref() as *const dyn ObjectLikeTrait as *const ();
+    return Box::as_ptr(&self.data) as *const dyn ObjectLikeTrait as *const ();
   }
   
   pub fn trace(&self, tracer: impl FnMut(&portable_atomic::AtomicPtr<Object>)) {
