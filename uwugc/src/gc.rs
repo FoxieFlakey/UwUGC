@@ -65,7 +65,7 @@ struct GCInnerState {
 
 pub struct GCState {
   inner_state: Arc<GCInnerState>,
-  thread: Option<JoinHandle<()>>
+  thread: Mutex<Option<JoinHandle<()>>>
 }
 
 pub struct GCLockCookie<'a> {
@@ -85,14 +85,38 @@ struct GCThreadPrivate {
 
 impl Drop for GCState {
   fn drop(&mut self) {
-    self.set_gc_run_state(GCRunState::Stopped);
-    self.thread.take().unwrap().join().unwrap();
+    self.shutdown_gc_and_wait();
   }
 }
 
 impl GCState {
+  pub fn shutdown_gc_and_wait(&self) {
+    self.set_gc_run_state(GCRunState::Stopped);
+    if let Some(join_handle) = self.thread.lock().take() {
+      // If current thread is not GC, then wait for GC
+      // if GC then ignore it
+      if join_handle.thread().id() != thread::current().id() {
+        join_handle.join().unwrap();
+      }
+    }
+  }
+  
+  // Panics if GC is already stopped (its only
+  // one way hatch to be stopped, mainly for clean
+  // up code)
   fn set_gc_run_state(&self, state: GCRunState) {
-    *self.inner_state.run_state.lock() = state;
+    let mut state_ref = self.inner_state.run_state.lock();
+    // Trying to ask GC to change into same state
+    // does nothing
+    if *state_ref == state {
+      return;
+    }
+    
+    if *state_ref == GCRunState::Stopped {
+      panic!("GC is stopped (or in process of stopping)! Cannot change GC run state anymore");
+    }
+    
+    *state_ref = state;
     
     // Notify the GC of run state change, there will be
     // only one primary thread so notify_one is better choice
@@ -240,7 +264,7 @@ impl GCState {
     };
     return GCState {
       inner_state: inner_state.clone(),
-      thread: Some(thread::spawn(move || {
+      thread: Mutex::new(Some(thread::spawn(move || {
         let inner = inner_state;
         let sleep_delay_milisec = 1000 / inner.params.poll_rate;
         
@@ -273,7 +297,7 @@ impl GCState {
         }
         
         println!("Shutting down GC");
-      }))
+      })))
     }
   }
   

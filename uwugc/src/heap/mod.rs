@@ -80,6 +80,13 @@ impl Deref for Heap {
   }
 }
 
+impl Drop for Heap {
+  fn drop(&mut self) {
+    // Trigger GC shutdown and wait for it
+    self.gc_state.shutdown_gc_and_wait();
+  }
+}
+
 impl Heap {
   pub fn new(heap_params: HeapParams) -> Arc<Self> {
     let this = Arc::new_cyclic(|weak_self| HeapState {
