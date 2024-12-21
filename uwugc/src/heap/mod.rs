@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, sync::Arc, thread::{self, ThreadId}};
+use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, ops::Deref, sync::Arc, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
 use context::{Context, ContextHandle};
@@ -61,16 +61,28 @@ impl RootEntry {
   }
 }
 
-pub struct Heap {
+pub struct HeapState {
   pub object_manager: ObjectManager,
   pub contexts: Mutex<HashMap<ThreadId, Arc<Context>>>,
   
   pub gc_state: GCState
 }
 
+pub struct Heap {
+  __real_inner_arced_heap_state: Arc<HeapState>
+}
+
+impl Deref for Heap {
+  type Target = HeapState;
+  
+  fn deref(&self) -> &Self::Target {
+    return &self.__real_inner_arced_heap_state;
+  }
+}
+
 impl Heap {
   pub fn new(heap_params: HeapParams) -> Arc<Self> {
-    let this = Arc::new_cyclic(|weak_self| Self {
+    let this = Arc::new_cyclic(|weak_self| HeapState {
       object_manager: ObjectManager::new(heap_params.max_size),
       contexts: Mutex::new(HashMap::new()),
       gc_state: GCState::new(heap_params.gc_params, weak_self.clone())
@@ -78,7 +90,9 @@ impl Heap {
     
     // Let GC run
     this.gc_state.unpause_gc();
-    return this;
+    return Arc::new(Heap {
+      __real_inner_arced_heap_state: this
+    });
   }
   
   pub fn create_context(&self) -> ContextHandle {
@@ -88,7 +102,9 @@ impl Heap {
     
     return ContextHandle::new(self, self.object_manager.create_context(), ctx.clone());
   }
-  
+}
+
+impl HeapState {
   // SAFETY: Caller must ensure that mutators arent actively trying
   // to use the root concurrently
   pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<*const Object>) {

@@ -2,7 +2,7 @@ use std::{sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle},
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use portable_atomic::AtomicBool;
 
-use crate::{heap::Heap, objects_manager::{Object, ObjectManager}};
+use crate::{heap::HeapState, objects_manager::{Object, ObjectManager}};
 
 // NOTE: This is considered public API
 // therefore be careful with breaking changes
@@ -44,7 +44,7 @@ unsafe impl Send for ObjectPtrSend {}
 
 struct GCInnerState {
   gc_lock: RwLock<()>,
-  owner: Weak<Heap>,
+  owner: Weak<HeapState>,
   params: GCParams,
   
   run_state: Mutex<GCRunState>,
@@ -146,7 +146,7 @@ impl GCState {
     drop(self.wait_for_gc(Some(cmd_control.submit_count), Some(cmd_control)));
   }
   
-  fn process_command(gc_state: &Arc<GCInnerState>, heap: &Heap, cmd_struct: GCCommandStruct, private: &GCThreadPrivate) {
+  fn process_command(gc_state: &Arc<GCInnerState>, heap: &HeapState, cmd_struct: GCCommandStruct, private: &GCThreadPrivate) {
     match cmd_struct.command.unwrap() {
       GCCommand::RunGC => {
         heap.gc_state.run_gc_internal(&heap, private);
@@ -161,14 +161,14 @@ impl GCState {
     gc_state.cmd_executed_event.notify_all();
   }
   
-  fn do_gc_heuristics(gc_state: &Arc<GCInnerState>, heap: &Heap, cmd_control: &mut GCCommandStruct) {
+  fn do_gc_heuristics(gc_state: &Arc<GCInnerState>, heap: &HeapState, cmd_control: &mut GCCommandStruct) {
     if heap.get_usage() >= gc_state.params.trigger_size {
       cmd_control.submit_count += 1;
       cmd_control.command = Some(GCCommand::RunGC);
     }
   }
   
-  fn gc_poll(inner: &Arc<GCInnerState>, heap: &Heap, private: &GCThreadPrivate) {
+  fn gc_poll(inner: &Arc<GCInnerState>, heap: &HeapState, private: &GCThreadPrivate) {
     let mut cmd_control = inner.command.lock();
     
     // If there no command to be executed
@@ -214,7 +214,7 @@ impl GCState {
     return true;
   }
   
-  pub fn new(params: GCParams, owner: Weak<Heap>) -> GCState {
+  pub fn new(params: GCParams, owner: Weak<HeapState>) -> GCState {
     let (remark_queue_sender, remark_queue_receiver) = mpsc::channel();
     let inner_state = Arc::new(GCInnerState {
       gc_lock: RwLock::new(()),
@@ -293,7 +293,7 @@ impl GCState {
     self.call_gc(GCCommand::RunGC);
   }
   
-  fn do_mark(&self, heap: &Heap, obj: &Object) {
+  fn do_mark(&self, heap: &HeapState, obj: &Object) {
     let mut queue = Vec::new();
     queue.push(obj as *const Object);
     
@@ -309,7 +309,7 @@ impl GCState {
     }
   }
   
-  fn run_gc_internal(&self, heap: &Heap, private: &GCThreadPrivate) {
+  fn run_gc_internal(&self, heap: &HeapState, private: &GCThreadPrivate) {
     // Step 1 (STW): Take root snapshot and take objects in heap snapshot
     let mut block_mutator_cookie = self.block_mutators();
     
