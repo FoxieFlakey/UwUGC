@@ -21,6 +21,7 @@ impl LocalObjectsChain {
   // Move all objects in local chain to global list
   // clearing local chain
   // SAFETY: Caller must ensure that 'owner' is actually the owner
+  // and make sure that this chain isn't concurrently accessed
   pub unsafe fn flush_to_global(&self, owner: &ObjectManager) {
     // Relaxed ordering because doesnt need to access the object itself
     let (start, end) = self.chain.swap((ptr::null_mut(), ptr::null_mut()), Ordering::Acquire);
@@ -108,23 +109,16 @@ impl<'a> ContextHandle<'a> {
     
     return Ok(obj);
   }
-  
-  // Move all objects in local chain to global list
-  // clearing local chain
-  pub fn flush_to_global(&self) {
-    // SAFETY: This Context is created together with owner so it is correct owner
-    unsafe {
-      self.ctx.flush_to_global(self.owner);
-    }
-  }
 }
 
 impl Drop for ContextHandle<'_> {
   fn drop(&mut self) {
-    // Move all objects in current local chain to global list
-    self.flush_to_global();
-    
     let mut contexts = self.owner.contexts.lock();
+    
+    // Move all objects in current local chain to global list
+    // SAFETY: Concurrent access can't happen because of Sweeper
+    // needs 'contexts' to be locked
+    unsafe { self.ctx.flush_to_global(self.owner); };
     
     // Remove context belonging to current thread
     contexts.remove(&thread::current().id());
