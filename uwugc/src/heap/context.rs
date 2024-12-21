@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::PhantomData, pin::Pin, ptr, sync::{atomic, Arc}, thread};
+use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
 use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{context::ContextHandle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::{Exclusive, RootRef, Sendable}};
@@ -27,15 +27,21 @@ pub struct ObjectConstructorContext {
 
 impl Context {
   pub fn new() -> Self {
-    let mut head = Box::pin(RootEntry {
+    let head = Box::pin(RootEntry {
       gc_state: ptr::null_mut(),
       obj: ptr::null_mut(),
       next: UnsafeCell::new(ptr::null()),
-      prev: UnsafeCell::new(ptr::null())
+      prev: UnsafeCell::new(ptr::null()),
+      
+      _phantom: PhantomPinned
     });
     
-    *head.next.get_mut() = &*head;
-    *head.prev.get_mut() = &*head;
+    // SAFETY: There no way concurrent access can happen yet
+    // and root set need to be circular list
+    unsafe {
+      *head.next.get() = &*head;
+      *head.prev.get() = &*head;
+    }
     
     return Self {
       inner: UnsafeCell::new(ContextInner {
@@ -212,7 +218,9 @@ impl<'a> ContextHandle<'a> {
       gc_state: &self.owner.gc_state,
       obj: ptr,
       next: UnsafeCell::new(ptr::null()),
-      prev: UnsafeCell::new(ptr::null())
+      prev: UnsafeCell::new(ptr::null()),
+      
+      _phantom: PhantomPinned
     });
     
     // SAFETY: Current thread is only owner of the head, and modification to it

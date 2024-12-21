@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::HashMap, sync::Arc, thread::{self, ThreadId}};
+use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, sync::Arc, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
 use context::{Context, ContextHandle};
@@ -23,7 +23,11 @@ pub(super) struct RootEntry {
   next: UnsafeCell<*const RootEntry>,
   prev: UnsafeCell<*const RootEntry>,
   gc_state: *const GCState,
-  obj: *mut Object
+  obj: *mut Object,
+  
+  // RootEntry cannot be moved at will because
+  // circular linked list need that guarantee
+  _phantom: PhantomPinned
 }
 
 // SAFETY: It is only shared between GC thread and owning thread
@@ -36,7 +40,7 @@ impl RootEntry {
   // Returns a *mut pointer to it and leaks it
   // SAFETY: The caller must ensures that the root set is not concurrently accessed
   #[allow(unsafe_op_in_unsafe_fn)]
-  pub unsafe fn insert(&mut self, val: Box<RootEntry>) -> *mut RootEntry {
+  pub unsafe fn insert(&self, val: Box<RootEntry>) -> *mut RootEntry {
     let val = Box::leak(val);
     
     // Make 'val' prev points to this entry
