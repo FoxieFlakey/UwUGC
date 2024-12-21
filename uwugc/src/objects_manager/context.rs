@@ -4,7 +4,7 @@ use portable_atomic::AtomicBool;
 
 use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}};
 
-use super::{AllocError, ObjectDataContainer, ObjectManager};
+use super::{AllocError, ObjectManager};
 
 pub struct LocalObjectsChain {
   // Maintains start and end of chain
@@ -98,7 +98,7 @@ impl<'a> ContextHandle<'a> {
     
     // Leak it and we'll handle it here
     let obj = Box::leak(Box::new(Object {
-      data: ObjectDataContainer::new(Box::new(func())),
+      data: Box::new(func()),
       marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
       next: UnsafeCell::new(ptr::null_mut()),
       descriptor: T::get_descriptor(),

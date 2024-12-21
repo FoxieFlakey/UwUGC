@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::HashMap, ops::{Deref, DerefMut}, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use std::{cell::UnsafeCell, collections::HashMap, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
 use context::{ContextHandle, LocalObjectsChain};
@@ -20,44 +20,6 @@ impl<T: 'static> ObjectLikeTrait for T {
 #[derive(Debug)]
 pub struct AllocError;
 
-// Another struct layer of indirection
-// to force implement Send + Sync as its
-// not required to Send + Sync and GC
-// only needs to safe sync access to the
-// reference fields
-pub struct ObjectDataContainer {
-  data: Box<dyn ObjectLikeTrait>
-}
-
-// SAFETY: The Send + Sync is forced because
-// the GC designed for multiple threads usage
-// and the Send + Sync for the data contained
-// by it is enforced at higher level not here
-unsafe impl Send for ObjectDataContainer {}
-unsafe impl Sync for ObjectDataContainer {}
-
-impl ObjectDataContainer {
-  pub fn new(data: Box<dyn ObjectLikeTrait>) -> Self {
-    return Self {
-      data
-    };
-  }
-}
-
-impl Deref for ObjectDataContainer {
-  type Target = Box<dyn ObjectLikeTrait>;
-  
-  fn deref(&self) -> &Self::Target {
-    return &self.data;
-  }
-}
-
-impl DerefMut for ObjectDataContainer {
-  fn deref_mut(&mut self) -> &mut Self::Target {
-    return &mut self.data;
-  }
-}
-
 pub struct Object {
   next: UnsafeCell<*const Object>,
   // WARNING: Do not rely on this, always use is_marked
@@ -67,7 +29,7 @@ pub struct Object {
   descriptor: Option<&'static Descriptor>,
   
   // Data can only contain owned structs
-  data: ObjectDataContainer
+  data: Box<dyn ObjectLikeTrait>
 }
 
 // SAFETY: 'next' pointer for majority of its lifetime
@@ -82,8 +44,6 @@ impl Object {
     // it looked like &dyn Any can be casted to pointer to
     // T directly therefore can be casted to get untyped
     // pointer to underlying data T
-    //
-    // TODO: Is this correct?
     return self.data.as_ref() as *const dyn ObjectLikeTrait as *const ();
   }
   
@@ -142,17 +102,21 @@ pub struct Sweeper<'a> {
 
 impl Object {
   // SAFETY: Caller must ensure the T is correct type for given
-  // object
+  // object and safe to create the reference of the type is enforced
+  // higher level than here
   pub unsafe fn borrow_inner<T: ObjectLikeTrait>(&self) -> &T {
-    // SAFETY: Caller already provided correct T
-    return unsafe { &*(self.data.as_ref() as *const _ as *const T) };
+    // SAFETY: Caller already provided correct T and ensure it is safe to
+    // get reference from
+    return unsafe { &*(self.get_raw_ptr_to_data() as *const T) };
   }
   
   // SAFETY: Caller must ensure the T is correct type for given
-  // object
+  // object and safe to create the reference of the type is enforced
+  // higher level than here
   pub unsafe fn borrow_inner_mut<T: ObjectLikeTrait>(&mut self) -> &mut T {
-    // SAFETY: Caller already provided correct T
-    return unsafe { &mut *(self.data.as_mut() as *const _ as *mut T) };
+    // SAFETY: Caller already provided correct T and ensure it is safe to
+    // get reference from
+    return unsafe { &mut *(self.get_raw_ptr_to_data() as *mut T) };
   }
 }
 
