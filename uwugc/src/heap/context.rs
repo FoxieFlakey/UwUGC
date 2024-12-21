@@ -114,32 +114,33 @@ pub struct RootRefRaw<'a, T: ObjectLikeTrait> {
 }
 
 impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
-  // SAFETY: The root reference may not be safe in face of
-  // data race, it is up to caller to ensure its safe
-  pub unsafe fn borrow_inner(&self) -> &T {
+  fn get_raw_ptr_to_data(&self) -> *const () {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
     // same thread
     let root_entry = unsafe { &*self.entry_ref };
     
+    // SAFETY: The obj pointer guarantee to be valid as long
+    // GC does not collect it
+    return unsafe { (*root_entry.obj).get_raw_ptr_to_data() };
+  }
+  
+  // SAFETY: The root reference may not be safe in face of
+  // data race, it is up to caller to ensure its safe
+  pub unsafe fn borrow_inner(&self) -> &T {
     // SAFETY: Type already statically checked by Rust
     // via this type's T and caller ensure safetyness
     // of making the reference
-    return unsafe { &*((*root_entry.obj).get_raw_ptr_to_data() as *const T) };
+    return unsafe { &*(self.get_raw_ptr_to_data() as *const T) };
   }
   
   // SAFETY: The root reference may not be safe in face of
   // data race, it is up to caller to ensure its safe
   pub unsafe fn borrow_inner_mut(&mut self) -> &mut T {
-    // SAFETY: root_entry is managed by current thread
-    // so it can only be allocated and deallocated on
-    // same thread
-    let root_entry = unsafe { &*self.entry_ref };
-    
     // SAFETY: Type already statically checked by Rust
     // via this type's T and caller ensure safetyness
     // of making the reference
-    return unsafe { &mut *((*root_entry.obj).get_raw_ptr_to_data() as *mut T) };
+    return unsafe { &mut *(self.get_raw_ptr_to_data() as *mut T) };
   }
   
   pub fn get_object_borrow(&self) -> &Object {
