@@ -132,6 +132,7 @@ fn main() {
     black_box(do_test(&mut res));
     black_box(RootRef::downgrade(res));
   });
+  ctx.trigger_gc();
   
   println!("Doing sanity checks UwU...");
   
