@@ -100,7 +100,7 @@ impl<'a> ContextHandle<'a> {
     let obj = Box::leak(Box::new(Object {
       data: ObjectDataContainer::new(Box::new(func())),
       marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
-      next: ptr::null_mut(),
+      next: UnsafeCell::new(ptr::null_mut()),
       descriptor: T::get_descriptor(),
       total_size
     }));
@@ -116,7 +116,9 @@ impl<'a> ContextHandle<'a> {
     let end = unsafe { &mut *self.ctx.end.get() };
     match start.as_mut() {
       // The list has some objects, append current 'start' to end of this object
-      Some(x) => obj.next = *x,
+      // SAFETY: The object isn't visible yet to other thread so its safe from
+      // concurrent accesses
+      Some(x) => unsafe { *obj.next.get() = *x },
       
       // The list was empty this object is the 'end' of current list
       None => *end = Some(obj)

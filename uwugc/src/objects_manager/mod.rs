@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::{Deref, DerefMut}, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use std::{cell::UnsafeCell, collections::HashMap, ops::{Deref, DerefMut}, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
 use context::{ContextHandle, LocalObjectsChain};
@@ -59,7 +59,7 @@ impl DerefMut for ObjectDataContainer {
 }
 
 pub struct Object {
-  next: *mut Object,
+  next: UnsafeCell<*mut Object>,
   // WARNING: Do not rely on this, always use is_marked
   // function, the 'marked' meaning on this always changes
   marked: AtomicBool,
@@ -179,19 +179,24 @@ impl ObjectManager {
   
   // SAFETY: Caller ensures that 'start' and 'end' is valid Object
   // and also valid chain
-  pub(super) unsafe fn add_chain_to_list(&self, start: *mut Object, end: *mut Object) {
+  pub(super) unsafe fn add_chain_to_list(&self, start: *const Object, end: *const Object) {
     // NOTE: Relaxed ordering because don't need to access next pointer of the 'head'
     let mut current_head = self.head.load(Ordering::Relaxed);
     loop {
       // Modify 'end' object's 'next' field so it connects to current head 
       // SAFETY: Caller responsibility that 'end' is valid
-      unsafe { (*end).next = current_head };
+      let end = unsafe { &*end };
+      // SAFETY: The 'next' field in 'end' will ever be only modified
+      // by this and caller ensures that 'start' and 'end' is independent
+      // chain owned by caller so 'end' is only modified by current thread
+      // and won't be accessed to other until its visible by next compare exchange
+      unsafe { *end.next.get() = current_head }
       
       // Change head to point to 'start' of chain
       // NOTE: Relaxed failure ordering because don't need to access the 'next' pointer in the head
       // NOTE: Release success ordering because potential changes made by the caller
       // to chain of objects should be visible to other threads now 
-      match self.head.compare_exchange_weak(current_head, start, Ordering::Release, Ordering::Relaxed) {
+      match self.head.compare_exchange_weak(current_head, start as *mut Object, Ordering::Release, Ordering::Relaxed) {
         Ok(_) => break,
         Err(new_next) => current_head = new_next
       }
@@ -279,7 +284,8 @@ impl Sweeper<'_> {
       // SAFETY: 'current' is valid because is leaked and only deallocated by current
       // thread and the list only ever appended outside of this method
       let current = unsafe { &mut *current_ptr };
-      iter_current_ptr = current.next;
+      // SAFETY: Sweeper "owns" the individual object's 'next' field
+      iter_current_ptr = unsafe { *current.next.get() };
       
       if !current.is_marked(self.owner) {
         // 'predicate' determine that 'current' object is to be deallocated
@@ -299,7 +305,8 @@ impl Sweeper<'_> {
         last_live_objects = current_ptr;
       } else {
         // Append current object to list of live objects
-        current.next = live_objects;
+        // SAFETY: Sweeper "owns" the individual object's 'next' field
+        *current.next.get() = live_objects;
         live_objects = current_ptr;
       }
     }
