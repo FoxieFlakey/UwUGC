@@ -59,7 +59,7 @@ impl DerefMut for ObjectDataContainer {
 }
 
 pub struct Object {
-  next: UnsafeCell<*mut Object>,
+  next: UnsafeCell<*const Object>,
   // WARNING: Do not rely on this, always use is_marked
   // function, the 'marked' meaning on this always changes
   marked: AtomicBool,
@@ -137,7 +137,7 @@ pub struct ObjectManager {
 
 pub struct Sweeper<'a> {
   owner: &'a ObjectManager,
-  saved_chain: Option<*mut Object>
+  saved_chain: Option<*const Object>
 }
 
 impl Object {
@@ -203,10 +203,15 @@ impl ObjectManager {
     }
   }
   
-  fn dealloc(&self, obj: &mut Object) {
+  // SAFETY: 'obj' must be valid pointer to object
+  // which is mutably owned (or there is no other users)
+  unsafe fn dealloc(&self, obj: *mut Object) {
+    // SAFETY: Caller already ensure 'obj' is valid pointer
+    let obj = unsafe { &mut *obj };
     let total_size = obj.total_size;
-    // SAFETY: Caller already ensure 'obj' is valid reference
-    // because references in Rust must be valid
+    
+    // SAFETY: Caller ensured that 'obj' pointer is only user left
+    // and safe to be deallocated
     unsafe { drop(Box::from_raw(obj)) };
     self.used_size.fetch_sub(total_size, Ordering::Relaxed);
   }
@@ -272,8 +277,8 @@ impl Sweeper<'_> {
   // SAFETY: Caller must ensure live objects actually
   // marked!
   pub unsafe fn sweep_and_reset_mark_flag(mut self) {
-    let mut live_objects: *mut Object = ptr::null_mut();
-    let mut last_live_objects: *mut Object = ptr::null_mut();
+    let mut live_objects: *const Object = ptr::null_mut();
+    let mut last_live_objects: *const Object = ptr::null_mut();
     let mut iter_current_ptr = self.saved_chain.take().unwrap();
     
     // Run 'predicate' for each object, so can decide whether to deallocate or not
@@ -283,13 +288,13 @@ impl Sweeper<'_> {
       // Note: Ordering::Acquire because changes in 'next' object need to be visible
       // SAFETY: 'current' is valid because is leaked and only deallocated by current
       // thread and the list only ever appended outside of this method
-      let current = unsafe { &mut *current_ptr };
+      let current = unsafe { &*current_ptr };
       // SAFETY: Sweeper "owns" the individual object's 'next' field
       iter_current_ptr = unsafe { *current.next.get() };
       
       if !current.is_marked(self.owner) {
         // 'predicate' determine that 'current' object is to be deallocated
-        self.owner.dealloc(current);
+        self.owner.dealloc(current as *const _ as *mut _);
         
         // 'current' reference now is invalid, drop it to let compiler
         // know that it can't be used anymore and as a note to future

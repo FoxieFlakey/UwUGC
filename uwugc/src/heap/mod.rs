@@ -80,7 +80,7 @@ impl Heap {
   
   // SAFETY: Caller must ensure that mutators arent actively trying
   // to use the root concurrently
-  pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<*mut Object>) {
+  pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<*const Object>) {
     let contexts = self.contexts.lock();
     for ctx in contexts.values() {
       // SAFETY: Its caller responsibility to make sure there are no
@@ -91,7 +91,7 @@ impl Heap {
           // return caller must ensure that *mut Object is valid
           // because after this returns no lock ensures that GC isn't
           // actively collect that potential *mut Object
-          buffer.push(entry.obj as *const Object as *mut Object);
+          buffer.push(entry.obj);
         });
       }
     }
