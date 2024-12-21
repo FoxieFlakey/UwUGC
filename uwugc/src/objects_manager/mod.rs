@@ -279,18 +279,16 @@ impl Sweeper<'_> {
   pub unsafe fn sweep_and_reset_mark_flag(mut self) {
     let mut live_objects: *const Object = ptr::null_mut();
     let mut last_live_objects: *const Object = ptr::null_mut();
-    let mut iter_current_ptr = self.saved_chain.take().unwrap();
+    let mut next_ptr = self.saved_chain.take().unwrap();
     
-    // Run 'predicate' for each object, so can decide whether to deallocate or not
-    while iter_current_ptr != ptr::null_mut() {
-      let current_ptr = iter_current_ptr;
+    while next_ptr != ptr::null_mut() {
+      let current_ptr = next_ptr;
       
       // SAFETY: Sweeper "owns" the individual object's 'next' field
-      iter_current_ptr = unsafe { *(*current_ptr).next.get() };
+      next_ptr = unsafe { *(*current_ptr).next.get() };
       
       // SAFETY: 'current' is valid because its leaked
       if unsafe { !(*current_ptr).is_marked(self.owner) } {
-        // 'predicate' determine that 'current' object is to be deallocated
         // *const can be safely converted to *mut as unmarked object
         // mean mutator has no way accesing it
         self.owner.dealloc(current_ptr as *mut _);
