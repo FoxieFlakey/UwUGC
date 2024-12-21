@@ -59,7 +59,7 @@ impl DerefMut for ObjectDataContainer {
 }
 
 pub struct Object {
-  next: AtomicPtr<Object>,
+  next: *mut Object,
   // WARNING: Do not rely on this, always use is_marked
   // function, the 'marked' meaning on this always changes
   marked: AtomicBool,
@@ -69,6 +69,12 @@ pub struct Object {
   // Data can only contain owned structs
   data: ObjectDataContainer
 }
+
+// SAFETY: 'next' pointer for majority of its lifetime
+// won't be changed out of few important spots which can
+// safetly has &mut on the Object
+unsafe impl Sync for Object {}
+unsafe impl Send for Object {}
 
 impl Object {
   fn get_raw_ptr_to_data(&self) -> *const () {
@@ -179,7 +185,7 @@ impl ObjectManager {
     loop {
       // Modify 'end' object's 'next' field so it connects to current head 
       // SAFETY: Caller responsibility that 'end' is valid
-      unsafe { (*end).next.store(current_head, Ordering::Relaxed) };
+      unsafe { (*end).next = current_head };
       
       // Change head to point to 'start' of chain
       // NOTE: Relaxed failure ordering because don't need to access the 'next' pointer in the head
@@ -273,7 +279,7 @@ impl Sweeper<'_> {
       // SAFETY: 'current' is valid because is leaked and only deallocated by current
       // thread and the list only ever appended outside of this method
       let current = unsafe { &mut *current_ptr };
-      iter_current_ptr = current.next.load(Ordering::Acquire);
+      iter_current_ptr = current.next;
       
       if !current.is_marked(self.owner) {
         // 'predicate' determine that 'current' object is to be deallocated
@@ -292,9 +298,8 @@ impl Sweeper<'_> {
         live_objects = current_ptr;
         last_live_objects = current_ptr;
       } else {
-        // Relaxed because changes dont need to be visible yet
-        // until the time to make it visible to other threads
-        current.next.store(live_objects, Ordering::Relaxed);
+        // Append current object to list of live objects
+        current.next = live_objects;
         live_objects = current_ptr;
       }
     }

@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::PhantomData, ptr, sync::{atomic::{self, AtomicPtr, Ordering}, Arc}, thread};
+use std::{cell::UnsafeCell, marker::PhantomData, ptr, sync::{atomic::{self, Ordering}, Arc}, thread};
 
 use portable_atomic::AtomicBool;
 
@@ -100,7 +100,7 @@ impl<'a> ContextHandle<'a> {
     let obj = Box::leak(Box::new(Object {
       data: ObjectDataContainer::new(Box::new(func())),
       marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
-      next: AtomicPtr::new(ptr::null_mut()),
+      next: ptr::null_mut(),
       descriptor: T::get_descriptor(),
       total_size
     }));
@@ -116,7 +116,7 @@ impl<'a> ContextHandle<'a> {
     let end = unsafe { &mut *self.ctx.end.get() };
     match start.as_mut() {
       // The list has some objects, append current 'start' to end of this object
-      Some(x) => obj.next.store(*x, Ordering::Relaxed),
+      Some(x) => obj.next = *x,
       
       // The list was empty this object is the 'end' of current list
       None => *end = Some(obj)
