@@ -15,6 +15,7 @@ const MAX_SIZE: usize = 512 * 1024 * 1024;
 const POLL_RATE: u64 = 20;
 const TRIGGER_SIZE: usize = 64 * 1024 * 1024;
 
+#[cfg(not(miri))]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
@@ -48,9 +49,7 @@ fn do_test<const LENGTH: usize>(input: &mut [i32; LENGTH]) -> &mut [i32; LENGTH]
   return input;
 }
 
-fn main() {
-  println!("Hello, world!");
-  
+fn prepare_mimalloc() {
   // Reserve 512 MiB from mimalloc
   // mimalloc crate does not expose
   // necessary mi_reserve_os_memory function for this
@@ -86,6 +85,12 @@ fn main() {
     tmp.fill(0xFC);
     println!("Prepared the memory!");
   }
+}
+
+fn main() {
+  println!("Hello, world!");
+  #[cfg(not(miri))]
+  prepare_mimalloc();
   
   let heap = HeapArc::new(HeapParams {
     gc_params: GCParams {
