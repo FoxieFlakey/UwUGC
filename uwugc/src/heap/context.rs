@@ -1,7 +1,7 @@
 use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
-use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Handle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::{Exclusive, RootRef, Sendable}};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{self, Object, ObjectLikeTrait}, root_refs::{Exclusive, RootRef, Sendable}};
 
 pub struct Data {
   head: Pin<Box<RootEntry>>
@@ -107,7 +107,7 @@ impl Drop for DataWrapper {
 
 pub struct Context<'a> {
   ctx: Arc<DataWrapper>,
-  obj_manager_ctx: ObjectManagerContextHandle<'a>,
+  obj_manager_ctx: objects_manager::Handle<'a>,
   owner: &'a Heap,
   // ContextHandle will only stays at current thread
   _phantom: PhantomData<*const ()>
@@ -200,7 +200,7 @@ impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
 }
 
 impl<'a> Context<'a> {
-  pub(super) fn new(owner: &'a Heap, obj_manager_ctx: ObjectManagerContextHandle<'a>, ctx: Arc<DataWrapper>) -> Self {
+  pub(super) fn new(owner: &'a Heap, obj_manager_ctx: objects_manager::Handle<'a>, ctx: Arc<DataWrapper>) -> Self {
     return Self {
       ctx,
       owner,
@@ -245,8 +245,8 @@ impl<'a> Context<'a> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut special_ctx = ConstructorScope { _private: () };
-    let mut inited = Some(initer);
-    let mut must_init_once = || inited.take().unwrap()(&mut special_ctx);
+    let mut inited_value = Some(initer);
+    let mut must_init_once = || inited_value.take().unwrap()(&mut special_ctx);
     
     let mut gc_lock_cookie = self.owner.gc.block_gc();
     let mut obj = self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie);
