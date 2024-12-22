@@ -81,13 +81,15 @@ impl DataWrapper {
     let head = inner.head.as_ref().get_ref();
     
     // SAFETY: Caller ensured that nothing accessed the root set concurrently
-    let mut current = *head.next.get();
+    let mut current = unsafe { *head.next.get() };
     // While 'current' is not the head as this linked list is circular
     while current != ptr::from_ref(head) {
-      let next = *(*current).next.get();
+      // SAFETY: Guaranteed by caller that root set is not accessed concurrently
+      let next = unsafe { *(*current).next.get() };
       
       // Drop the root entry and remove it from set
-      let _ = Box::from_raw(current.cast_mut());
+      // SAFETY: Guaranteed by caller that root set is not accessed concurrently
+      let _ = unsafe { Box::from_raw(current.cast_mut()) };
       current = next;
     }
   }
