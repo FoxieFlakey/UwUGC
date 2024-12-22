@@ -10,7 +10,7 @@ pub mod context;
 // NOTE: This is considered public API
 // therefore be careful with breaking changes
 #[derive(Clone)]
-pub struct HeapParams {
+pub struct Params {
   pub gc_params: GCParams,
   pub max_size: usize
 }
@@ -61,19 +61,19 @@ impl RootEntry {
   }
 }
 
-pub struct HeapState {
+pub struct State {
   pub object_manager: ObjectManager,
   pub contexts: Mutex<HashMap<ThreadId, Arc<Context>>>,
   
-  pub gc_state: GCState
+  pub gc: GCState
 }
 
 pub struct Heap {
-  __real_inner_arced_heap_state: Arc<HeapState>
+  __real_inner_arced_heap_state: Arc<State>
 }
 
 impl Deref for Heap {
-  type Target = HeapState;
+  type Target = State;
   
   fn deref(&self) -> &Self::Target {
     return &self.__real_inner_arced_heap_state;
@@ -83,20 +83,20 @@ impl Deref for Heap {
 impl Drop for Heap {
   fn drop(&mut self) {
     // Trigger GC shutdown and wait for it
-    self.gc_state.shutdown_gc_and_wait();
+    self.gc.shutdown_gc_and_wait();
   }
 }
 
 impl Heap {
-  pub fn new(heap_params: HeapParams) -> Arc<Self> {
-    let this = Arc::new_cyclic(|weak_self| HeapState {
+  pub fn new(heap_params: Params) -> Arc<Self> {
+    let this = Arc::new_cyclic(|weak_self| State {
       object_manager: ObjectManager::new(heap_params.max_size),
       contexts: Mutex::new(HashMap::new()),
-      gc_state: GCState::new(heap_params.gc_params, weak_self.clone())
+      gc: GCState::new(heap_params.gc_params, weak_self.clone())
     });
     
     // Let GC run
-    this.gc_state.unpause_gc();
+    this.gc.unpause_gc();
     return Arc::new(Heap {
       __real_inner_arced_heap_state: this
     });
@@ -111,7 +111,7 @@ impl Heap {
   }
 }
 
-impl HeapState {
+impl State {
   // SAFETY: Caller must ensure that mutators arent actively trying
   // to use the root concurrently
   pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<*const Object>) {
@@ -132,7 +132,7 @@ impl HeapState {
   }
   
   pub fn run_gc(&self) {
-    self.gc_state.run_gc();
+    self.gc.run_gc();
   }
   
   pub fn get_usage(&self) -> usize {

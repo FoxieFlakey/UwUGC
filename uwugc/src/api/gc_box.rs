@@ -27,7 +27,7 @@ impl<T: ObjectLikeTrait> GCBox<T> {
   // and other shared (immutable) and references returned GCBox intended to be
   // only be used by caller thread
   pub fn load<'this, 'context: 'this>(&'this self, ctx: &'context Context) -> RootRef<'this, Unsendable, Shared, T> {
-    let raw = self.inner.load(&ctx.inner, &mut ctx.inner.get_heap().gc_state.block_gc());
+    let raw = self.inner.load(&ctx.inner, &mut ctx.inner.get_heap().gc.block_gc());
     // SAFETY: The data in there is owned by GCBox<T>
     // and Unsendable assures that references don't escape
     // away
@@ -40,7 +40,7 @@ impl<T: ObjectLikeTrait> GCBox<T> {
   // and other shared (immutable) and references returned GCBox intended to be
   // only be used by caller thread
   pub fn load_mut<'this, 'context: 'this>(&'this mut self, ctx: &'context Context) -> RootRef<'this, Unsendable, Exclusive, T> {
-    let raw = self.inner.load(&ctx.inner, &mut ctx.inner.get_heap().gc_state.block_gc());
+    let raw = self.inner.load(&ctx.inner, &mut ctx.inner.get_heap().gc.block_gc());
     // SAFETY: The data in there is owned by GCBox<T>
     // and Unsendable assures that references don't escape
     // away

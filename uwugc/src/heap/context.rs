@@ -215,7 +215,7 @@ impl<'a> ContextHandle<'a> {
   
   pub fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie) -> RootRefRaw<'a, T> {
     let entry = Box::new(RootEntry {
-      gc_state: &self.owner.gc_state,
+      gc_state: &self.owner.gc,
       obj: ptr,
       next: UnsafeCell::new(ptr::null()),
       prev: UnsafeCell::new(ptr::null()),
@@ -248,14 +248,14 @@ impl<'a> ContextHandle<'a> {
     let mut inited = Some(initer);
     let mut must_init_once = || inited.take().unwrap()(&mut special_ctx);
     
-    let mut gc_lock_cookie = self.owner.gc_state.block_gc();
+    let mut gc_lock_cookie = self.owner.gc.block_gc();
     let mut obj = self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie);
     
     if obj.is_err() {
       drop(gc_lock_cookie);
       println!("Out of memory, triggering GC!");
       self.owner.run_gc();
-      gc_lock_cookie = self.owner.gc_state.block_gc();
+      gc_lock_cookie = self.owner.gc.block_gc();
       
       obj = self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie);
       if obj.is_err() {

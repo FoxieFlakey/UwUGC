@@ -1,5 +1,5 @@
 use crate::heap::Heap as HeapInternal;
-use super::{Context, HeapArc, HeapParams};
+use super::{Context, HeapArc, Params};
 
 impl Clone for HeapArc {
   fn clone(&self) -> Self {
@@ -8,7 +8,7 @@ impl Clone for HeapArc {
 }
 
 impl HeapArc {
-  pub fn new(params: HeapParams) -> HeapArc {
+  pub fn new(params: Params) -> HeapArc {
     return HeapArc::from(HeapInternal::new(params));
   }
   

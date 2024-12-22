@@ -7,7 +7,7 @@ use std::sync::Arc;
 use crate::heap::context::ContextHandle as HeapContextHandle;
 use crate::heap::Heap as HeapInternal;
 
-pub use crate::heap::HeapParams;
+pub use crate::heap::Params;
 pub use crate::gc::GCParams;
 pub use crate::descriptor::{Describeable, Descriptor, Field};
 pub use crate::objects_manager::ObjectLikeTrait;

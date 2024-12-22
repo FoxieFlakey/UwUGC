@@ -5,7 +5,7 @@ use std::{hint::black_box, io::{self, Write}, mem::offset_of, sync::{atomic::Ord
 use std::sync::atomic::AtomicBool;
 use data_collector::DataCollector;
 
-use uwugc::{root_refs::RootRef, Describeable, Descriptor, Field, GCBox, GCParams, HeapArc, HeapParams};
+use uwugc::{root_refs::RootRef, Describeable, Descriptor, Field, GCBox, GCParams, HeapArc, Params};
 
 mod data_collector;
 
@@ -52,7 +52,7 @@ fn main() {
   #[cfg(not(miri))]
   non_miri::prepare_mimalloc();
   
-  let heap = HeapArc::new(HeapParams {
+  let heap = HeapArc::new(Params {
     gc_params: GCParams {
       poll_rate: POLL_RATE,
       trigger_size: TRIGGER_SIZE

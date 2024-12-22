@@ -2,7 +2,7 @@ use std::{ptr, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHan
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use portable_atomic::AtomicBool;
 
-use crate::{heap::HeapState, objects_manager::{Object, ObjectManager}};
+use crate::{heap::State as HeapState, objects_manager::{Object, ObjectManager}};
 
 // NOTE: This is considered public API
 // therefore be careful with breaking changes
@@ -170,7 +170,7 @@ impl GCState {
   fn process_command(gc_state: &Arc<GCInnerState>, heap: &HeapState, cmd_struct: &GCCommandStruct, private: &GCThreadPrivate) {
     match cmd_struct.command.unwrap() {
       GCCommand::RunGC => {
-        heap.gc_state.run_gc_internal(heap, private);
+        heap.gc.run_gc_internal(heap, private);
       }
     }
     
