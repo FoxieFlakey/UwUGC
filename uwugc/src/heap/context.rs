@@ -87,9 +87,6 @@ impl DataWrapper {
     while current != ptr::from_ref(head) {
       let next = *(*current).next.get();
       
-      let entry_ptr = current as usize;
-      println!("Freed entry: {entry_ptr}");
-      
       // Drop the root entry and remove it from set
       let _ = Box::from_raw(current.cast_mut());
       current = next;
