@@ -1,6 +1,6 @@
 use crate::refs::GCRefRaw;
 
-use super::{root_refs::{Exclusive, RootRef, Sendable, Shared, Unsendable}, Context, ObjectConstructorContext, ObjectLikeTrait};
+use super::{root_refs::{Exclusive, RootRef, Sendable, Shared, Unsendable}, Context, ConstructorScope, ObjectLikeTrait};
 
 // Its logically behaves like Box<T> where it
 // the parent structure owns it, therefore if
@@ -16,7 +16,7 @@ impl<T: ObjectLikeTrait> GCBox<T> {
   // be from somewhere which does not expect the reference to be shared to
   // other thread and Exclusive because caller thread needed to be only
   // owner of it
-  pub fn new(reference: RootRef<Sendable, Exclusive, T>, _alloc_context: &mut ObjectConstructorContext) -> Self {
+  pub fn new(reference: RootRef<Sendable, Exclusive, T>, _alloc_context: &mut ConstructorScope) -> Self {
     return Self {
       inner: GCRefRaw::new(RootRef::into_raw(reference).get_object_borrow())
     };

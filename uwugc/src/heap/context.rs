@@ -3,29 +3,29 @@ use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, pin::Pin, ptr,
 use super::{Heap, RootEntry};
 use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{context::ContextHandle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::{Exclusive, RootRef, Sendable}};
 
-pub struct ContextInner {
+pub struct Data {
   head: Pin<Box<RootEntry>>
 }
 
-pub struct Data {
-  inner: UnsafeCell<ContextInner>
+pub struct DataWrapper {
+  inner: UnsafeCell<Data>
 }
 
 // SAFETY: Manually enforces safety of concurrently accessing it
 // by GC lock, and GC is only the other thread which reads this
 // while the owning thread is the only writer
-unsafe impl Sync for Data {}
+unsafe impl Sync for DataWrapper {}
 
 // This type exists so that any API can enforce that
 // it is being constructed/called inside a special context which
 // only be made available by the 'alloc' function as creating
 // GC refs anywhere else is always unsafe due the assumptions
 // it needs
-pub struct ObjectConstructorContext {
+pub struct ConstructorScope {
   _private: ()
 }
 
-impl Data {
+impl DataWrapper {
   pub fn new() -> Self {
     let head = Box::pin(RootEntry {
       gc_state: ptr::null_mut(),
@@ -44,7 +44,7 @@ impl Data {
     }
     
     return Self {
-      inner: UnsafeCell::new(ContextInner {
+      inner: UnsafeCell::new(Data {
         head
       })
     };
@@ -63,7 +63,7 @@ impl Data {
     // SAFETY: In circular buffer 'next' is always valid
     let mut current = unsafe { &*(*head.next.get()) };
     // While 'current' is not the head as this linked list is circular
-    while current as *const RootEntry != head as *const RootEntry {
+    while ptr::from_ref(current) != ptr::from_ref(head) {
       iterator(current);
       // SAFETY: In circular buffer 'next' is always valid
       current = unsafe { &*(*current.next.get()) };
@@ -84,20 +84,20 @@ impl Data {
     // SAFETY: Caller ensured that nothing accessed the root set concurrently
     let mut current = *head.next.get();
     // While 'current' is not the head as this linked list is circular
-    while current as *const RootEntry != head as *const RootEntry {
+    while current != ptr::from_ref(head) {
       let next = *(*current).next.get();
       
       let entry_ptr = current as usize;
       println!("Freed entry: {entry_ptr}");
       
       // Drop the root entry and remove it from set
-      let _ = Box::from_raw(current as *mut RootEntry);
+      let _ = Box::from_raw(current.cast_mut());
       current = next;
     }
   }
 }
 
-impl Drop for Data {
+impl Drop for DataWrapper {
   fn drop(&mut self) {
     // Current thread is last one with reference to this context
     // therefore its safe to clear it (to deallocate the root entries)
@@ -106,7 +106,7 @@ impl Drop for Data {
 }
 
 pub struct Context<'a> {
-  ctx: Arc<Data>,
+  ctx: Arc<DataWrapper>,
   obj_manager_ctx: ObjectManagerContextHandle<'a>,
   owner: &'a Heap,
   // ContextHandle will only stays at current thread
@@ -200,7 +200,7 @@ impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
 }
 
 impl<'a> Context<'a> {
-  pub(super) fn new(owner: &'a Heap, obj_manager_ctx: ObjectManagerContextHandle<'a>, ctx: Arc<Data>) -> Self {
+  pub(super) fn new(owner: &'a Heap, obj_manager_ctx: ObjectManagerContextHandle<'a>, ctx: Arc<DataWrapper>) -> Self {
     return Self {
       ctx,
       owner,
@@ -241,10 +241,10 @@ impl<'a> Context<'a> {
     };
   }
   
-  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ObjectConstructorContext) -> T) -> RootRef<'a, Sendable, Exclusive, T> {
+  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
-    let mut special_ctx = ObjectConstructorContext { _private: () };
+    let mut special_ctx = ConstructorScope { _private: () };
     let mut inited = Some(initer);
     let mut must_init_once = || inited.take().unwrap()(&mut special_ctx);
     

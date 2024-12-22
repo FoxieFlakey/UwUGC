@@ -11,7 +11,7 @@ pub use crate::heap::Params;
 pub use crate::gc::GCParams;
 pub use crate::descriptor::{Describeable, Descriptor, Field};
 pub use crate::objects_manager::ObjectLikeTrait;
-pub use crate::heap::ObjectConstructorContext;
+pub use crate::heap::ConstructorScope;
 
 pub mod root_refs;
 
