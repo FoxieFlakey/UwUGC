@@ -140,7 +140,7 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     // SAFETY: Type already statically checked by Rust
     // via this type's T and caller ensure safetyness
     // of making the reference
-    return unsafe { &mut *(self.get_raw_ptr_to_data() as *mut T) };
+    return unsafe { &mut *self.get_raw_ptr_to_data().cast_mut().cast::<T>() };
   }
   
   pub fn get_object_borrow(&self) -> &Object {
