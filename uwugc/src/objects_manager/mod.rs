@@ -44,7 +44,7 @@ impl Object {
     // it looked like &dyn Any can be casted to pointer to
     // T directly therefore can be casted to get untyped
     // pointer to underlying data T
-    return Box::as_ptr(&self.data) as *const dyn ObjectLikeTrait as *const ();
+    return Box::as_ptr(&self.data).cast();
   }
   
   pub fn trace(&self, tracer: impl FnMut(&portable_atomic::AtomicPtr<Object>)) {
@@ -140,7 +140,7 @@ impl ObjectManager {
       // NOTE: Relaxed failure ordering because don't need to access the 'next' pointer in the head
       // NOTE: Release success ordering because potential changes made by the caller
       // to chain of objects should be visible to other threads now 
-      match self.head.compare_exchange_weak(current_head, start as *mut Object, Ordering::Release, Ordering::Relaxed) {
+      match self.head.compare_exchange_weak(current_head, start.cast_mut(), Ordering::Release, Ordering::Relaxed) {
         Ok(_) => break,
         Err(new_next) => current_head = new_next
       }
@@ -225,7 +225,7 @@ impl Sweeper<'_> {
     let mut last_live_objects: *mut Object = ptr::null_mut();
     let mut next_ptr = self.saved_chain.take().unwrap();
     
-    while next_ptr != ptr::null_mut() {
+    while !next_ptr.is_null() {
       let current_ptr = next_ptr;
       
       // SAFETY: Sweeper "owns" the individual object's 'next' field
@@ -235,7 +235,7 @@ impl Sweeper<'_> {
       if unsafe { !(*current_ptr).is_marked(self.owner) } {
         // *const can be safely converted to *mut as unmarked object
         // mean mutator has no way accesing it
-        self.owner.dealloc(current_ptr as *mut _);
+        self.owner.dealloc(current_ptr.cast());
         continue;
       }
       
@@ -243,7 +243,7 @@ impl Sweeper<'_> {
       let current = unsafe { &*current_ptr };
       
       // First live object, init the chain
-      if live_objects == ptr::null_mut() {
+      if live_objects.is_null() {
         live_objects = current_ptr;
         last_live_objects = current_ptr;
       } else {
@@ -255,14 +255,14 @@ impl Sweeper<'_> {
     }
     
     // There are no living objects
-    if live_objects == ptr::null_mut() {
+    if live_objects.is_null() {
       // If there no live objects, the last can't exist
-      assert_eq!(last_live_objects, ptr::null_mut());
+      assert!(last_live_objects.is_null());
       return;
     }
     
     // If there are live objects, 'last_live_objects' can't be null
-    assert_ne!(last_live_objects, ptr::null_mut());
+    assert!(!last_live_objects.is_null());
     
     // SAFETY: Objects are alive and a valid singly linked chain
     unsafe {
@@ -282,9 +282,7 @@ impl Drop for Sweeper<'_> {
     // Leaking memory during panicking is fine because program going to
     // die anyway so leak the objects so it can be used during panicking
     // for maybe some strange codes
-    if self.saved_chain.is_some() && !thread::panicking() {
-      panic!("Sweeper must not be dropped before sweep is called!");
-    }
+    assert!(self.saved_chain.is_none() || thread::panicking(), "Sweeper must not be dropped before sweep is called!");
   }
 }
 
