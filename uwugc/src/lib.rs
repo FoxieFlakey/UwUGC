@@ -4,6 +4,7 @@
 #![deny(clippy::pedantic)]
 #![deny(clippy::complexity)]
 #![deny(clippy::style)]
+#![deny(clippy::as_underscore)]
 
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::needless_return)]
