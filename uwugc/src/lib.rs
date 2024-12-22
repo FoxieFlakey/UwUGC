@@ -3,7 +3,7 @@
 #![forbid(clippy::suspicious)]
 #![forbid(clippy::pedantic)]
 #![forbid(clippy::complexity)]
-#![deny(clippy::style)]
+#![forbid(clippy::style)]
 #![forbid(clippy::as_underscore)]
 #![forbid(clippy::as_conversions)]
 #![forbid(unsafe_op_in_unsafe_fn)]
