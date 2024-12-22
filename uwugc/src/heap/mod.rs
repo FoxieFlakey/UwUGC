@@ -39,26 +39,25 @@ unsafe impl Send for RootEntry {}
 impl RootEntry {
   // Insert 'val' to next of this entry
   // Returns a *mut pointer to it and leaks it
-  // SAFETY: The caller must ensures that the root set is not concurrently accessed
-  #[allow(unsafe_op_in_unsafe_fn)]
   pub unsafe fn insert(&self, val: Box<RootEntry>) -> *mut RootEntry {
-    let val = Box::leak(val);
-    
-    // Make 'val' prev points to this entry
-    *val.prev.get() = self;
-    
-    // Make 'val' next points to entry next of this
-    // SAFETY: The caller ensures that the root set is not concurrently accessed
-    *val.next.get() = *self.next.get();
-    
-    // Make next entry's prev to point to 'val'
-    // NOTE: 'next' is always valid in circular list
-    *(**self.next.get()).prev.get() = val;
-    
-    // Make this entry's next to point to 'val'
-    *self.next.get() = val;
-    
-    return val;
+    // SAFETY: The caller must ensures that the root set is not concurrently accessed
+    unsafe {
+      let val = Box::leak(val);
+      
+      // Make 'val' prev points to this entry
+      *val.prev.get() = self;
+      
+      // Make 'val' next points to entry next of this
+      *val.next.get() = *self.next.get();
+      
+      // Make next entry's prev to point to 'val'
+      // NOTE: 'next' is always valid in circular list
+      *(**self.next.get()).prev.get() = val;
+      
+      // Make this entry's next to point to 'val'
+      *self.next.get() = val;
+      return val;
+    }
   }
 }
 
