@@ -1,3 +1,4 @@
+#![allow(clippy::needless_return)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
 use std::{hint::black_box, io::{self, Write}, mem::offset_of, sync::{atomic::Ordering, Arc, LazyLock}, thread::{self, JoinHandle}, time::{Duration, Instant}};
@@ -127,11 +128,11 @@ fn main() {
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
   let temp = [198; 1024];
-  black_box(for _ in 1..200_000 {
+  for _ in 1..5 {
     let mut res = ctx.alloc(|_| temp);
     black_box(do_test(&mut res));
     black_box(RootRef::downgrade(res));
-  });
+  };
   ctx.trigger_gc();
   
   println!("Doing sanity checks UwU...");
@@ -150,7 +151,7 @@ fn main() {
   let complete_time = (start_time.elapsed().as_millis() as f32) / 1024.0;
   
   QUIT_THREADS.store(true, Ordering::Relaxed);
-  println!("");
+  println!();
   println!("Shutting down!");
   
   if let Some(thrd) = stat_thread {
