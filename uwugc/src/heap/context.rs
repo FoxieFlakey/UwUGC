@@ -131,7 +131,7 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     // SAFETY: Type already statically checked by Rust
     // via this type's T and caller ensure safetyness
     // of making the reference
-    return unsafe { &*(self.get_raw_ptr_to_data().cast::<T>()) };
+    return unsafe { &*self.get_raw_ptr_to_data().cast::<T>() };
   }
   
   // SAFETY: The root reference may not be safe in face of
