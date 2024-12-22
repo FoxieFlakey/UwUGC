@@ -17,7 +17,6 @@ impl Descriptor {
   // to applicate descriptor for data pointed by raw pointer
   pub unsafe fn trace(&self, data: *const (), mut tracer: impl FnMut(&AtomicPtr<Object>)) {
     for field in &self.fields {
-      let field_ptr = data.byte_add(field.offset).cast::<AtomicPtr<Object>>();
       // SAFETY: The code which constructs this descriptor must give correct offsets
       //
       // in this program/library, it is ensured to be safe because the underlying type
@@ -25,7 +24,7 @@ impl Descriptor {
       // safety of this is responsibility of the implementor, and its impossible to pass
       // any constructed descriptor from safe code to create arbitrary potentially unsafe
       // descriptors for object allocations
-      tracer(unsafe { &*field_ptr });
+      tracer(unsafe { &*data.byte_add(field.offset).cast::<AtomicPtr<Object>>() });
     }
   }
 }
