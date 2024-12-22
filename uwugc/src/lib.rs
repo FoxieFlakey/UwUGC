@@ -8,7 +8,6 @@
 #![forbid(clippy::as_conversions)]
 #![forbid(unsafe_op_in_unsafe_fn)]
 
-#![allow(clippy::needless_return)]
 #![feature(box_as_ptr)]
 
 mod api;
