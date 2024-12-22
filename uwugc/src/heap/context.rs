@@ -72,7 +72,6 @@ impl DataWrapper {
   
   // SAFETY: Caller ensures that nothing can concurrently access the 
   // root set
-  #[allow(unsafe_op_in_unsafe_fn)]
   pub unsafe fn clear_root_set(&self) {
     // Make sure any newly added/removed root entry is visible
     atomic::fence(atomic::Ordering::Acquire);
