@@ -73,6 +73,7 @@ impl<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> Deref for
 }
 
 impl<'a, Restriction: RestrictType, T: ObjectLikeTrait> RootRef<'a, Restriction, Exclusive, T> {
+  #[must_use]
   pub fn downgrade(this: Self) -> RootRef<'a, Restriction, Shared, T> {
     // SAFETY: This is exclusive borrow and it is safe to downgrade
     // to shared

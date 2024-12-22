@@ -103,6 +103,7 @@ impl Heap {
     });
   }
   
+  #[must_use]
   pub fn create_context(&self) -> Context {
     let mut contexts = self.contexts.lock();
     let ctx = contexts.entry(thread::current().id())
