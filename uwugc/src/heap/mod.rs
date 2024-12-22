@@ -1,11 +1,12 @@
 use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, ops::Deref, sync::Arc, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
-use context::{Data, HeapContext};
+use context::Data;
+pub use context::{HeapContext, RootRefRaw, ObjectConstructorContext};
 
 use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
 
-pub mod context;
+mod context;
 
 // NOTE: This is considered public API
 // therefore be careful with breaking changes
