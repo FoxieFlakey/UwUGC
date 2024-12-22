@@ -13,9 +13,9 @@ pub struct Descriptor {
 }
 
 impl Descriptor {
-  // SAFETY: Caller must properly match the descriptor,
-  // to applicate descriptor for data pointed by raw pointer
-  pub unsafe fn trace(&self, data: *const (), mut tracer: impl FnMut(&AtomicPtr<Object>)) {
+  // Caller must properly match the descriptor to correct type so trace can
+  // correctly get pointer to fields
+  pub(crate) unsafe fn trace(&self, data: *const (), mut tracer: impl FnMut(&AtomicPtr<Object>)) {
     for field in &self.fields {
       // SAFETY: The code which constructs this descriptor must give correct offsets
       //
@@ -29,17 +29,19 @@ impl Descriptor {
   }
 }
 
-// The result will be shared by heaps
-// therefore has to live for 'static
-// because don't know how long those
-// heaps lives
-//
-// Unsafe because implementer has to
-// give correct Descriptor for a type
-// as incorrect descriptor cause unsafety
-// in GC during marking process as
-// Descriptor is only way GC knows how
-// to the read the data
+/// The result will be shared by heaps
+/// therefore has to live for 'static
+/// because don't know how long those
+/// heaps lives
+///
+/// # Safety
+///
+/// Unsafe because implementer has to
+/// give correct Descriptor for a type
+/// as incorrect descriptor cause unsafety
+/// in GC during marking process as
+/// Descriptor is only way GC knows how
+/// to the read the data
 pub unsafe trait Describeable {
   fn get_descriptor() -> Option<&'static Descriptor>;
 }
