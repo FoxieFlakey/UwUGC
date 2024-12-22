@@ -49,14 +49,14 @@ pub struct RootRef<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTr
 
 impl<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> RootRef<'a, Restriction, Kind, T> {
   pub(crate) unsafe fn new(inner: RootRefRaw<'a, T>) -> Self {
-    return Self {
+    Self {
       inner,
       _kind: PhantomData {}
     }
   }
   
   pub(crate) fn into_raw(this: Self) -> RootRefRaw<'a, T> {
-    return this.inner;
+    this.inner
   }
 }
 
@@ -68,7 +68,7 @@ impl<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> Deref for
     // and safety of not having another mutable reference
     // is ensure by API design of one way downgrade to shared
     // before it is sent to other thread
-    return unsafe { self.inner.borrow_inner() };
+    unsafe { self.inner.borrow_inner() }
   }
 }
 
@@ -77,7 +77,7 @@ impl<'a, Restriction: RestrictType, T: ObjectLikeTrait> RootRef<'a, Restriction,
   pub fn downgrade(this: Self) -> RootRef<'a, Restriction, Shared, T> {
     // SAFETY: This is exclusive borrow and it is safe to downgrade
     // to shared
-    return unsafe { RootRef::new(this.inner) };
+    unsafe { RootRef::new(this.inner) }
   }
 }
 
@@ -86,7 +86,7 @@ impl<'a, Restriction: RestrictType, T: ObjectLikeTrait> DerefMut for RootRef<'a,
     // SAFETY: Only exclusive root ref can be mutably
     // borrowed and API design ensure there no other
     // immutable borrows
-    return unsafe { self.inner.borrow_inner_mut() };
+    unsafe { self.inner.borrow_inner_mut() }
   }
 }
 

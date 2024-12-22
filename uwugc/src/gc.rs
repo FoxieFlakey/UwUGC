@@ -35,7 +35,7 @@ struct GCCommandStruct {
 struct ObjectPtrSend(*const Object);
 impl From<&Object> for ObjectPtrSend {
   fn from(value: &Object) -> Self {
-    return Self(ptr::from_ref(value));
+    Self(ptr::from_ref(value))
   }
 }
 
@@ -133,7 +133,7 @@ impl GCState {
     while submit_count > cmd_control.execute_count {
       self.inner_state.cmd_executed_event.wait(&mut cmd_control);
     }
-    return cmd_control;
+    cmd_control
   }
   
   fn call_gc(&self, cmd: GCCommand) {
@@ -232,7 +232,7 @@ impl GCState {
     unsafe {
       self.inner_state.remark_queue_sender.send(object.into()).unwrap_unchecked();
     }
-    return true;
+    true
   }
   
   pub fn new(params: GCParams, owner: Weak<HeapState>) -> GCState {
@@ -259,7 +259,7 @@ impl GCState {
     let private_data = GCThreadPrivate {
       remark_queue_receiver
     };
-    return GCState {
+    GCState {
       inner_state: inner_state.clone(),
       thread: Mutex::new(Some(thread::spawn(move || {
         let inner = inner_state;
@@ -296,13 +296,13 @@ impl GCState {
   }
   
   pub fn block_gc(&self) -> GCLockCookie {
-    return GCLockCookie {
+    GCLockCookie {
       _cookie: self.inner_state.gc_lock.read()
     }
   }
   
   pub fn block_mutators(&self) -> GCExclusiveLockCookie {
-    return GCExclusiveLockCookie {
+    GCExclusiveLockCookie {
       _cookie: self.inner_state.gc_lock.write()
     }
   }

@@ -45,7 +45,7 @@ impl Object {
     // it looked like &dyn Any can be casted to pointer to
     // T directly therefore can be casted to get untyped
     // pointer to underlying data T
-    return Box::as_ptr(&self.data).cast();
+    Box::as_ptr(&self.data).cast()
   }
   
   pub fn trace(&self, tracer: impl FnMut(&portable_atomic::AtomicPtr<Object>)) {
@@ -66,16 +66,16 @@ impl Object {
   // Return if object was unmark or marked
   pub fn set_mark_bit(&self, owner: &ObjectManager) -> bool {
     let marked_bit_value = owner.marked_bit_value.load(Ordering::Relaxed);
-    return self.marked.swap(marked_bit_value, Ordering::Relaxed) == marked_bit_value;
+    self.marked.swap(marked_bit_value, Ordering::Relaxed) == marked_bit_value
   }
   
   fn is_marked(&self, owner: &ObjectManager) -> bool {
     let mark_bit = self.marked.load(Ordering::Relaxed);
-    return mark_bit == owner.marked_bit_value.load(Ordering::Relaxed);
+    mark_bit == owner.marked_bit_value.load(Ordering::Relaxed)
   }
   
   fn compute_new_object_mark_bit(owner: &ObjectManager) -> bool {
-    return owner.new_object_mark_value.load(Ordering::Relaxed);
+    owner.new_object_mark_value.load(Ordering::Relaxed)
   }
 }
 
@@ -103,7 +103,7 @@ pub struct Sweeper<'a> {
 
 impl ObjectManager {
   pub fn new(max_size: usize) -> Self {
-    return Self {
+    Self {
       head: AtomicPtr::new(ptr::null_mut()),
       used_size: AtomicUsize::new(0),
       contexts: Mutex::new(HashMap::new()),
@@ -111,7 +111,7 @@ impl ObjectManager {
       marked_bit_value: AtomicBool::new(true),
       new_object_mark_value: AtomicBool::new(false),
       max_size
-    };
+    }
   }
   
   pub fn flip_marked_bit_value(&self) {
@@ -167,12 +167,12 @@ impl ObjectManager {
       .or_insert(Arc::new(LocalObjectsChain::new()))
       .clone();
     
-    return Handle::new(ctx, self);
+    Handle::new(ctx, self)
   }
   
   pub fn create_sweeper(&self, _mutator_lock_cookie: &mut GCExclusiveLockCookie) -> Sweeper {
     // SAFETY: Already got exclusive GC lock
-    return unsafe { self.create_sweeper_impl() };
+    unsafe { self.create_sweeper_impl() }
   }
   
   // Unsafe because this need that the ctx isnt modified concurrently
@@ -200,11 +200,11 @@ impl ObjectManager {
     };
     
     drop(sweeper_lock_guard);
-    return sweeper;
+    sweeper
   }
   
   pub fn get_usage(&self) -> usize {
-    return self.used_size.load(Ordering::Relaxed);
+    self.used_size.load(Ordering::Relaxed)
   }
 }
 

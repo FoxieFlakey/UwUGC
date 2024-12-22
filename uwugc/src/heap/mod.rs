@@ -56,7 +56,7 @@ impl RootEntry {
       
       // Make this entry's next to point to 'val'
       *self.next.get() = val;
-      return val;
+      val
     }
   }
 }
@@ -76,7 +76,7 @@ impl Deref for Heap {
   type Target = State;
   
   fn deref(&self) -> &Self::Target {
-    return &self.__real_inner_arced_heap_state;
+    &self.__real_inner_arced_heap_state
   }
 }
 
@@ -97,9 +97,10 @@ impl Heap {
     
     // Let GC run
     this.gc.unpause_gc();
-    return Arc::new(Heap {
+    
+    Arc::new(Heap {
       __real_inner_arced_heap_state: this
-    });
+    })
   }
   
   #[must_use]
@@ -108,7 +109,7 @@ impl Heap {
     let ctx = contexts.entry(thread::current().id())
       .or_insert_with(|| Arc::new(DataWrapper::new()));
     
-    return Context::new(self, self.object_manager.create_context(), ctx.clone());
+    Context::new(self, self.object_manager.create_context(), ctx.clone())
   }
 }
 
@@ -137,7 +138,7 @@ impl State {
   }
   
   pub fn get_usage(&self) -> usize {
-    return self.object_manager.get_usage();
+    self.object_manager.get_usage()
   }
 }
 

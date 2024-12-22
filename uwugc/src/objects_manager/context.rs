@@ -19,7 +19,7 @@ unsafe impl Send for LocalObjectsChain {}
 
 impl LocalObjectsChain {
   pub fn new() -> Self {
-    return Self {
+    Self {
       start: UnsafeCell::new(None),
       end: UnsafeCell::new(None)
     }
@@ -73,11 +73,11 @@ pub struct Handle<'a> {
 
 impl<'a> Handle<'a> {
   pub(super) fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager) -> Self {
-    return Self {
+    Self {
       owner,
       ctx,
       _phantom: PhantomData {}
-    };
+    }
   }
   
   pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie) -> Result<*mut Object, AllocError> {
@@ -129,7 +129,7 @@ impl<'a> Handle<'a> {
     
     // Make sure potential flush_to_global can see latest items
     atomic::fence(Ordering::Release);
-    return Ok(obj);
+    Ok(obj)
   }
 }
 

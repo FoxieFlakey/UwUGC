@@ -43,11 +43,11 @@ impl DataWrapper {
       *head.prev.get() = &*head;
     }
     
-    return Self {
+    Self {
       inner: UnsafeCell::new(Data {
         head
       })
-    };
+    }
   }
   
   // SAFETY: Caller ensures that thread managing the context does not
@@ -120,7 +120,7 @@ pub struct RootRefRaw<'a, T: ObjectLikeTrait> {
 
 impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
   fn get_raw_ptr_to_data(&self) -> *const () {
-    return self.get_object_borrow().get_raw_ptr_to_data();
+    self.get_object_borrow().get_raw_ptr_to_data()
   }
   
   // SAFETY: The root reference may not be safe in face of
@@ -129,7 +129,7 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     // SAFETY: Type already statically checked by Rust
     // via this type's T and caller ensure safetyness
     // of making the reference
-    return unsafe { &*self.get_raw_ptr_to_data().cast::<T>() };
+    unsafe { &*self.get_raw_ptr_to_data().cast::<T>() }
   }
   
   // SAFETY: The root reference may not be safe in face of
@@ -138,7 +138,7 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     // SAFETY: Type already statically checked by Rust
     // via this type's T and caller ensure safetyness
     // of making the reference
-    return unsafe { &mut *self.get_raw_ptr_to_data().cast_mut().cast::<T>() };
+    unsafe { &mut *self.get_raw_ptr_to_data().cast_mut().cast::<T>() }
   }
   
   pub fn get_object_borrow(&self) -> &Object {
@@ -148,7 +148,7 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     let root_entry = unsafe { &*self.entry_ref };
     // SAFETY: Objects accessible by this root reference guaranteed
     // to be alive by the GC
-    return unsafe { &*root_entry.obj };
+    unsafe { &*root_entry.obj }
   }
 }
 
@@ -199,16 +199,16 @@ impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
 
 impl<'a> Context<'a> {
   pub(super) fn new(owner: &'a Heap, obj_manager_ctx: objects_manager::Handle<'a>, ctx: Arc<DataWrapper>) -> Self {
-    return Self {
+    Self {
       ctx,
       owner,
       obj_manager_ctx,
       _phantom: PhantomData {}
-    };
+    }
   }
   
   pub fn get_heap(&self) -> &Heap {
-    return self.owner;
+    self.owner
   }
   
   pub fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie) -> RootRefRaw<'a, T> {
@@ -232,11 +232,11 @@ impl<'a> Context<'a> {
     // Release fence to allow newly added value to be
     // visible to the GC
     atomic::fence(atomic::Ordering::Release);
-    return RootRefRaw {
+    RootRefRaw {
       entry_ref: entry,
       _phantom: PhantomData {},
       _force_not_send_sync: PhantomData {}
-    };
+    }
   }
   
   pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, T> {
@@ -261,7 +261,7 @@ impl<'a> Context<'a> {
     
     let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
     // SAFETY: The object reference is exclusively owned by this thread
-    return unsafe { RootRef::new(root_ref) };
+    unsafe { RootRef::new(root_ref) }
   }
 }
 

@@ -12,7 +12,7 @@ pub struct GCRefRaw<T: ObjectLikeTrait> {
 
 impl<T: ObjectLikeTrait> GCRefRaw<T> {
   pub fn new(data: *const Object) -> Self {
-    return Self {
+    Self {
       ptr: AtomicPtr::new(data.cast_mut()),
       _phantom: PhantomData {}
     }
@@ -32,7 +32,7 @@ impl<T: ObjectLikeTrait> GCRefRaw<T> {
     let root_ref = ctx.new_root_ref_from_ptr(ptr, block_gc_cookie);
     let heap = ctx.get_heap();
     heap.gc.load_barrier(root_ref.get_object_borrow(), &heap.object_manager, block_gc_cookie);
-    return Some(root_ref);
+    Some(root_ref)
   }
 }
 
