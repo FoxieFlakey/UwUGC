@@ -1,4 +1,4 @@
-use std::{sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use std::{ptr, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use portable_atomic::AtomicBool;
 
@@ -35,7 +35,7 @@ struct GCCommandStruct {
 struct ObjectPtrSend(*const Object);
 impl From<&Object> for ObjectPtrSend {
   fn from(value: &Object) -> Self {
-    return Self(value as *const Object);
+    return Self(ptr::from_ref(value));
   }
 }
 
@@ -112,9 +112,7 @@ impl GCState {
       return;
     }
     
-    if *state_ref == GCRunState::Stopped {
-      panic!("GC is stopped (or in process of stopping)! Cannot change GC run state anymore");
-    }
+    assert!(*state_ref != GCRunState::Stopped, "GC is stopped (or in process of stopping)! Cannot change GC run state anymore");
     
     *state_ref = state;
     
@@ -130,8 +128,7 @@ impl GCState {
       .unwrap();
     
     let submit_count = submit_count
-      .or(Some(cmd_control.submit_count))
-      .unwrap();
+      .unwrap_or(cmd_control.submit_count);
     
     while submit_count > cmd_control.execute_count {
       self.inner_state.cmd_executed_event.wait(&mut cmd_control);
@@ -152,7 +149,7 @@ impl GCState {
       };
       
       if combine_command && current_cmd == cmd {
-        let _ = self.wait_for_gc(None, Some(cmd_control));
+        drop(self.wait_for_gc(None, Some(cmd_control)));
         return;
       }
     }
@@ -162,7 +159,7 @@ impl GCState {
     
     // There must not be any command in execution, GC replace it
     // with None after completing a command
-    assert_eq!(cmd_control.command.is_none(), true);
+    assert!(cmd_control.command.is_none());
     cmd_control.submit_count += 1;
     cmd_control.command = Some(cmd);
     
@@ -170,10 +167,10 @@ impl GCState {
     drop(self.wait_for_gc(Some(cmd_control.submit_count), Some(cmd_control)));
   }
   
-  fn process_command(gc_state: &Arc<GCInnerState>, heap: &HeapState, cmd_struct: GCCommandStruct, private: &GCThreadPrivate) {
+  fn process_command(gc_state: &Arc<GCInnerState>, heap: &HeapState, cmd_struct: &GCCommandStruct, private: &GCThreadPrivate) {
     match cmd_struct.command.unwrap() {
       GCCommand::RunGC => {
-        heap.gc_state.run_gc_internal(&heap, private);
+        heap.gc_state.run_gc_internal(heap, private);
       }
     }
     
@@ -202,15 +199,15 @@ impl GCState {
     // to send command, instead relying other
     // if statement and special conditions
     if cmd_control.command.is_none() {
-      Self::do_gc_heuristics(&inner, &heap, &mut cmd_control);
+      Self::do_gc_heuristics(inner, heap, &mut cmd_control);
     }
     
     let cmd_struct = cmd_control.clone();
     let cmd = cmd_control.command;
     drop(cmd_control);
     
-    if let Some(_) = cmd {
-      Self::process_command(&inner, &heap, cmd_struct, private);
+    if cmd.is_some() {
+      Self::process_command(inner, heap, &cmd_struct, private);
     }
   }
   
@@ -288,10 +285,7 @@ impl GCState {
           
           // If 'heap' can't be upgraded, that signals the GC thread
           // to shutdown, incase if Heap is dropped after run state check
-          let heap = match inner.owner.upgrade() {
-            Some(x) => x,
-            None => break
-          };
+          let Some(heap) = inner.owner.upgrade() else { break };
           Self::gc_poll(&inner, &heap, &private_data);
           thread::sleep(Duration::from_millis(sleep_delay_milisec));
         }
@@ -317,9 +311,9 @@ impl GCState {
     self.call_gc(GCCommand::RunGC);
   }
   
-  fn do_mark(&self, heap: &HeapState, obj: &Object) {
+  fn do_mark(heap: &HeapState, obj: &Object) {
     let mut queue = Vec::new();
-    queue.push(obj as *const Object);
+    queue.push(ptr::from_ref(obj));
     
     while let Some(obj) = queue.pop() {
       // SAFETY: It is reachable by GC and GC controls
@@ -358,7 +352,7 @@ impl GCState {
       let obj = unsafe { &*obj };
       
       // Mark it
-      self.do_mark(heap, obj);
+      Self::do_mark(heap, obj);
     }
     
     // Step 2 (STW): Final remark (to catchup with potentially missed objects)
@@ -382,7 +376,7 @@ impl GCState {
       obj.unset_mark_bit(&heap.object_manager);
       
       // Mark it
-      self.do_mark(heap, obj);
+      Self::do_mark(heap, obj);
     }
     drop(block_mutator_cookie);
     
