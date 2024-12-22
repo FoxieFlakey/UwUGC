@@ -5,6 +5,7 @@
 #![deny(clippy::complexity)]
 #![deny(clippy::style)]
 #![deny(clippy::as_underscore)]
+#![deny(clippy::as_conversions)]
 
 #![allow(clippy::missing_safety_doc)]
 #![allow(clippy::needless_return)]
