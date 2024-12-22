@@ -1,12 +1,13 @@
 use std::{cell::UnsafeCell, collections::HashMap, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
-use context::{ContextHandle, LocalObjectsChain};
+use context::LocalObjectsChain;
+pub use context::Handle;
 use portable_atomic::AtomicBool;
 
 use crate::{descriptor::Descriptor, gc::GCExclusiveLockCookie};
 
-pub mod context;
+mod context;
 
 // What the data type need to implement before it is
 // adequate for GC system to use
@@ -160,13 +161,13 @@ impl ObjectManager {
     self.used_size.fetch_sub(total_size, Ordering::Relaxed);
   }
   
-  pub fn create_context(&self) -> ContextHandle {
+  pub fn create_context(&self) -> Handle {
     let mut contexts = self.contexts.lock();
     let ctx = contexts.entry(thread::current().id())
       .or_insert(Arc::new(LocalObjectsChain::new()))
       .clone();
     
-    return ContextHandle::new(ctx, self);
+    return Handle::new(ctx, self);
   }
   
   pub fn create_sweeper(&self, _mutator_lock_cookie: &mut GCExclusiveLockCookie) -> Sweeper {

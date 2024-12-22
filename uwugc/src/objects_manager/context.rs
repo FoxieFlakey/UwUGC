@@ -43,8 +43,8 @@ impl LocalObjectsChain {
     
     // Nothing to flush
     if start.is_none() {
-      assert_eq!(start.is_none(), true);
-      assert_eq!(end.is_none(), true);
+      assert!(start.is_none());
+      assert!(end.is_none());
       return;
     }
     
@@ -63,7 +63,7 @@ impl LocalObjectsChain {
   }
 }
 
-pub struct ContextHandle<'a> {
+pub struct Handle<'a> {
   ctx: Arc<LocalObjectsChain>,
   owner: &'a ObjectManager,
   // Ensure that ContextHandle stays on same thread
@@ -71,7 +71,7 @@ pub struct ContextHandle<'a> {
   _phantom: PhantomData<*const ()>
 }
 
-impl<'a> ContextHandle<'a> {
+impl<'a> Handle<'a> {
   pub(super) fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager) -> Self {
     return Self {
       owner,
@@ -133,7 +133,7 @@ impl<'a> ContextHandle<'a> {
   }
 }
 
-impl Drop for ContextHandle<'_> {
+impl Drop for Handle<'_> {
   fn drop(&mut self) {
     let mut contexts = self.owner.contexts.lock();
     

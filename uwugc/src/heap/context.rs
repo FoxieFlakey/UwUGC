@@ -1,7 +1,7 @@
 use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
 use super::{Heap, RootEntry};
-use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{context::ContextHandle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::{Exclusive, RootRef, Sendable}};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Handle as ObjectManagerContextHandle, Object, ObjectLikeTrait}, root_refs::{Exclusive, RootRef, Sendable}};
 
 pub struct Data {
   head: Pin<Box<RootEntry>>
