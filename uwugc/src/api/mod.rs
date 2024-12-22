@@ -4,7 +4,7 @@ pub(crate) mod helper;
 
 use std::sync::Arc;
 
-use crate::heap::HeapContext;
+use crate::heap::Context as HeapContext;
 use crate::heap::Heap as HeapInternal;
 
 pub use crate::heap::Params;

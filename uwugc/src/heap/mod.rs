@@ -2,7 +2,7 @@ use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, ops::De
 use parking_lot::Mutex;
 
 use context::Data;
-pub use context::{HeapContext, RootRefRaw, ObjectConstructorContext};
+pub use context::{Context, RootRefRaw, ObjectConstructorContext};
 
 use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
 
@@ -103,12 +103,12 @@ impl Heap {
     });
   }
   
-  pub fn create_context(&self) -> HeapContext {
+  pub fn create_context(&self) -> Context {
     let mut contexts = self.contexts.lock();
     let ctx = contexts.entry(thread::current().id())
       .or_insert_with(|| Arc::new(Data::new()));
     
-    return HeapContext::new(self, self.object_manager.create_context(), ctx.clone());
+    return Context::new(self, self.object_manager.create_context(), ctx.clone());
   }
 }
 

@@ -105,7 +105,7 @@ impl Drop for Data {
   }
 }
 
-pub struct HeapContext<'a> {
+pub struct Context<'a> {
   ctx: Arc<Data>,
   obj_manager_ctx: ObjectManagerContextHandle<'a>,
   owner: &'a Heap,
@@ -199,7 +199,7 @@ impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
   }
 }
 
-impl<'a> HeapContext<'a> {
+impl<'a> Context<'a> {
   pub(super) fn new(owner: &'a Heap, obj_manager_ctx: ObjectManagerContextHandle<'a>, ctx: Arc<Data>) -> Self {
     return Self {
       ctx,
@@ -267,7 +267,7 @@ impl<'a> HeapContext<'a> {
   }
 }
 
-impl Drop for HeapContext<'_> {
+impl Drop for Context<'_> {
   fn drop(&mut self) {
     // Remove context belonging to current thread
     self.owner.contexts.lock().remove(&thread::current().id());
