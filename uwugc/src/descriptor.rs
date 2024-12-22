@@ -52,6 +52,7 @@ pub unsafe trait Describeable {
 macro_rules! impl_for_trait {
   ($trait_name:ident) => {
     unsafe impl<T: $trait_name> Describeable for T {
+      #[inline]
       fn get_descriptor() -> Option<&'static Descriptor> {
         None
       }
