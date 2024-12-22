@@ -1,0 +1,3 @@
+[submodule "parking_lot"]
+	path = parking_lot
+	url = git@github.com:FoxieFlakey/parking_lot_miri_safe.git

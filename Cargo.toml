@@ -1,7 +1,8 @@
 [workspace]
 members = [
   "uwugc",
-  "uwugc-test"
+  "uwugc-test",
+  "parking_lot"
 ]
 resolver = "2"
 
