@@ -234,9 +234,9 @@ impl Sweeper<'_> {
       
       // SAFETY: 'current' is valid because its leaked
       if unsafe { !(*current_ptr).is_marked(self.owner) } {
-        // *const can be safely converted to *mut as unmarked object
+        // SAFETY: *const can be safely converted to *mut as unmarked object
         // mean mutator has no way accesing it
-        self.owner.dealloc(current_ptr.cast());
+        unsafe { self.owner.dealloc(current_ptr.cast()) };
         continue;
       }
       
@@ -250,7 +250,7 @@ impl Sweeper<'_> {
       } else {
         // Append current object to list of live objects
         // SAFETY: Sweeper "owns" the individual object's 'next' field
-        *current.next.get() = live_objects;
+        unsafe { *current.next.get() = live_objects };
         live_objects = current_ptr;
       }
     }
