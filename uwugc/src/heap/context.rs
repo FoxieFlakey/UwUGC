@@ -7,14 +7,14 @@ pub struct ContextInner {
   head: Pin<Box<RootEntry>>
 }
 
-pub struct Context {
+pub struct Data {
   inner: UnsafeCell<ContextInner>
 }
 
 // SAFETY: Manually enforces safety of concurrently accessing it
 // by GC lock, and GC is only the other thread which reads this
 // while the owning thread is the only writer
-unsafe impl Sync for Context {}
+unsafe impl Sync for Data {}
 
 // This type exists so that any API can enforce that
 // it is being constructed/called inside a special context which
@@ -25,7 +25,7 @@ pub struct ObjectConstructorContext {
   _private: ()
 }
 
-impl Context {
+impl Data {
   pub fn new() -> Self {
     let head = Box::pin(RootEntry {
       gc_state: ptr::null_mut(),
@@ -97,7 +97,7 @@ impl Context {
   }
 }
 
-impl Drop for Context {
+impl Drop for Data {
   fn drop(&mut self) {
     // Current thread is last one with reference to this context
     // therefore its safe to clear it (to deallocate the root entries)
@@ -105,8 +105,8 @@ impl Drop for Context {
   }
 }
 
-pub struct ContextHandle<'a> {
-  ctx: Arc<Context>,
+pub struct HeapContext<'a> {
+  ctx: Arc<Data>,
   obj_manager_ctx: ObjectManagerContextHandle<'a>,
   owner: &'a Heap,
   // ContextHandle will only stays at current thread
@@ -131,7 +131,7 @@ impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
     // SAFETY: Type already statically checked by Rust
     // via this type's T and caller ensure safetyness
     // of making the reference
-    return unsafe { &*(self.get_raw_ptr_to_data() as *const T) };
+    return unsafe { &*(self.get_raw_ptr_to_data().cast::<T>()) };
   }
   
   // SAFETY: The root reference may not be safe in face of
@@ -177,7 +177,7 @@ impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
     // to access root set
     unsafe {
       *next_ref.prev.get() = prev_ref;
-      *prev_ref.next.get() = next_ref
+      *prev_ref.next.get() = next_ref;
     };
     
     // Let GC run again and Release fence to allow GC to see
@@ -195,12 +195,12 @@ impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
     // Drop the "root_entry" itself as its unused now
     // SAFETY: Nothing reference it anymore so it is safe
     // to be dropped and casted to *mut pointer
-    let _ = unsafe { Box::from_raw(self.entry_ref as *mut RootEntry) };
+    let _ = unsafe { Box::from_raw(self.entry_ref.cast_mut()) };
   }
 }
 
-impl<'a> ContextHandle<'a> {
-  pub(super) fn new(owner: &'a Heap, obj_manager_ctx: ObjectManagerContextHandle<'a>, ctx: Arc<Context>) -> Self {
+impl<'a> HeapContext<'a> {
+  pub(super) fn new(owner: &'a Heap, obj_manager_ctx: ObjectManagerContextHandle<'a>, ctx: Arc<Data>) -> Self {
     return Self {
       ctx,
       owner,
@@ -210,7 +210,7 @@ impl<'a> ContextHandle<'a> {
   }
   
   pub fn get_heap(&self) -> &Heap {
-    return &self.owner;
+    return self.owner;
   }
   
   pub fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie) -> RootRefRaw<'a, T> {
@@ -258,9 +258,7 @@ impl<'a> ContextHandle<'a> {
       gc_lock_cookie = self.owner.gc.block_gc();
       
       obj = self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie);
-      if obj.is_err() {
-        panic!("Heap run out of memory!");
-      }
+      assert!(obj.is_ok(), "Heap run out of memory!");
     }
     
     let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
@@ -269,7 +267,7 @@ impl<'a> ContextHandle<'a> {
   }
 }
 
-impl Drop for ContextHandle<'_> {
+impl Drop for HeapContext<'_> {
   fn drop(&mut self) {
     // Remove context belonging to current thread
     self.owner.contexts.lock().remove(&thread::current().id());

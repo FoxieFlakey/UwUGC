@@ -4,7 +4,7 @@ pub(crate) mod helper;
 
 use std::sync::Arc;
 
-use crate::heap::context::ContextHandle as HeapContextHandle;
+use crate::heap::context::HeapContext;
 use crate::heap::Heap as HeapInternal;
 
 pub use crate::heap::Params;
@@ -21,7 +21,7 @@ pub use gc_box::GCBox;
 helper::export_type_as_wrapper!(HeapArc, Arc<HeapInternal>);
 mod heap;
 
-helper::export_type_as_wrapper!('a, Context, HeapContextHandle<'a>);
+helper::export_type_as_wrapper!('a, Context, HeapContext<'a>);
 mod context;
 
 

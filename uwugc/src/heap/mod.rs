@@ -1,7 +1,7 @@
 use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, ops::Deref, sync::Arc, thread::{self, ThreadId}};
 use parking_lot::Mutex;
 
-use context::{Context, ContextHandle};
+use context::{Data, HeapContext};
 
 use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
 
@@ -63,7 +63,7 @@ impl RootEntry {
 
 pub struct State {
   pub object_manager: ObjectManager,
-  pub contexts: Mutex<HashMap<ThreadId, Arc<Context>>>,
+  pub contexts: Mutex<HashMap<ThreadId, Arc<Data>>>,
   
   pub gc: GCState
 }
@@ -102,12 +102,12 @@ impl Heap {
     });
   }
   
-  pub fn create_context(&self) -> ContextHandle {
+  pub fn create_context(&self) -> HeapContext {
     let mut contexts = self.contexts.lock();
     let ctx = contexts.entry(thread::current().id())
-      .or_insert_with(|| Arc::new(Context::new()));
+      .or_insert_with(|| Arc::new(Data::new()));
     
-    return ContextHandle::new(self, self.object_manager.create_context(), ctx.clone());
+    return HeapContext::new(self, self.object_manager.create_context(), ctx.clone());
   }
 }
 
