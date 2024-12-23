@@ -1,7 +1,7 @@
 #![allow(clippy::needless_return)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::{hint::black_box, io::{self, Write}, mem::offset_of, sync::{atomic::Ordering, Arc, LazyLock}, thread::{self, JoinHandle}, time::{Duration, Instant}};
+use std::{hint::black_box, io::{self, Write}, mem::offset_of, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
 use std::sync::atomic::AtomicBool;
 use data_collector::DataCollector;
@@ -96,11 +96,13 @@ fn main() {
     child: GCBox<Child>
   }
   
-  static PARENT_DESCRIPTOR: LazyLock<Descriptor> = LazyLock::new(|| Descriptor {
-    fields: vec![
-      Field { offset: offset_of!(Parent, child) }
-    ]
-  });
+  static PARENT_FIELDS: [Field; 1] = [
+    Field { offset: offset_of!(Parent, child) }
+  ];
+  
+  static PARENT_DESCRIPTOR: Descriptor = Descriptor {
+    fields: &PARENT_FIELDS
+  };
   
   unsafe impl Describeable for Parent {
     fn get_descriptor() -> Option<&'static Descriptor> {
