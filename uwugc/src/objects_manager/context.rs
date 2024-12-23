@@ -2,7 +2,7 @@ use std::{any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr, sync::{atomic
 
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, Descriptor};
 
 use super::{AllocError, ObjectManager};
 
@@ -80,7 +80,7 @@ impl<'a> Handle<'a> {
     }
   }
   
-  pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie) -> Result<*mut Object, AllocError> {
+  unsafe fn try_alloc_unchecked<T: ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie, descriptor_ptr: Option<*const Descriptor>) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
     let total_size = size_of::<Object>() + size_of::<T>();
     let mut current_usage = manager.used_size.load(Ordering::Relaxed);
@@ -96,22 +96,6 @@ impl<'a> Handle<'a> {
       }
     }
     
-    let mut desc_cache = self.owner.descriptor_cache.upgradable_read();
-    let id = TypeId::of::<T>();
-    let descriptor_ptr;
-    if let Some(x) = desc_cache.get(&id) {
-      // The descriptor is cached, lets get pointer to it
-      descriptor_ptr = ptr::from_ref(x);
-    } else {
-      // If not present in cache, try insert into it with upgraded rwlock
-      descriptor_ptr = desc_cache.with_upgraded(|desc_cache| {
-        ptr::from_ref(
-          desc_cache.entry(id)
-          .or_insert(T::get_descriptor())
-        )
-      });
-    }
-    
     // Leak it and we'll handle it here
     let obj = Box::leak(Box::new(Object {
       data: Box::new(func()),
@@ -121,7 +105,7 @@ impl<'a> Handle<'a> {
       // before the descriptor_cache is dropped therefore it is safe to do this
       // and entries will never be removed after added to it, therefore as far as
       // the object concerned the lifetime of descriptor always outlives it 
-      descriptor: Some(unsafe { &*descriptor_ptr }),
+      descriptor: descriptor_ptr.map(|x| unsafe { &*x }),
       total_size
     }));
     
@@ -150,6 +134,28 @@ impl<'a> Handle<'a> {
     // Make sure potential flush_to_global can see latest items
     atomic::fence(Ordering::Release);
     Ok(obj)
+  }
+  
+  pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, gc_lock_cookie: &mut GCLockCookie) -> Result<*mut Object, AllocError> {
+    let mut desc_cache = self.owner.descriptor_cache.upgradable_read();
+    let id = TypeId::of::<T>();
+    
+    let descriptor_ptr;
+    if let Some(x) = desc_cache.get(&id) {
+      // The descriptor is cached, lets get pointer to it
+      descriptor_ptr = ptr::from_ref(x);
+    } else {
+      // If not present in cache, try insert into it with upgraded rwlock
+      descriptor_ptr = desc_cache.with_upgraded(|desc_cache| {
+        ptr::from_ref(
+          desc_cache.entry(id)
+          .or_insert(T::get_descriptor())
+        )
+      });
+    }
+    
+    // SAFETY: Already make sure that the descriptor is correct
+    unsafe { self.try_alloc_unchecked(func, gc_lock_cookie, Some(descriptor_ptr)) }
   }
 }
 
