@@ -47,7 +47,7 @@ impl Descriptor {
 /// Descriptor is only way GC knows how
 /// to the read the data
 pub unsafe trait Describeable {
-  fn get_descriptor() -> Option<&'static Descriptor>;
+  fn get_descriptor() -> Descriptor;
 }
 
 // Few explicit blanket implementations
@@ -57,8 +57,11 @@ macro_rules! impl_for_trait {
   ($trait_name:ident) => {
     unsafe impl<T: $trait_name> Describeable for T {
       #[inline]
-      fn get_descriptor() -> Option<&'static Descriptor> {
-        None
+      fn get_descriptor() -> Descriptor {
+        Descriptor {
+          fields: None,
+          layout: Layout::new::<T>()
+        }
       }
     }
   };

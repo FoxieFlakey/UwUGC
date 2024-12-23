@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::PhantomData, ptr, sync::{atomic::{self, Ordering}, Arc}, thread};
+use std::{any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr, sync::{atomic::{self, Ordering}, Arc}, thread};
 
 use portable_atomic::AtomicBool;
 
@@ -96,12 +96,32 @@ impl<'a> Handle<'a> {
       }
     }
     
+    let mut desc_cache = self.owner.descriptor_cache.upgradable_read();
+    let id = TypeId::of::<T>();
+    let descriptor_ptr;
+    if let Some(x) = desc_cache.get(&id) {
+      // The descriptor is cached, lets get pointer to it
+      descriptor_ptr = ptr::from_ref(x);
+    } else {
+      // If not present in cache, try insert into it with upgraded rwlock
+      descriptor_ptr = desc_cache.with_upgraded(|desc_cache| {
+        ptr::from_ref(
+          desc_cache.entry(id)
+          .or_insert(T::get_descriptor())
+        )
+      });
+    }
+    
     // Leak it and we'll handle it here
     let obj = Box::leak(Box::new(Object {
       data: Box::new(func()),
       marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
       next: UnsafeCell::new(ptr::null_mut()),
-      descriptor: T::get_descriptor(),
+      // SAFETY: All objects are deallocated first in ObjectManager's drop impl
+      // before the descriptor_cache is dropped therefore it is safe to do this
+      // and entries will never be removed after added to it, therefore as far as
+      // the object concerned the lifetime of descriptor always outlives it 
+      descriptor: Some(unsafe { &*descriptor_ptr }),
       total_size
     }));
     

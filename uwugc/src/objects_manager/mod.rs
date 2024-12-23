@@ -1,5 +1,5 @@
-use std::{cell::UnsafeCell, collections::HashMap, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
-use parking_lot::Mutex;
+use std::{any::TypeId, cell::UnsafeCell, collections::HashMap, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use parking_lot::{Mutex, RwLock};
 
 use context::LocalObjectsChain;
 pub use context::Handle;
@@ -75,6 +75,7 @@ pub struct ObjectManager {
   used_size: AtomicUsize,
   contexts: Mutex<HashMap<ThreadId, Arc<LocalObjectsChain>>>,
   max_size: usize,
+  descriptor_cache: RwLock<HashMap<TypeId, Descriptor>>,
   
   // Used to prevent concurrent creation of sweeper, as at the
   // moment two invocation of it going to fight with each other
@@ -101,6 +102,7 @@ impl ObjectManager {
       sweeper_protect_mutex: Mutex::new(()),
       marked_bit_value: AtomicBool::new(true),
       new_object_mark_value: AtomicBool::new(false),
+      descriptor_cache: RwLock::new(HashMap::new()),
       max_size
     }
   }

@@ -86,8 +86,11 @@ fn main() {
   }
   
   unsafe impl Describeable for Child {
-    fn get_descriptor() -> Option<&'static Descriptor> {
-      return None;
+    fn get_descriptor() -> Descriptor {
+      return Descriptor {
+        fields: None,
+        layout: Layout::new::<Child>()
+      };
     }
   }
   
@@ -100,14 +103,12 @@ fn main() {
     Field { offset: offset_of!(Parent, child) }
   ];
   
-  static PARENT_DESCRIPTOR: Descriptor = Descriptor {
-    fields: Some(&PARENT_FIELDS),
-    layout: Layout::new::<Parent>()
-  };
-  
   unsafe impl Describeable for Parent {
-    fn get_descriptor() -> Option<&'static Descriptor> {
-      return Some(&PARENT_DESCRIPTOR);
+    fn get_descriptor() -> Descriptor {
+      return Descriptor {
+        fields: Some(&PARENT_FIELDS),
+        layout: Layout::new::<Parent>()
+      };
     }
   }
   
