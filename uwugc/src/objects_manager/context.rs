@@ -104,8 +104,7 @@ impl<'a> Handle<'a> {
       data: Box::new(func()),
       marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
       next: UnsafeCell::new(ptr::null_mut()),
-      descriptor: Some(descriptor),
-      total_size
+      descriptor: Some(descriptor)
     }));
     
     // Ensure changes made previously by potential flush_to_global

@@ -17,7 +17,6 @@ pub struct Object {
   // WARNING: Do not rely on this, always use is_marked
   // function, the 'marked' meaning on this always changes
   marked: AtomicBool,
-  total_size: usize,
   descriptor: Option<&'static Descriptor>,
   
   // Data can only contain owned structs
@@ -67,6 +66,10 @@ impl Object {
   
   fn compute_new_object_mark_bit(owner: &ObjectManager) -> bool {
     owner.new_object_mark_value.load(Ordering::Relaxed)
+  }
+  
+  fn get_total_size(&self) -> usize {
+    self.descriptor.unwrap().layout.size()
   }
 }
 
@@ -146,7 +149,7 @@ impl ObjectManager {
   unsafe fn dealloc(&self, obj: *mut Object) {
     // SAFETY: Caller already ensure 'obj' is valid pointer
     let obj = unsafe { &mut *obj };
-    let total_size = obj.total_size;
+    let total_size = obj.get_total_size();
     
     // SAFETY: Caller ensured that 'obj' pointer is only user left
     // and safe to be deallocated
