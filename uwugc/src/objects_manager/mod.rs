@@ -206,10 +206,7 @@ impl ObjectManager {
 
 impl Drop for ObjectManager {
   fn drop(&mut self) {
-    // SAFETY: Rust lifetime limit on the Context and lifetime on
-    // allocated object reference ensures that any ObjectRef does
-    // not live longer than ObjectManager, therefore its safe
-    unsafe { self.create_sweeper_impl().sweep_and_reset_mark_flag() };
+    assert!(self.get_usage() == 0, "GC did not free everything during shutdown!");
   }
 }
 

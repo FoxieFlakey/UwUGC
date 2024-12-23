@@ -1,4 +1,4 @@
-use std::{ptr, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use std::{cell::LazyCell, ptr, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use portable_atomic::AtomicBool;
 
@@ -170,7 +170,7 @@ impl GCState {
   fn process_command(gc_state: &Arc<GCInnerState>, heap: &HeapState, cmd_struct: &GCCommandStruct, private: &GCThreadPrivate) {
     match cmd_struct.command.unwrap() {
       GCCommand::RunGC => {
-        heap.gc.run_gc_internal(heap, private);
+        heap.gc.run_gc_internal(heap, false, private);
       }
     }
     
@@ -264,6 +264,7 @@ impl GCState {
       thread: Mutex::new(Some(thread::spawn(move || {
         let inner = inner_state;
         let sleep_delay_milisec = 1000 / inner.params.poll_rate;
+        let heap = LazyCell::new(|| inner.owner.upgrade().unwrap());
         
         'poll_loop: loop {
           // Check GC run state
@@ -283,14 +284,18 @@ impl GCState {
           }
           drop(run_state);
           
-          // If 'heap' can't be upgraded, that signals the GC thread
-          // to shutdown, incase if Heap is dropped after run state check
-          let Some(heap) = inner.owner.upgrade() else { break };
+          // When resumed for first time try get Arc<HeapState> from
+          // Weak<HeapState>, GC started as paused because if GC immediately
+          // resumes there some part of heap state isn't initialized yet
+          LazyCell::force(&heap);
+          
           Self::gc_poll(&inner, &heap, &private_data);
           thread::sleep(Duration::from_millis(sleep_delay_milisec));
         }
         
         println!("Shutting down GC");
+        heap.gc.run_gc_internal(&heap, true, &private_data);
+        println!("Quitting GC");
       })))
     }
   }
@@ -330,13 +335,16 @@ impl GCState {
     }
   }
   
-  fn run_gc_internal(&self, heap: &HeapState, private: &GCThreadPrivate) {
+  fn run_gc_internal(&self, heap: &HeapState, is_shutting_down: bool, private: &GCThreadPrivate) {
     // Step 1 (STW): Take root snapshot and take objects in heap snapshot
     let mut block_mutator_cookie = self.block_mutators();
     
     let mut root_snapshot = Vec::new();
-    // SAFETY: Just blocked the mutators
-    unsafe { heap.take_root_snapshot_unlocked(&mut root_snapshot) };
+    // During shutdown do not trace mutator's root so GC can free everything else
+    if !is_shutting_down {
+      // SAFETY: Just blocked the mutators
+      unsafe { heap.take_root_snapshot_unlocked(&mut root_snapshot) };
+    }
     let sweeper = heap.object_manager.create_sweeper(&mut block_mutator_cookie);
     
     // Step 1.1: Flip the new marked bit value, so that mutator by default
