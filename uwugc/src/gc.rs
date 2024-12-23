@@ -223,7 +223,7 @@ impl GCState {
     self.set_gc_run_state(GCRunState::Running);
   }
   
-  pub fn load_barrier(&self, object: &Object, obj_manager: &ObjectManager, _block_gc_cookie: &mut GCLockCookie) -> bool {
+  pub fn load_barrier(&self, object: &Object, obj_manager: &ObjectManager, _block_gc_cookie: &GCLockCookie) -> bool {
     // Load barrier is deactivated
     if !self.inner_state.activate_load_barrier.load(Ordering::Relaxed) {
       return false;
