@@ -2,7 +2,7 @@ use std::{marker::PhantomData, ptr, sync::atomic::Ordering};
 
 use portable_atomic::AtomicPtr;
 
-use crate::{gc::GCLockCookie, heap::{Context, RootRefRaw}, objects_manager::{Object, ObjectLikeTrait}};
+use crate::{gc::GCLockCookie, heap::{Context, RootRefRaw}, objects_manager::Object, ObjectLikeTrait};
 
 #[repr(transparent)]
 pub struct GCRefRaw<T: ObjectLikeTrait> {

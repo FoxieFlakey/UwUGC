@@ -10,7 +10,6 @@ use crate::heap::Heap as HeapInternal;
 pub use crate::heap::Params;
 pub use crate::gc::GCParams;
 pub use crate::descriptor::{Describeable, Descriptor, Field};
-pub use crate::objects_manager::ObjectLikeTrait;
 pub use crate::heap::ConstructorScope;
 
 pub mod root_refs;
@@ -24,5 +23,12 @@ mod heap;
 helper::export_type_as_wrapper!('a, Context, HeapContext<'a>);
 mod context;
 
+// What the data type need to implement before it is
+// adequate for GC system to use
+pub trait ObjectLikeTrait: 'static {
+}
+
+impl<T: 'static> ObjectLikeTrait for T {
+}
 
 

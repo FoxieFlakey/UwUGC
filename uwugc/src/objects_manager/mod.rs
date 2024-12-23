@@ -5,18 +5,9 @@ use context::LocalObjectsChain;
 pub use context::Handle;
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::Descriptor, gc::GCExclusiveLockCookie};
+use crate::{descriptor::Descriptor, gc::GCExclusiveLockCookie, ObjectLikeTrait};
 
 mod context;
-
-// What the data type need to implement before it is
-// adequate for GC system to use
-// NOTE: This type is considered to be part of public API
-pub trait ObjectLikeTrait: 'static {
-}
-
-impl<T: 'static> ObjectLikeTrait for T {
-}
 
 #[derive(Debug)]
 pub struct AllocError;

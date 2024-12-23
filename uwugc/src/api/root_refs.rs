@@ -6,7 +6,7 @@ use std::ops::{Deref, DerefMut};
 
 use sealed::sealed;
 
-use crate::objects_manager::ObjectLikeTrait;
+use crate::api::ObjectLikeTrait;
 use crate::heap::RootRefRaw;
 
 // NOTE: This type is considered to be part of public API
