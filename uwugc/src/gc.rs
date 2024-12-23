@@ -320,7 +320,10 @@ impl GCState {
       // the lifetime of it, so if it reachs here, then
       // its guaranteed to be alive
       let obj = unsafe { &*obj };
-      obj.set_mark_bit(&heap.object_manager);
+      if obj.set_mark_bit(&heap.object_manager) {
+        // The object is already marked, don't trace it anymore
+        continue;
+      }
       obj.trace(|reference| {
         queue.push(reference.load(Ordering::Relaxed));
       });
