@@ -85,19 +85,15 @@ impl<'a> Handle<'a> {
   // uses it but caller may 'kill' it if there no living objects using it anymore
   unsafe fn try_alloc_unchecked<T: ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie, descriptor: &'static Descriptor) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
-    let total_size = size_of::<Object>() + descriptor.layout.size();
-    let mut current_usage = manager.used_size.load(Ordering::Relaxed);
-    loop {
-      let new_size = current_usage + total_size;
-      if new_size >= manager.max_size {
-        return Err(AllocError);
-      }
+    manager.used_size.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
+      x += size_of::<Object>() + descriptor.layout.size();
       
-      match manager.used_size.compare_exchange_weak(current_usage, new_size, Ordering::Relaxed, Ordering::Relaxed) {
-        Ok(_) => break,
-        Err(x) => current_usage = x
+      if x <= self.owner.max_size {
+        Some(x)
+      } else {
+        None
       }
-    }
+    }).map_err(|_| AllocError)?;
     
     // Leak it and we'll handle it here
     let obj = Box::leak(Box::new(Object {
