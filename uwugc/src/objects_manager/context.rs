@@ -80,9 +80,12 @@ impl<'a> Handle<'a> {
     }
   }
   
-  unsafe fn try_alloc_unchecked<T: ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie, descriptor_ptr: Option<*const Descriptor>) -> Result<*mut Object, AllocError> {
+  // SAFETY: 
+  // Caller has to ensure 'descriptor' live longer than all objects that currently
+  // uses it but caller may 'kill' it if there no living objects using it anymore
+  unsafe fn try_alloc_unchecked<T: ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie, descriptor: &'static Descriptor) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
-    let total_size = size_of::<Object>() + size_of::<T>();
+    let total_size = size_of::<Object>() + descriptor.layout.size();
     let mut current_usage = manager.used_size.load(Ordering::Relaxed);
     loop {
       let new_size = current_usage + total_size;
@@ -101,11 +104,7 @@ impl<'a> Handle<'a> {
       data: Box::new(func()),
       marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
       next: UnsafeCell::new(ptr::null_mut()),
-      // SAFETY: All objects are deallocated first in ObjectManager's drop impl
-      // before the descriptor_cache is dropped therefore it is safe to do this
-      // and entries will never be removed after added to it, therefore as far as
-      // the object concerned the lifetime of descriptor always outlives it 
-      descriptor: descriptor_ptr.map(|x| unsafe { &*x }),
+      descriptor: Some(descriptor),
       total_size
     }));
     
@@ -154,8 +153,14 @@ impl<'a> Handle<'a> {
       });
     }
     
+    // SAFETY: All objects are deallocated first in ObjectManager's drop impl
+    // before the descriptor_cache is dropped therefore it is safe to do this
+    // and entries will never be removed after added to it, therefore as far as
+    // the object concerned the lifetime of descriptor always outlives it 
+    let descriptor = unsafe { &*descriptor_ptr };
+    
     // SAFETY: Already make sure that the descriptor is correct
-    unsafe { self.try_alloc_unchecked(func, gc_lock_cookie, Some(descriptor_ptr)) }
+    unsafe { self.try_alloc_unchecked(func, gc_lock_cookie, descriptor) }
   }
 }
 
