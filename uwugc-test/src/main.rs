@@ -132,7 +132,7 @@ fn main() {
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
   let temp = [198; 1024];
-  for _ in 1..5 {
+  for _ in 1..200_000 {
     let mut res = ctx.alloc(|_| temp);
     black_box(do_test(&mut res));
     black_box(RootRef::downgrade(res));
