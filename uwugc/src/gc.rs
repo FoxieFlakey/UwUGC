@@ -69,7 +69,15 @@ pub struct GCState {
 }
 
 pub struct GCLockCookie<'a> {
+  owner: &'a GCState,
   _cookie: RwLockReadGuard<'a, ()>
+}
+
+impl GCLockCookie<'_> {
+  #[expect(dead_code)]
+  pub fn get_gc(&self) -> &GCState {
+    self.owner
+  }
 }
 
 pub struct GCExclusiveLockCookie<'a> {
@@ -302,6 +310,7 @@ impl GCState {
   
   pub fn block_gc(&self) -> GCLockCookie {
     GCLockCookie {
+      owner: self,
       _cookie: self.inner_state.gc_lock.read()
     }
   }
