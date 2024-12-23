@@ -15,8 +15,8 @@ const MAX_SIZE: usize = 512 * 1024 * 1024;
 const POLL_RATE: u64 = 20;
 const TRIGGER_SIZE: usize = 64 * 1024 * 1024;
 
-#[cfg(not(miri))]
-mod non_miri;
+// #[cfg(not(miri))]
+// mod non_miri;
 
 fn start_stat_thread(heap: HeapArc, stat_collector: Arc<DataCollector<HeapStatRecord>>) -> JoinHandle<()> {
   return thread::spawn(move || {
@@ -50,8 +50,8 @@ fn do_test<const LENGTH: usize>(input: &mut [i32; LENGTH]) -> &mut [i32; LENGTH]
 
 fn main() {
   println!("Hello, world!");
-  #[cfg(not(miri))]
-  non_miri::prepare_mimalloc();
+  // #[cfg(not(miri))]
+  // non_miri::prepare_mimalloc();
   
   let heap = HeapArc::new(Params {
     gc_params: GCParams {
