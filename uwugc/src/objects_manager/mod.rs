@@ -223,7 +223,11 @@ impl Sweeper<'_> {
       let current_ptr = next_ptr;
       
       // SAFETY: Sweeper "owns" the individual object's 'next' field
-      next_ptr = unsafe { *(*current_ptr).next.get() };
+      unsafe {
+        // Get pointer to next, and disconnect current object from chain
+        next_ptr = *(*current_ptr).next.get();
+        *(*current_ptr).next.get() = ptr::null_mut();
+      }
       
       // SAFETY: 'current' is valid because its leaked
       if unsafe { !(*current_ptr).is_marked(self.owner) } {
