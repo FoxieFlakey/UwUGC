@@ -101,7 +101,7 @@ fn main() {
   ];
   
   static PARENT_DESCRIPTOR: Descriptor = Descriptor {
-    fields: &PARENT_FIELDS,
+    fields: Some(&PARENT_FIELDS),
     layout: Layout::new::<Parent>()
   };
   

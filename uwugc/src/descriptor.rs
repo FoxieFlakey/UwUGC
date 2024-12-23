@@ -11,7 +11,7 @@ pub struct Field {
 }
 
 pub struct Descriptor {
-  pub fields: &'static [Field],
+  pub fields: Option<&'static [Field]>,
   pub layout: Layout
 }
 
@@ -19,7 +19,8 @@ impl Descriptor {
   // Caller must properly match the descriptor to correct type so trace can
   // correctly get pointer to fields
   pub(crate) unsafe fn trace(&self, data: *const (), mut tracer: impl FnMut(&AtomicPtr<Object>)) {
-    for field in self.fields {
+    let Some(fields) = self.fields else { return };
+    for field in fields {
       // SAFETY: The code which constructs this descriptor must give correct offsets
       //
       // in this program/library, it is ensured to be safe because the underlying type
