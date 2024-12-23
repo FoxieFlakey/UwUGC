@@ -1,5 +1,7 @@
 // NOTE: Everything in this file is considered to be part of public API
 
+use std::alloc::Layout;
+
 use portable_atomic::AtomicPtr;
 
 use crate::objects_manager::Object;
@@ -9,7 +11,8 @@ pub struct Field {
 }
 
 pub struct Descriptor {
-  pub fields: &'static [Field]
+  pub fields: &'static [Field],
+  pub layout: Layout
 }
 
 impl Descriptor {

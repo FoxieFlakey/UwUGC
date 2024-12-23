@@ -1,7 +1,7 @@
 #![allow(clippy::needless_return)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::{hint::black_box, io::{self, Write}, mem::offset_of, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
+use std::{alloc::Layout, hint::black_box, io::{self, Write}, mem::offset_of, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
 use std::sync::atomic::AtomicBool;
 use data_collector::DataCollector;
@@ -101,7 +101,8 @@ fn main() {
   ];
   
   static PARENT_DESCRIPTOR: Descriptor = Descriptor {
-    fields: &PARENT_FIELDS
+    fields: &PARENT_FIELDS,
+    layout: Layout::new::<Parent>()
   };
   
   unsafe impl Describeable for Parent {
