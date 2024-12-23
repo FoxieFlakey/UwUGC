@@ -69,7 +69,7 @@ impl Object {
   }
   
   fn get_total_size(&self) -> usize {
-    self.descriptor.unwrap().layout.size()
+    self.descriptor.unwrap().layout.size() + size_of::<Object>()
   }
 }
 
