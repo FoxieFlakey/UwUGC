@@ -74,7 +74,6 @@ pub struct GCLockCookie<'a> {
 }
 
 impl GCLockCookie<'_> {
-  #[expect(dead_code)]
   pub fn get_gc(&self) -> &GCState {
     self.owner
   }
@@ -338,6 +337,12 @@ impl GCState {
         // The object is already marked, don't trace it anymore
         continue;
       }
+      
+      // Add the descriptor to be traced
+      if let Some(x) = obj.get_descriptor_obj_ptr() {
+        queue.push(x.as_ptr());
+      }
+      
       obj.trace(|reference| {
         queue.push(reference.load(Ordering::Relaxed));
       });
@@ -398,6 +403,12 @@ impl GCState {
       // Mark it
       Self::do_mark(heap, obj);
     }
+    
+    // Step 2.2: Prune descriptor cache from dead descriptors
+    // SAFETY: Mutator is being blocked so mutator cannot reference to
+    // potential about-to-be swept descriptors and marking process ensure
+    // that currently in use descriptors are properly marked
+    unsafe { heap.object_manager.prune_descriptor_cache() };
     drop(block_mutator_cookie);
     
     // Step 3 (Concurrent): Sweep dead objects and reset mark flags 

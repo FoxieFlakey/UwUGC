@@ -1,8 +1,8 @@
-use std::{any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr, sync::{atomic::{self, Ordering}, Arc}, thread};
+use std::{any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr::{self, NonNull}, sync::{atomic::{self, Ordering}, Arc}, thread};
 
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, Descriptor};
+use crate::{descriptor::{self, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, Descriptor};
 
 use super::{AllocError, ObjectManager};
 
@@ -100,7 +100,11 @@ impl<'a> Handle<'a> {
       data: Box::new(func()),
       marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
       next: UnsafeCell::new(ptr::null_mut()),
-      descriptor: Some(descriptor)
+      
+      // Will be filled later by try_alloc
+      descriptor_obj_ptr: None,
+      
+      descriptor,
     }));
     
     // Ensure changes made previously by potential flush_to_global
@@ -135,17 +139,43 @@ impl<'a> Handle<'a> {
     let id = TypeId::of::<T>();
     
     let descriptor_ptr;
-    if let Some(x) = desc_cache.get(&id) {
+    let descriptor_obj_ptr ;
+    if let Some(&x) = desc_cache.get(&id) {
       // The descriptor is cached, lets get pointer to it
-      descriptor_ptr = ptr::from_ref(x);
+      // SAFETY: It can't be GC'ed away because GC is being blocked
+      // so it is valid
+      let obj_ref = unsafe { x.as_ref() };
+      
+      descriptor_ptr = obj_ref.get_raw_ptr_to_data().cast::<Descriptor>();
+      descriptor_obj_ptr = x;
+      
+      // Activate GC's load barrier because it wanted to know that descriptor still
+      // in use
+      gc_lock_cookie.get_gc().load_barrier(obj_ref, self.owner, gc_lock_cookie);
     } else {
-      // If not present in cache, try insert into it with upgraded rwlock
-      descriptor_ptr = desc_cache.with_upgraded(|desc_cache| {
-        ptr::from_ref(
-          desc_cache.entry(id)
-          .or_insert(T::get_descriptor())
+      let cached_obj = desc_cache.with_upgraded(|desc_cache| {
+        // Directly call unchecked alloc, because to avoid resulting in
+        // chicken and egg problem because to allocate descriptor in heap
+        // there has to be already existing descriptor in heap so break
+        // the cycle with statically allocated 'root' descriptor.
+        //
+        // SAFETY: The descriptor is correct for Descriptor and because just allocated
+        // it cannot be null
+        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(&mut T::get_descriptor, gc_lock_cookie, &descriptor::SELF_DESCRIPTOR)?) };
+        
+        // If not present in cache, try insert into it with upgraded rwlock
+        Ok(
+          *desc_cache.entry(id)
+            .or_insert(new_descriptor)
         )
-      });
+      })?;
+      
+      // SAFETY: Just allocated new descriptor with type of Descriptor so its
+      // safe to cast pointer and GC won't be able GC it away between allocation
+      // and allocation code is protected by GC lock and GC also traces this in
+      // addition to data in each objects
+      descriptor_ptr = unsafe { cached_obj.as_ref().get_raw_ptr_to_data().cast::<Descriptor>().cast_mut() };
+      descriptor_obj_ptr = cached_obj;
     }
     
     // SAFETY: All objects are deallocated first in ObjectManager's drop impl
@@ -155,7 +185,12 @@ impl<'a> Handle<'a> {
     let descriptor = unsafe { &*descriptor_ptr };
     
     // SAFETY: Already make sure that the descriptor is correct
-    unsafe { self.try_alloc_unchecked(func, gc_lock_cookie, descriptor) }
+    let new_obj = unsafe { self.try_alloc_unchecked(func, gc_lock_cookie, descriptor) };
+    
+    // SAFETY: Just allocated the object so it is safe and GC won't be able to GC it
+    new_obj.inspect(|&x| unsafe {
+      (*x).descriptor_obj_ptr = Some(descriptor_obj_ptr);
+    })
   }
 }
 

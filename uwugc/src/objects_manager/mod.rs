@@ -1,11 +1,11 @@
-use std::{any::TypeId, cell::UnsafeCell, collections::HashMap, ptr, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use std::{any::TypeId, cell::UnsafeCell, collections::HashMap, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use parking_lot::{Mutex, RwLock};
 
 use context::LocalObjectsChain;
 pub use context::Handle;
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::Descriptor, gc::GCExclusiveLockCookie, ObjectLikeTrait};
+use crate::{descriptor::{self, Descriptor}, gc::GCExclusiveLockCookie, ObjectLikeTrait};
 
 mod context;
 
@@ -17,7 +17,11 @@ pub struct Object {
   // WARNING: Do not rely on this, always use is_marked
   // function, the 'marked' meaning on this always changes
   marked: AtomicBool,
-  descriptor: Option<&'static Descriptor>,
+  descriptor: &'static Descriptor,
+  
+  // Temporarily contains pointer to object containing the descriptor
+  // so GC can trace it normally
+  descriptor_obj_ptr: Option<NonNull<Object>>,
   
   // Data can only contain owned structs
   data: Box<dyn ObjectLikeTrait>
@@ -30,6 +34,10 @@ unsafe impl Sync for Object {}
 unsafe impl Send for Object {}
 
 impl Object {
+  pub fn get_descriptor_obj_ptr(&self) -> Option<NonNull<Object>> {
+    self.descriptor_obj_ptr
+  }
+  
   pub fn get_raw_ptr_to_data(&self) -> *const () {
     // LOOKING at downcast_ref_unchecked method in dyn Any
     // it looked like &dyn Any can be casted to pointer to
@@ -39,12 +47,10 @@ impl Object {
   }
   
   pub fn trace(&self, tracer: impl FnMut(&portable_atomic::AtomicPtr<Object>)) {
-    if self.descriptor.is_some() {
-      // SAFETY: The safety that descriptor is the one needed is enforced by
-      // type system and unsafe contract of the getting descriptor for a type
-      unsafe {
-        self.descriptor.unwrap().trace(self.get_raw_ptr_to_data(), tracer);
-      }
+    // SAFETY: The safety that descriptor is the one needed is enforced by
+    // type system and unsafe contract of the getting descriptor for a type
+    unsafe {
+      self.descriptor.trace(self.get_raw_ptr_to_data(), tracer);
     }
   }
   
@@ -69,7 +75,7 @@ impl Object {
   }
   
   fn get_total_size(&self) -> usize {
-    self.descriptor.unwrap().layout.size() + size_of::<Object>()
+    self.descriptor.layout.size() + size_of::<Object>()
   }
 }
 
@@ -78,7 +84,9 @@ pub struct ObjectManager {
   used_size: AtomicUsize,
   contexts: Mutex<HashMap<ThreadId, Arc<LocalObjectsChain>>>,
   max_size: usize,
-  descriptor_cache: RwLock<HashMap<TypeId, Descriptor>>,
+  
+  // Descriptors are plain GC objects
+  descriptor_cache: RwLock<HashMap<TypeId, NonNull<Object>>>,
   
   // Used to prevent concurrent creation of sweeper, as at the
   // moment two invocation of it going to fight with each other
@@ -90,6 +98,12 @@ pub struct ObjectManager {
   // What bit value to consider an object to be marked
   marked_bit_value: AtomicBool,
 }
+
+// SAFETY: It is safe to send *const Object to other thread
+// because descriptor_cache meant to just cache and GC will
+// remove entry once its unused
+unsafe impl Sync for ObjectManager {}
+unsafe impl Send for ObjectManager {}
 
 pub struct Sweeper<'a> {
   owner: &'a ObjectManager,
@@ -202,6 +216,17 @@ impl ObjectManager {
   pub fn get_usage(&self) -> usize {
     self.used_size.load(Ordering::Relaxed)
   }
+  
+  // SAFETY: Caller ensures that descriptor which is in use
+  // be marked and ensure the objects corresponding to descriptor
+  // is not being GC'ed away and not being concurrently marked
+  pub unsafe fn prune_descriptor_cache(&self) {
+    self.descriptor_cache.write().retain(|_, &mut desc| {
+      // SAFETY: Caller ensures that object pointer to the descriptor
+      // still valid
+      unsafe { desc.as_ref().is_marked(self) }
+    });
+  }
 }
 
 impl Drop for ObjectManager {
@@ -219,6 +244,12 @@ impl Sweeper<'_> {
     let mut last_live_objects: *mut Object = ptr::null_mut();
     let mut next_ptr = self.saved_chain.take().unwrap();
     
+    // List of objects which its deallocation be deferred.
+    // This list only contains dead descriptors which has to
+    // be alive during initial dealloc because descriptor could
+    // be used during dealloc.
+    let mut deferred_dealloc_list: *mut Object = ptr::null_mut();
+    
     while !next_ptr.is_null() {
       let current_ptr = next_ptr;
       
@@ -231,6 +262,25 @@ impl Sweeper<'_> {
       
       // SAFETY: 'current' is valid because its leaked
       if unsafe { !(*current_ptr).is_marked(self.owner) } {
+        // SAFETY: 'current' is valid because its leaked
+        let current = unsafe { &*current_ptr };
+        
+        // It is descriptor object, defer it to deallocate later
+        if ptr::from_ref(current.descriptor) == ptr::from_ref(&descriptor::SELF_DESCRIPTOR) {
+          if deferred_dealloc_list.is_null() {
+            deferred_dealloc_list = current_ptr;
+          } else {
+            // SAFETY: Sweeper "owns" the individual object's 'next' field
+            unsafe { *current.next.get() = deferred_dealloc_list };
+            deferred_dealloc_list = current_ptr;
+          }
+          
+          // Defer deallocation beacuse descriptor object might
+          // be needed during deallocation and could cause
+          // use-after-free in deallocation path if deallocated
+          continue;
+        }
+        
         // SAFETY: *const can be safely converted to *mut as unmarked object
         // mean mutator has no way accesing it
         unsafe { self.owner.dealloc(current_ptr.cast()) };
@@ -250,6 +300,20 @@ impl Sweeper<'_> {
         unsafe { *current.next.get() = live_objects };
         live_objects = current_ptr;
       }
+    }
+    
+    // Now dealloc the deferred deallocs
+    next_ptr = deferred_dealloc_list;
+    while !next_ptr.is_null() {
+      let current = next_ptr;
+      
+      // SAFETY: Sweeper "owns" the individual object's 'next' field
+      // and Sweeper hasn't deallocated it
+      next_ptr = unsafe { *(*current).next.get() };
+      
+      // SAFETY: *const can be safely converted to *mut as unmarked object
+      // mean mutator has no way accesing it
+      unsafe { self.owner.dealloc(current) };
     }
     
     // There are no living objects

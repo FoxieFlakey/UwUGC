@@ -15,6 +15,12 @@ pub struct Descriptor {
   pub layout: Layout
 }
 
+// The root descriptor which describes well itself
+pub static SELF_DESCRIPTOR: Descriptor = Descriptor {
+  fields: None,
+  layout: Layout::new::<Descriptor>()
+};
+
 impl Descriptor {
   // Caller must properly match the descriptor to correct type so trace can
   // correctly get pointer to fields
