@@ -118,7 +118,7 @@ pub struct RootRefRaw<'a, T: ObjectLikeTrait> {
   _force_not_send_sync: PhantomData<*const ()>
 }
 
-impl<'a, T: ObjectLikeTrait> RootRefRaw<'a, T> {
+impl<T: ObjectLikeTrait> RootRefRaw<'_, T> {
   fn get_raw_ptr_to_data(&self) -> *const () {
     self.get_object_borrow().get_raw_ptr_to_data()
   }

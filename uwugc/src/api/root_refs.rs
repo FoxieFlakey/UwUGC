@@ -60,7 +60,7 @@ impl<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> RootRef<'
   }
 }
 
-impl<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> Deref for RootRef<'a, Restriction, Kind, T> {
+impl<Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> Deref for RootRef<'_, Restriction, Kind, T> {
   type Target = T;
   
   fn deref(&self) -> &Self::Target {
@@ -81,7 +81,7 @@ impl<'a, Restriction: RestrictType, T: ObjectLikeTrait> RootRef<'a, Restriction,
   }
 }
 
-impl<'a, Restriction: RestrictType, T: ObjectLikeTrait> DerefMut for RootRef<'a, Restriction, Exclusive, T> {
+impl<Restriction: RestrictType, T: ObjectLikeTrait> DerefMut for RootRef<'_, Restriction, Exclusive, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     // SAFETY: Only exclusive root ref can be mutably
     // borrowed and API design ensure there no other
