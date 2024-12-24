@@ -367,7 +367,7 @@ impl GCState {
     
     // Step 1.2: Active load barrier so mutator can start assisting GC
     // during mark process
-    self.inner_state.activate_load_barrier.store(false, Ordering::Relaxed);
+    self.inner_state.activate_load_barrier.store(true, Ordering::Relaxed);
     drop(block_mutator_cookie);
     
     // Step 2 (Concurrent): Mark objects
