@@ -228,7 +228,7 @@ impl GCState {
       return false;
     }
     
-    if !object.set_mark_bit(obj_manager) {
+    if object.set_mark_bit(obj_manager) {
       return false;
     }
     
