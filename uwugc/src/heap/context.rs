@@ -1,20 +1,22 @@
 use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, pin::Pin, ptr, sync::{atomic, Arc}, thread};
 
+use crate::allocator::HeapAlloc;
+
 use super::{Heap, RootEntry};
 use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{self, Object}, root_refs::{Exclusive, RootRef, Sendable}, ObjectLikeTrait};
 
-pub struct Data {
-  head: Pin<Box<RootEntry>>
+pub struct Data<A: HeapAlloc> {
+  head: Pin<Box<RootEntry<A>>>
 }
 
-pub struct DataWrapper {
-  inner: UnsafeCell<Data>
+pub struct DataWrapper<A: HeapAlloc> {
+  inner: UnsafeCell<Data<A>>
 }
 
 // SAFETY: Manually enforces safety of concurrently accessing it
 // by GC lock, and GC is only the other thread which reads this
 // while the owning thread is the only writer
-unsafe impl Sync for DataWrapper {}
+unsafe impl<A: HeapAlloc> Sync for DataWrapper<A> {}
 
 // This type exists so that any API can enforce that
 // it is being constructed/called inside a special context which
@@ -25,7 +27,7 @@ pub struct ConstructorScope {
   _private: ()
 }
 
-impl DataWrapper {
+impl<A: HeapAlloc> DataWrapper<A> {
   pub fn new() -> Self {
     let head = Box::pin(RootEntry {
       gc_state: ptr::null_mut(),
@@ -53,7 +55,7 @@ impl DataWrapper {
   // SAFETY: Caller ensures that thread managing the context does not
   // concurrently runs with this function (usually meant mutator
   // threads is being blocked)
-  pub(super) unsafe fn for_each_root(&self, mut iterator: impl FnMut(&RootEntry)) {
+  pub(super) unsafe fn for_each_root(&self, mut iterator: impl FnMut(&RootEntry<A>)) {
     // Make sure any newly added/removed root entry is visible
     atomic::fence(atomic::Ordering::Acquire);
     // SAFETY: Caller ensured mutators are blocked so nothing modifies this
@@ -95,7 +97,7 @@ impl DataWrapper {
   }
 }
 
-impl Drop for DataWrapper {
+impl<A: HeapAlloc> Drop for DataWrapper<A> {
   fn drop(&mut self) {
     // Current thread is last one with reference to this context
     // therefore its safe to clear it (to deallocate the root entries)
@@ -103,22 +105,22 @@ impl Drop for DataWrapper {
   }
 }
 
-pub struct Context<'a> {
-  ctx: Arc<DataWrapper>,
-  obj_manager_ctx: objects_manager::Handle<'a>,
-  owner: &'a Heap,
+pub struct Context<'a, A: HeapAlloc> {
+  ctx: Arc<DataWrapper<A>>,
+  obj_manager_ctx: objects_manager::Handle<'a, A>,
+  owner: &'a Heap<A>,
   // ContextHandle will only stays at current thread
   _phantom: PhantomData<*const ()>
 }
 
-pub struct RootRefRaw<'a, T: ObjectLikeTrait> {
-  entry_ref: *const RootEntry,
+pub struct RootRefRaw<'a, A: HeapAlloc, T: ObjectLikeTrait> {
+  entry_ref: *const RootEntry<A>,
   _phantom: PhantomData<&'a T>,
   // RootRef will only stays at current thread
   _force_not_send_sync: PhantomData<*const ()>
 }
 
-impl<T: ObjectLikeTrait> RootRefRaw<'_, T> {
+impl<A: HeapAlloc, T: ObjectLikeTrait> RootRefRaw<'_, A, T> {
   fn get_raw_ptr_to_data(&self) -> *const () {
     self.get_object_borrow().get_raw_ptr_to_data()
   }
@@ -152,7 +154,7 @@ impl<T: ObjectLikeTrait> RootRefRaw<'_, T> {
   }
 }
 
-impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
+impl<A: HeapAlloc, T: ObjectLikeTrait> Drop for RootRefRaw<'_, A, T> {
   fn drop(&mut self) {
     // Corresponding RootEntry and RootRef are free'd together
     // therefore its safe after removing reference from root set
@@ -197,8 +199,8 @@ impl<T: ObjectLikeTrait> Drop for RootRefRaw<'_, T> {
   }
 }
 
-impl<'a> Context<'a> {
-  pub(super) fn new(owner: &'a Heap, obj_manager_ctx: objects_manager::Handle<'a>, ctx: Arc<DataWrapper>) -> Self {
+impl<'a, A: HeapAlloc> Context<'a, A> {
+  pub(super) fn new(owner: &'a Heap<A>, obj_manager_ctx: objects_manager::Handle<'a, A>, ctx: Arc<DataWrapper<A>>) -> Self {
     Self {
       ctx,
       owner,
@@ -207,11 +209,11 @@ impl<'a> Context<'a> {
     }
   }
   
-  pub fn get_heap(&self) -> &Heap {
+  pub fn get_heap(&self) -> &Heap<A> {
     self.owner
   }
   
-  pub fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie) -> RootRefRaw<'a, T> {
+  pub fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie<A>) -> RootRefRaw<'a, A, T> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc,
       obj: ptr,
@@ -239,7 +241,7 @@ impl<'a> Context<'a> {
     }
   }
   
-  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, T> {
+  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, A, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut special_ctx = ConstructorScope { _private: () };
@@ -265,7 +267,7 @@ impl<'a> Context<'a> {
   }
 }
 
-impl Drop for Context<'_> {
+impl<A: HeapAlloc> Drop for Context<'_, A> {
   fn drop(&mut self) {
     // Remove context belonging to current thread
     self.owner.contexts.lock().remove(&thread::current().id());

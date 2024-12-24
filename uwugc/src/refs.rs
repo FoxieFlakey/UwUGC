@@ -1,5 +1,6 @@
 use std::{marker::PhantomData, ptr, sync::atomic::Ordering};
 
+use crate::allocator::HeapAlloc;
 use portable_atomic::AtomicPtr;
 
 use crate::{gc::GCLockCookie, heap::{Context, RootRefRaw}, objects_manager::Object, ObjectLikeTrait};
@@ -19,11 +20,11 @@ impl<T: ObjectLikeTrait> GCRefRaw<T> {
   }
   
   #[expect(dead_code)]
-  pub unsafe fn store<'a>(&self, _ctx: &'a Context, root_ref: &RootRefRaw<'a, T>, _block_gc_cookie: &mut GCLockCookie) {
+  pub unsafe fn store<'a, A: HeapAlloc>(&self, _ctx: &'a Context<A>, root_ref: &RootRefRaw<'a, A, T>, _block_gc_cookie: &mut GCLockCookie<A>) {
     self.ptr.swap(ptr::from_ref(root_ref.get_object_borrow()).cast_mut(), Ordering::Relaxed);
   }
   
-  pub fn load<'a>(&self, ctx: &'a Context, block_gc_cookie: &mut GCLockCookie) -> Option<RootRefRaw<'a, T>> {
+  pub fn load<'a, A: HeapAlloc>(&self, ctx: &'a Context<A>, block_gc_cookie: &mut GCLockCookie<A>) -> Option<RootRefRaw<'a, A, T>> {
     let ptr = self.ptr.load(Ordering::Relaxed);
     if ptr.is_null() {
       return None;

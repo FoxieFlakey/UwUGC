@@ -1,4 +1,5 @@
 use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, ops::Deref, sync::Arc, thread::{self, ThreadId}};
+use crate::allocator::HeapAlloc;
 use parking_lot::Mutex;
 
 use context::DataWrapper;
@@ -16,14 +17,14 @@ pub struct Params {
   pub max_size: usize
 }
 
-pub(super) struct RootEntry {
+pub(super) struct RootEntry<A: HeapAlloc> {
   // The RootEntry itself cannot be *mut
   // but need to modify these fields because
   // there would be aliasing *mut (one from prev's next
   // and next's prev)
-  next: UnsafeCell<*const RootEntry>,
-  prev: UnsafeCell<*const RootEntry>,
-  gc_state: *const GCState,
+  next: UnsafeCell<*const RootEntry<A>>,
+  prev: UnsafeCell<*const RootEntry<A>>,
+  gc_state: *const GCState<A>,
   obj: *mut Object,
   
   // RootEntry cannot be moved at will because
@@ -33,13 +34,13 @@ pub(super) struct RootEntry {
 
 // SAFETY: It is only shared between GC thread and owning thread
 // and GC thread, its being protected by GC locks
-unsafe impl Sync for RootEntry {}
-unsafe impl Send for RootEntry {}
+unsafe impl<A: HeapAlloc> Sync for RootEntry<A> {}
+unsafe impl<A: HeapAlloc> Send for RootEntry<A> {}
 
-impl RootEntry {
+impl<A: HeapAlloc> RootEntry<A> {
   // Insert 'val' to next of this entry
   // Returns a *mut pointer to it and leaks it
-  pub unsafe fn insert(&self, val: Box<RootEntry>) -> *mut RootEntry {
+  pub unsafe fn insert(&self, val: Box<RootEntry<A>>) -> *mut RootEntry<A> {
     // SAFETY: The caller must ensures that the root set is not concurrently accessed
     unsafe {
       let val = Box::leak(val);
@@ -61,36 +62,36 @@ impl RootEntry {
   }
 }
 
-pub struct State {
-  pub object_manager: ObjectManager,
-  pub contexts: Mutex<HashMap<ThreadId, Arc<DataWrapper>>>,
+pub struct State<A: HeapAlloc> {
+  pub object_manager: ObjectManager<A>,
+  pub contexts: Mutex<HashMap<ThreadId, Arc<DataWrapper<A>>>>,
   
-  pub gc: GCState
+  pub gc: GCState<A>
 }
 
-pub struct Heap {
-  __real_inner_arced_heap_state: Arc<State>
+pub struct Heap<A: HeapAlloc> {
+  __real_inner_arced_heap_state: Arc<State<A>>
 }
 
-impl Deref for Heap {
-  type Target = State;
+impl<A: HeapAlloc> Deref for Heap<A> {
+  type Target = State<A>;
   
   fn deref(&self) -> &Self::Target {
     &self.__real_inner_arced_heap_state
   }
 }
 
-impl Drop for Heap {
+impl<A: HeapAlloc> Drop for Heap<A> {
   fn drop(&mut self) {
     // Trigger GC shutdown and wait for it
     self.gc.shutdown_gc_and_wait();
   }
 }
 
-impl Heap {
-  pub fn new(heap_params: Params) -> Arc<Self> {
+impl<A: HeapAlloc> Heap<A> {
+  pub fn new(allocator: A, heap_params: Params) -> Arc<Self> {
     let this = Arc::new_cyclic(|weak_self| State {
-      object_manager: ObjectManager::new(heap_params.max_size),
+      object_manager: ObjectManager::new(allocator, heap_params.max_size),
       contexts: Mutex::new(HashMap::new()),
       gc: GCState::new(heap_params.gc_params, weak_self.clone())
     });
@@ -104,7 +105,7 @@ impl Heap {
   }
   
   #[must_use]
-  pub fn create_context(&self) -> Context {
+  pub fn create_context(&self) -> Context<A> {
     let mut contexts = self.contexts.lock();
     let ctx = contexts.entry(thread::current().id())
       .or_insert_with(|| Arc::new(DataWrapper::new()));
@@ -113,7 +114,7 @@ impl Heap {
   }
 }
 
-impl State {
+impl<A: HeapAlloc> State<A> {
   // SAFETY: Caller must ensure that mutators arent actively trying
   // to use the root concurrently
   pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<*const Object>) {

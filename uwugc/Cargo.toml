@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
+allocator-api2 = "0.2.21"
 parking_lot = { path = "../parking_lot" }
 portable-atomic = "1.10.0"
 sealed = "0.6.0"

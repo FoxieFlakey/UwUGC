@@ -1,4 +1,5 @@
 use std::{cell::LazyCell, ptr, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use crate::allocator::HeapAlloc;
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use portable_atomic::AtomicBool;
 
@@ -42,9 +43,9 @@ impl From<&Object> for ObjectPtrSend {
 // SAFETY: Its safe just need a wrapper
 unsafe impl Send for ObjectPtrSend {}
 
-struct GCInnerState {
+struct GCInnerState<A: HeapAlloc> {
   gc_lock: RwLock<()>,
-  owner: Weak<HeapState>,
+  owner: Weak<HeapState<A>>,
   params: GCParams,
   
   run_state: Mutex<GCRunState>,
@@ -63,18 +64,18 @@ struct GCInnerState {
   remark_queue_sender: mpsc::Sender<ObjectPtrSend>
 }
 
-pub struct GCState {
-  inner_state: Arc<GCInnerState>,
+pub struct GCState<A: HeapAlloc> {
+  inner_state: Arc<GCInnerState<A>>,
   thread: Mutex<Option<JoinHandle<()>>>
 }
 
-pub struct GCLockCookie<'a> {
-  owner: &'a GCState,
+pub struct GCLockCookie<'a, A: HeapAlloc> {
+  owner: &'a GCState<A>,
   _cookie: RwLockReadGuard<'a, ()>
 }
 
-impl GCLockCookie<'_> {
-  pub fn get_gc(&self) -> &GCState {
+impl<A: HeapAlloc> GCLockCookie<'_, A> {
+  pub fn get_gc(&self) -> &GCState<A> {
     self.owner
   }
 }
@@ -90,13 +91,13 @@ struct GCThreadPrivate {
   remark_queue_receiver: mpsc::Receiver<ObjectPtrSend>
 }
 
-impl Drop for GCState {
+impl<A: HeapAlloc> Drop for GCState<A> {
   fn drop(&mut self) {
     self.shutdown_gc_and_wait();
   }
 }
 
-impl GCState {
+impl<A: HeapAlloc> GCState<A> {
   pub fn shutdown_gc_and_wait(&self) {
     self.set_gc_run_state(GCRunState::Stopped);
     if let Some(join_handle) = self.thread.lock().take() {
@@ -174,7 +175,7 @@ impl GCState {
     drop(self.wait_for_gc(Some(cmd_control.submit_count), Some(cmd_control)));
   }
   
-  fn process_command(gc_state: &Arc<GCInnerState>, heap: &HeapState, cmd_struct: &GCCommandStruct, private: &GCThreadPrivate) {
+  fn process_command(gc_state: &Arc<GCInnerState<A>>, heap: &HeapState<A>, cmd_struct: &GCCommandStruct, private: &GCThreadPrivate) {
     match cmd_struct.command.unwrap() {
       GCCommand::RunGC => {
         heap.gc.run_gc_internal(heap, false, private);
@@ -189,14 +190,14 @@ impl GCState {
     gc_state.cmd_executed_event.notify_all();
   }
   
-  fn do_gc_heuristics(gc_state: &Arc<GCInnerState>, heap: &HeapState, cmd_control: &mut GCCommandStruct) {
+  fn do_gc_heuristics(gc_state: &Arc<GCInnerState<A>>, heap: &HeapState<A>, cmd_control: &mut GCCommandStruct) {
     if heap.get_usage() >= gc_state.params.trigger_size {
       cmd_control.submit_count += 1;
       cmd_control.command = Some(GCCommand::RunGC);
     }
   }
   
-  fn gc_poll(inner: &Arc<GCInnerState>, heap: &HeapState, private: &GCThreadPrivate) {
+  fn gc_poll(inner: &Arc<GCInnerState<A>>, heap: &HeapState<A>, private: &GCThreadPrivate) {
     let mut cmd_control = inner.command.lock();
     
     // If there no command to be executed
@@ -222,7 +223,7 @@ impl GCState {
     self.set_gc_run_state(GCRunState::Running);
   }
   
-  pub fn load_barrier(&self, object: &Object, obj_manager: &ObjectManager, _block_gc_cookie: &GCLockCookie) -> bool {
+  pub fn load_barrier(&self, object: &Object, obj_manager: &ObjectManager<A>, _block_gc_cookie: &GCLockCookie<A>) -> bool {
     // Load barrier is deactivated
     if !self.inner_state.activate_load_barrier.load(Ordering::Relaxed) {
       return false;
@@ -242,7 +243,7 @@ impl GCState {
     true
   }
   
-  pub fn new(params: GCParams, owner: Weak<HeapState>) -> GCState {
+  pub fn new(params: GCParams, owner: Weak<HeapState<A>>) -> GCState<A> {
     let (remark_queue_sender, remark_queue_receiver) = mpsc::channel();
     let inner_state = Arc::new(GCInnerState {
       gc_lock: RwLock::new(()),
@@ -307,7 +308,7 @@ impl GCState {
     }
   }
   
-  pub fn block_gc(&self) -> GCLockCookie {
+  pub fn block_gc(&self) -> GCLockCookie<A> {
     GCLockCookie {
       owner: self,
       _cookie: self.inner_state.gc_lock.read()
@@ -324,7 +325,7 @@ impl GCState {
     self.call_gc(GCCommand::RunGC);
   }
   
-  fn do_mark(heap: &HeapState, obj: &Object) {
+  fn do_mark(heap: &HeapState<A>, obj: &Object) {
     let mut queue = Vec::new();
     queue.push(ptr::from_ref(obj));
     
@@ -349,7 +350,7 @@ impl GCState {
     }
   }
   
-  fn run_gc_internal(&self, heap: &HeapState, is_shutting_down: bool, private: &GCThreadPrivate) {
+  fn run_gc_internal(&self, heap: &HeapState<A>, is_shutting_down: bool, private: &GCThreadPrivate) {
     // Step 1 (STW): Take root snapshot and take objects in heap snapshot
     let mut block_mutator_cookie = self.block_mutators();
     

@@ -1,5 +1,6 @@
 use std::{any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr::{self, NonNull}, sync::{atomic::{self, Ordering}, Arc}, thread};
 
+use crate::allocator::HeapAlloc;
 use portable_atomic::AtomicBool;
 
 use crate::{descriptor::{self, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, Descriptor};
@@ -33,7 +34,7 @@ impl LocalObjectsChain {
   // 1. preventing Sweeper (the only other thing which concurrently access)
   //     from getting exclusive GC lock
   // 2. locks the 'contexts' as Sweeper also needs it
-  pub unsafe fn flush_to_global(&self, owner: &ObjectManager) {
+  pub unsafe fn flush_to_global<A: HeapAlloc>(&self, owner: &ObjectManager<A>) {
     // Make sure newest object added by mutator visible to current thread
     // (which might be other thread than the mutator)
     atomic::fence(Ordering::Acquire);
@@ -63,16 +64,16 @@ impl LocalObjectsChain {
   }
 }
 
-pub struct Handle<'a> {
+pub struct Handle<'a, A: HeapAlloc> {
   ctx: Arc<LocalObjectsChain>,
-  owner: &'a ObjectManager,
+  owner: &'a ObjectManager<A>,
   // Ensure that ContextHandle stays on same thread
   // by disallowing it to be Send or Sync
   _phantom: PhantomData<*const ()>
 }
 
-impl<'a> Handle<'a> {
-  pub(super) fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager) -> Self {
+impl<'a, A: HeapAlloc> Handle<'a, A> {
+  pub(super) fn new(ctx: Arc<LocalObjectsChain>, owner: &'a ObjectManager<A>) -> Self {
     Self {
       owner,
       ctx,
@@ -83,7 +84,7 @@ impl<'a> Handle<'a> {
   // SAFETY: 
   // Caller has to ensure 'descriptor' live longer than all objects that currently
   // uses it but caller may 'kill' it if there no living objects using it anymore
-  unsafe fn try_alloc_unchecked<T: ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie, descriptor: &'static Descriptor) -> Result<*mut Object, AllocError> {
+  unsafe fn try_alloc_unchecked<T: ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie<A>, descriptor: &'static Descriptor) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
     manager.used_size.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
       x += size_of::<Object>() + descriptor.layout.size();
@@ -134,7 +135,7 @@ impl<'a> Handle<'a> {
     Ok(obj)
   }
   
-  pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, gc_lock_cookie: &mut GCLockCookie) -> Result<*mut Object, AllocError> {
+  pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
     let mut desc_cache = self.owner.descriptor_cache.upgradable_read();
     let id = TypeId::of::<T>();
     
@@ -194,7 +195,7 @@ impl<'a> Handle<'a> {
   }
 }
 
-impl Drop for Handle<'_> {
+impl<A: HeapAlloc> Drop for Handle<'_, A> {
   fn drop(&mut self) {
     let mut contexts = self.owner.contexts.lock();
     

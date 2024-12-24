@@ -16,6 +16,7 @@ mod heap;
 mod gc;
 mod descriptor;
 mod refs;
+mod allocator;
 
 // Publicize the API
 pub use api::*;

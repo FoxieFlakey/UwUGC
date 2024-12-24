@@ -1,4 +1,4 @@
-use crate::refs::GCRefRaw;
+use crate::{allocator::GlobalHeap, refs::GCRefRaw};
 
 use super::{root_refs::{Exclusive, RootRef, Sendable, Shared, Unsendable}, Context, ConstructorScope, ObjectLikeTrait};
 
@@ -16,7 +16,7 @@ impl<T: ObjectLikeTrait> GCBox<T> {
   // be from somewhere which does not expect the reference to be shared to
   // other thread and Exclusive because caller thread needed to be only
   // owner of it
-  pub fn new(reference: RootRef<Sendable, Exclusive, T>, _alloc_context: &mut ConstructorScope) -> Self {
+  pub fn new(reference: RootRef<Sendable, Exclusive, GlobalHeap, T>, _alloc_context: &mut ConstructorScope) -> Self {
     Self {
       inner: GCRefRaw::new(RootRef::into_raw(reference).get_object_borrow())
     }
@@ -26,7 +26,7 @@ impl<T: ObjectLikeTrait> GCBox<T> {
   // be sent to other thread because it might cause one thread might have mutable
   // and other shared (immutable) and references returned GCBox intended to be
   // only be used by caller thread
-  pub fn load<'this, 'context: 'this>(&'this self, ctx: &'context Context) -> RootRef<'this, Unsendable, Shared, T> {
+  pub fn load<'this, 'context: 'this>(&'this self, ctx: &'context Context) -> RootRef<'this, Unsendable, Shared, GlobalHeap, T> {
     let raw = self.inner.load(&ctx.inner, &mut ctx.inner.get_heap().gc.block_gc());
     // SAFETY: The data in there is owned by GCBox<T>
     // and Unsendable assures that references don't escape
@@ -39,7 +39,7 @@ impl<T: ObjectLikeTrait> GCBox<T> {
   // be sent to other thread because it might cause one thread might have mutable
   // and other shared (immutable) and references returned GCBox intended to be
   // only be used by caller thread
-  pub fn load_mut<'this, 'context: 'this>(&'this mut self, ctx: &'context Context) -> RootRef<'this, Unsendable, Exclusive, T> {
+  pub fn load_mut<'this, 'context: 'this>(&'this mut self, ctx: &'context Context) -> RootRef<'this, Unsendable, Exclusive, GlobalHeap, T> {
     let raw = self.inner.load(&ctx.inner, &mut ctx.inner.get_heap().gc.block_gc());
     // SAFETY: The data in there is owned by GCBox<T>
     // and Unsendable assures that references don't escape

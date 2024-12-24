@@ -4,6 +4,7 @@ pub(crate) mod helper;
 
 use std::sync::Arc;
 
+use crate::allocator::GlobalHeap;
 use crate::heap::Context as HeapContext;
 use crate::heap::Heap as HeapInternal;
 
@@ -17,10 +18,10 @@ pub mod root_refs;
 mod gc_box;
 pub use gc_box::GCBox;
 
-helper::export_type_as_wrapper!(HeapArc, Arc<HeapInternal>);
+helper::export_type_as_wrapper!(HeapArc, Arc<HeapInternal<GlobalHeap>>);
 mod heap;
 
-helper::export_type_as_wrapper!('a, Context, HeapContext<'a>);
+helper::export_type_as_wrapper!('a, Context, HeapContext<'a, GlobalHeap>);
 mod context;
 
 // What the data type need to implement before it is

@@ -1,4 +1,4 @@
-use crate::heap::Heap as HeapInternal;
+use crate::{allocator::GlobalHeap, heap::Heap as HeapInternal};
 use super::{Context, HeapArc, Params};
 
 impl Clone for HeapArc {
@@ -10,7 +10,7 @@ impl Clone for HeapArc {
 impl HeapArc {
   #[must_use]
   pub fn new(params: Params) -> HeapArc {
-    HeapArc::from(HeapInternal::new(params))
+    HeapArc::from(HeapInternal::new(GlobalHeap {}, params))
   }
   
   #[must_use]

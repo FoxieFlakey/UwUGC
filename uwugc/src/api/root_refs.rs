@@ -6,6 +6,7 @@ use std::ops::{Deref, DerefMut};
 
 use sealed::sealed;
 
+use crate::allocator::HeapAlloc;
 use crate::api::ObjectLikeTrait;
 use crate::heap::RootRefRaw;
 
@@ -42,25 +43,25 @@ pub struct Sendable {}
 impl RestrictType for Sendable {}
 
 // NOTE: This type is considered to be part of public API
-pub struct RootRef<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> {
-  inner: RootRefRaw<'a, T>,
+pub struct RootRef<'a, Restriction: RestrictType, Kind: RefKind, A: HeapAlloc, T: ObjectLikeTrait> {
+  inner: RootRefRaw<'a, A, T>,
   _kind: PhantomData<(Restriction, Kind)>
 }
 
-impl<'a, Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> RootRef<'a, Restriction, Kind, T> {
-  pub(crate) unsafe fn new(inner: RootRefRaw<'a, T>) -> Self {
+impl<'a, Restriction: RestrictType, Kind: RefKind, A: HeapAlloc, T: ObjectLikeTrait> RootRef<'a, Restriction, Kind, A, T> {
+  pub(crate) unsafe fn new(inner: RootRefRaw<'a, A, T>) -> Self {
     Self {
       inner,
       _kind: PhantomData {}
     }
   }
   
-  pub(crate) fn into_raw(this: Self) -> RootRefRaw<'a, T> {
+  pub(crate) fn into_raw(this: Self) -> RootRefRaw<'a, A, T> {
     this.inner
   }
 }
 
-impl<Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> Deref for RootRef<'_, Restriction, Kind, T> {
+impl<Restriction: RestrictType, Kind: RefKind, A: HeapAlloc, T: ObjectLikeTrait> Deref for RootRef<'_, Restriction, Kind, A, T> {
   type Target = T;
   
   fn deref(&self) -> &Self::Target {
@@ -72,16 +73,16 @@ impl<Restriction: RestrictType, Kind: RefKind, T: ObjectLikeTrait> Deref for Roo
   }
 }
 
-impl<'a, Restriction: RestrictType, T: ObjectLikeTrait> RootRef<'a, Restriction, Exclusive, T> {
+impl<'a, Restriction: RestrictType, A: HeapAlloc, T: ObjectLikeTrait> RootRef<'a, Restriction, Exclusive, A, T> {
   #[must_use]
-  pub fn downgrade(this: Self) -> RootRef<'a, Restriction, Shared, T> {
+  pub fn downgrade(this: Self) -> RootRef<'a, Restriction, Shared, A, T> {
     // SAFETY: This is exclusive borrow and it is safe to downgrade
     // to shared
     unsafe { RootRef::new(this.inner) }
   }
 }
 
-impl<Restriction: RestrictType, T: ObjectLikeTrait> DerefMut for RootRef<'_, Restriction, Exclusive, T> {
+impl<Restriction: RestrictType, A: HeapAlloc, T: ObjectLikeTrait> DerefMut for RootRef<'_, Restriction, Exclusive, A, T> {
   fn deref_mut(&mut self) -> &mut Self::Target {
     // SAFETY: Only exclusive root ref can be mutably
     // borrowed and API design ensure there no other

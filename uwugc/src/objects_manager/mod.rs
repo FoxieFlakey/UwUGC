@@ -1,4 +1,5 @@
 use std::{any::TypeId, cell::UnsafeCell, collections::HashMap, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use crate::allocator::HeapAlloc;
 use parking_lot::{Mutex, RwLock};
 
 use context::LocalObjectsChain;
@@ -54,23 +55,23 @@ impl Object {
     }
   }
   
-  pub fn unset_mark_bit(&self, owner: &ObjectManager) {
+  pub fn unset_mark_bit<A: HeapAlloc>(&self, owner: &ObjectManager<A>) {
     let marked_bit_value = owner.marked_bit_value.load(Ordering::Relaxed);
     self.marked.store(!marked_bit_value, Ordering::Relaxed);
   }
   
   // Return if object was unmark or marked
-  pub fn set_mark_bit(&self, owner: &ObjectManager) -> bool {
+  pub fn set_mark_bit<A: HeapAlloc>(&self, owner: &ObjectManager<A>) -> bool {
     let marked_bit_value = owner.marked_bit_value.load(Ordering::Relaxed);
     self.marked.swap(marked_bit_value, Ordering::Relaxed) == marked_bit_value
   }
   
-  fn is_marked(&self, owner: &ObjectManager) -> bool {
+  fn is_marked<A: HeapAlloc>(&self, owner: &ObjectManager<A>) -> bool {
     let mark_bit = self.marked.load(Ordering::Relaxed);
     mark_bit == owner.marked_bit_value.load(Ordering::Relaxed)
   }
   
-  fn compute_new_object_mark_bit(owner: &ObjectManager) -> bool {
+  fn compute_new_object_mark_bit<A: HeapAlloc>(owner: &ObjectManager<A>) -> bool {
     owner.new_object_mark_value.load(Ordering::Relaxed)
   }
   
@@ -79,11 +80,13 @@ impl Object {
   }
 }
 
-pub struct ObjectManager {
+pub struct ObjectManager<A: HeapAlloc> {
   head: AtomicPtr<Object>,
   used_size: AtomicUsize,
   contexts: Mutex<HashMap<ThreadId, Arc<LocalObjectsChain>>>,
   max_size: usize,
+  #[expect(dead_code)]
+  alloc: Arc<A>,
   
   // Descriptors are plain GC objects
   descriptor_cache: RwLock<HashMap<TypeId, NonNull<Object>>>,
@@ -102,16 +105,16 @@ pub struct ObjectManager {
 // SAFETY: It is safe to send *const Object to other thread
 // because descriptor_cache meant to just cache and GC will
 // remove entry once its unused
-unsafe impl Sync for ObjectManager {}
-unsafe impl Send for ObjectManager {}
+unsafe impl<A: HeapAlloc> Sync for ObjectManager<A> {}
+unsafe impl<A: HeapAlloc> Send for ObjectManager<A> {}
 
-pub struct Sweeper<'a> {
-  owner: &'a ObjectManager,
+pub struct Sweeper<'a, A: HeapAlloc> {
+  owner: &'a ObjectManager<A>,
   saved_chain: Option<*mut Object>
 }
 
-impl ObjectManager {
-  pub fn new(max_size: usize) -> Self {
+impl<A: HeapAlloc> ObjectManager<A> {
+  pub fn new(allocator: A, max_size: usize) -> Self {
     Self {
       head: AtomicPtr::new(ptr::null_mut()),
       used_size: AtomicUsize::new(0),
@@ -120,6 +123,7 @@ impl ObjectManager {
       marked_bit_value: AtomicBool::new(true),
       new_object_mark_value: AtomicBool::new(false),
       descriptor_cache: RwLock::new(HashMap::new()),
+      alloc: Arc::new(allocator),
       max_size
     }
   }
@@ -171,7 +175,7 @@ impl ObjectManager {
     self.used_size.fetch_sub(total_size, Ordering::Relaxed);
   }
   
-  pub fn create_context(&self) -> Handle {
+  pub fn create_context(&self) -> Handle<A> {
     let mut contexts = self.contexts.lock();
     let ctx = contexts.entry(thread::current().id())
       .or_insert(Arc::new(LocalObjectsChain::new()))
@@ -180,14 +184,14 @@ impl ObjectManager {
     Handle::new(ctx, self)
   }
   
-  pub fn create_sweeper(&self, _mutator_lock_cookie: &mut GCExclusiveLockCookie) -> Sweeper {
+  pub fn create_sweeper(&self, _mutator_lock_cookie: &mut GCExclusiveLockCookie) -> Sweeper<A> {
     // SAFETY: Already got exclusive GC lock
     unsafe { self.create_sweeper_impl() }
   }
   
   // Unsafe because this need that the ctx isnt modified concurrently
   // its being protected by exclusive GC lock by design
-  unsafe fn create_sweeper_impl(&self) -> Sweeper {
+  unsafe fn create_sweeper_impl(&self) -> Sweeper<A> {
     let sweeper_lock_guard = self.sweeper_protect_mutex.lock();
     
     // Flush all contexts' local chain to global before sweeping
@@ -229,13 +233,13 @@ impl ObjectManager {
   }
 }
 
-impl Drop for ObjectManager {
+impl<A: HeapAlloc> Drop for ObjectManager<A> {
   fn drop(&mut self) {
     assert!(self.get_usage() == 0, "GC did not free everything during shutdown!");
   }
 }
 
-impl Sweeper<'_> {
+impl<A: HeapAlloc> Sweeper<'_, A> {
   // Sweeps dead objects and consume this sweeper
   // SAFETY: Caller must ensure live objects actually
   // marked!
@@ -333,7 +337,7 @@ impl Sweeper<'_> {
   }
 }
 
-impl Drop for Sweeper<'_> {
+impl<A: HeapAlloc> Drop for Sweeper<'_, A> {
   fn drop(&mut self) {
     // There no reasonable thing can be done here
     // 1. Execute the sweep anyway -> may leads to memory unsafety in other safe codes
