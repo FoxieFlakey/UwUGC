@@ -17,9 +17,9 @@ impl<T: ObjectLikeTrait> GCBox<T> {
   // other thread and Exclusive because caller thread needed to be only
   // owner of it
   pub fn new(reference: RootRef<Sendable, Exclusive, T>, _alloc_context: &mut ConstructorScope) -> Self {
-    return Self {
+    Self {
       inner: GCRefRaw::new(RootRef::into_raw(reference).get_object_borrow())
-    };
+    }
   }
   
   // NOTE: Unsendable needed because the reference loaded cannot
@@ -32,7 +32,7 @@ impl<T: ObjectLikeTrait> GCBox<T> {
     // and Unsendable assures that references don't escape
     // away
     // SAFETY: GCBox<T> will never have null reference
-    return unsafe { RootRef::new(raw.unwrap_unchecked()) };
+    unsafe { RootRef::new(raw.unwrap_unchecked()) }
   }
   
   // NOTE: Unsendable needed because the reference loaded cannot
@@ -45,7 +45,7 @@ impl<T: ObjectLikeTrait> GCBox<T> {
     // and Unsendable assures that references don't escape
     // away
     // SAFETY: GCBox<T> will never have null reference
-    return unsafe { RootRef::new(raw.unwrap_unchecked()) };
+    unsafe { RootRef::new(raw.unwrap_unchecked()) }
   }
 }
 

@@ -3,7 +3,7 @@ use super::{root_refs::{Exclusive, RootRef, Sendable}, Context, Describeable, Co
 impl<'a> Context<'a> {
   #[must_use = "If not used, this would create unnecessary GC pressure"]
   pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, T> {
-    return self.inner.alloc(initer);
+    self.inner.alloc(initer)
   }
   
   pub fn trigger_gc(&mut self) {
