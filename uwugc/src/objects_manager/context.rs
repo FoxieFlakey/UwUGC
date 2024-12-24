@@ -139,22 +139,16 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     let mut desc_cache = self.owner.descriptor_cache.upgradable_read();
     let id = TypeId::of::<T>();
     
-    let descriptor_ptr;
     let descriptor_obj_ptr ;
+    let from_cache ;
     if let Some(&x) = desc_cache.get(&id) {
       // The descriptor is cached, lets get pointer to it
-      // SAFETY: It can't be GC'ed away because GC is being blocked
-      // so it is valid
-      let obj_ref = unsafe { x.as_ref() };
-      
-      descriptor_ptr = obj_ref.get_raw_ptr_to_data().cast::<Descriptor>();
+      from_cache = true;
       descriptor_obj_ptr = x;
-      
-      // Activate GC's load barrier because it wanted to know that descriptor still
-      // in use
-      gc_lock_cookie.get_gc().load_barrier(obj_ref, self.owner, gc_lock_cookie);
     } else {
-      let cached_obj = desc_cache.with_upgraded(|desc_cache| {
+      // The descriptor isnt cached, create new one
+      from_cache = false;
+      descriptor_obj_ptr = desc_cache.with_upgraded(|desc_cache| {
         // Directly call unchecked alloc, because to avoid resulting in
         // chicken and egg problem because to allocate descriptor in heap
         // there has to be already existing descriptor in heap so break
@@ -170,20 +164,24 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
             .or_insert(new_descriptor)
         )
       })?;
-      
-      // SAFETY: Just allocated new descriptor with type of Descriptor so its
-      // safe to cast pointer and GC won't be able GC it away between allocation
-      // and allocation code is protected by GC lock and GC also traces this in
-      // addition to data in each objects
-      descriptor_ptr = unsafe { cached_obj.as_ref().get_raw_ptr_to_data().cast::<Descriptor>().cast_mut() };
-      descriptor_obj_ptr = cached_obj;
     }
     
-    // SAFETY: All objects are deallocated first in ObjectManager's drop impl
-    // before the descriptor_cache is dropped therefore it is safe to do this
-    // and entries will never be removed after added to it, therefore as far as
-    // the object concerned the lifetime of descriptor always outlives it 
-    let descriptor = unsafe { &*descriptor_ptr };
+    // SAFETY: It can't be GC'ed away because GC is being blocked
+    // so it is valid
+    let obj_ref = unsafe { descriptor_obj_ptr.as_ref() };
+    
+    if from_cache {
+      // Activate GC's load barrier because it wanted to know that descriptor still
+      // in use if its fetched from the cache
+      gc_lock_cookie.get_gc().load_barrier(obj_ref, self.owner, gc_lock_cookie);
+    }
+    
+    // SAFETY: The object data ptr is non null and it is valid because GC won't
+    // be GC-ing it away because its being blocked and if it exist in cache it
+    // means there other object using it and references in there can't dangle due
+    // GC is only thing which can prune the descriptor cache and deallocates unused
+    // descriptors
+    let descriptor = unsafe { obj_ref.get_raw_ptr_to_data().cast::<Descriptor>().as_ref().unwrap_unchecked() };
     
     // SAFETY: Already make sure that the descriptor is correct
     let new_obj = unsafe { self.try_alloc_unchecked(func, gc_lock_cookie, descriptor) };
