@@ -140,7 +140,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     let id = TypeId::of::<T>();
     
     let descriptor_obj_ptr ;
-    let from_cache ;
+    let mut from_cache ;
     if let Some(&x) = desc_cache.get(&id) {
       // The descriptor is cached, lets get pointer to it
       from_cache = true;
@@ -149,6 +149,13 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       // The descriptor isnt cached, create new one
       from_cache = false;
       descriptor_obj_ptr = desc_cache.with_upgraded(|desc_cache| {
+        if let Some(&x) = desc_cache.get(&id) {
+          // Another thread has already insert it to cache, no need to create
+          // it again
+          from_cache = true;
+          return Ok(x);
+        }
+        
         // Directly call unchecked alloc, because to avoid resulting in
         // chicken and egg problem because to allocate descriptor in heap
         // there has to be already existing descriptor in heap so break
