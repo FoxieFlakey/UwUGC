@@ -3,15 +3,15 @@ use std::{marker::PhantomData, ptr, sync::atomic::Ordering};
 use crate::allocator::HeapAlloc;
 use portable_atomic::AtomicPtr;
 
-use crate::{gc::GCLockCookie, heap::{Context, RootRefRaw}, objects_manager::Object, ObjectLikeTrait};
+use crate::{gc::GCLockCookie, heap::{Context, RootRefRaw}, objects_manager::Object, ObjectLikeTraitInternal};
 
 #[repr(transparent)]
-pub struct GCRefRaw<T: ObjectLikeTrait> {
+pub struct GCRefRaw<T: ObjectLikeTraitInternal> {
   ptr: AtomicPtr<Object>,
   _phantom: PhantomData<T>
 }
 
-impl<T: ObjectLikeTrait> GCRefRaw<T> {
+impl<T: ObjectLikeTraitInternal> GCRefRaw<T> {
   pub fn new(data: *const Object) -> Self {
     Self {
       ptr: AtomicPtr::new(data.cast_mut()),

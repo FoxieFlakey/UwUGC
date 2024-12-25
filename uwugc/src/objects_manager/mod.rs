@@ -7,7 +7,7 @@ use context::LocalObjectsChain;
 pub use context::Handle;
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::DescriptorInternal, gc::GCExclusiveLockCookie, ObjectLikeTrait};
+use crate::{descriptor::DescriptorInternal, gc::GCExclusiveLockCookie, ObjectLikeTraitInternal};
 
 mod meta_word;
 mod context;
@@ -24,7 +24,7 @@ pub struct Object {
   meta_word: MetaWord,
   
   // Data can only contain owned structs
-  data: Box<dyn ObjectLikeTrait>
+  data: Box<dyn ObjectLikeTraitInternal>
 }
 
 // SAFETY: 'next' pointer for majority of its lifetime
@@ -34,7 +34,7 @@ unsafe impl Sync for Object {}
 unsafe impl Send for Object {}
 
 impl Object {
-  pub fn new<A: HeapAlloc, T: ObjectLikeTrait, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<NonNull<Object>, AllocError> {
+  pub fn new<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<NonNull<Object>, AllocError> {
     let allocated = Box::try_new(Object {
       data: Box::new(initializer()),
       next: UnsafeCell::new(ptr::null_mut()),

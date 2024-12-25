@@ -32,4 +32,12 @@ pub trait ObjectLikeTrait: 'static {
 impl<T: 'static> ObjectLikeTrait for T {
 }
 
+// Internal trait used by crate, to include 
+// internal stuffs
+pub(crate) trait ObjectLikeTraitInternal: 'static {
+}
+
+impl<T: ObjectLikeTrait + 'static> ObjectLikeTraitInternal for T {
+}
+
 

@@ -3,7 +3,7 @@ use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, pin::Pin, ptr:
 use crate::allocator::HeapAlloc;
 
 use super::{Heap, RootEntry};
-use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{self, Object}, root_refs::{Exclusive, RootRef, Sendable}, ObjectLikeTrait};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{self, Object}, root_refs::{Exclusive, RootRef, Sendable}, ObjectLikeTraitInternal};
 
 pub struct Data<A: HeapAlloc> {
   head: Pin<Box<RootEntry<A>>>
@@ -113,14 +113,14 @@ pub struct Context<'a, A: HeapAlloc> {
   _phantom: PhantomData<*const ()>
 }
 
-pub struct RootRefRaw<'a, A: HeapAlloc, T: ObjectLikeTrait> {
+pub struct RootRefRaw<'a, A: HeapAlloc, T: ObjectLikeTraitInternal> {
   entry_ref: *const RootEntry<A>,
   _phantom: PhantomData<&'a T>,
   // RootRef will only stays at current thread
   _force_not_send_sync: PhantomData<*const ()>
 }
 
-impl<A: HeapAlloc, T: ObjectLikeTrait> RootRefRaw<'_, A, T> {
+impl<A: HeapAlloc, T: ObjectLikeTraitInternal> RootRefRaw<'_, A, T> {
   fn get_raw_ptr_to_data(&self) -> NonNull<()> {
     // SAFETY: References are always non null
     let obj = unsafe { NonNull::new_unchecked(ptr::from_ref(self.get_object_borrow()).cast_mut()) };
@@ -158,7 +158,7 @@ impl<A: HeapAlloc, T: ObjectLikeTrait> RootRefRaw<'_, A, T> {
   }
 }
 
-impl<A: HeapAlloc, T: ObjectLikeTrait> Drop for RootRefRaw<'_, A, T> {
+impl<A: HeapAlloc, T: ObjectLikeTraitInternal> Drop for RootRefRaw<'_, A, T> {
   fn drop(&mut self) {
     // Corresponding RootEntry and RootRef are free'd together
     // therefore its safe after removing reference from root set
@@ -217,7 +217,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     self.owner
   }
   
-  pub fn new_root_ref_from_ptr<T: ObjectLikeTrait>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie<A>) -> RootRefRaw<'a, A, T> {
+  pub fn new_root_ref_from_ptr<T: ObjectLikeTraitInternal>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie<A>) -> RootRefRaw<'a, A, T> {
     let entry = Box::new(RootEntry {
       gc_state: &self.owner.gc,
       obj: ptr,
@@ -245,7 +245,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     }
   }
   
-  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, A, T> {
+  pub fn alloc<T: Describeable + ObjectLikeTraitInternal>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, A, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut special_ctx = ConstructorScope { _private: () };

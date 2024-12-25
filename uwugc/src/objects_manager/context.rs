@@ -2,7 +2,7 @@ use std::{any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr::NonNull, sync
 
 use crate::allocator::HeapAlloc;
 
-use crate::{descriptor::{self, DescriptorInternal, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}};
+use crate::{descriptor::{self, DescriptorInternal, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTraitInternal}};
 
 use super::{AllocError, ObjectManager};
 
@@ -82,7 +82,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
   
   // SAFETY: Caller has to ensure descriptor_obj_ptr is valid descriptor and also
   // type of Descriptor and make sure GC won't GC it away
-  unsafe fn try_alloc_unchecked<T: ObjectLikeTrait, F: FnOnce() -> T>(&self, func: F, _gc_lock_cookie: &mut GCLockCookie<A>, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<*mut Object, AllocError> {
+  unsafe fn try_alloc_unchecked<T: ObjectLikeTraitInternal, F: FnOnce() -> T>(&self, func: F, _gc_lock_cookie: &mut GCLockCookie<A>, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
     let descriptor = descriptor_obj_ptr.map_or(&descriptor::SELF_DESCRIPTOR, |x| {
         // SAFETY: Caller ensured its valid and correct reference
@@ -138,7 +138,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     Ok(obj_ptr)
   }
   
-  pub fn try_alloc<T: Describeable + ObjectLikeTrait, F: FnOnce() -> T>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
+  pub fn try_alloc<T: Describeable + ObjectLikeTraitInternal, F: FnOnce() -> T>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
     let mut desc_cache = self.owner.descriptor_cache.upgradable_read();
     let id = TypeId::of::<T>();
     
