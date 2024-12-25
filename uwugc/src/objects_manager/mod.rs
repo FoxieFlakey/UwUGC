@@ -88,10 +88,6 @@ impl Object {
   pub fn calc_object_size(layout: &Layout) -> usize {
     layout.size() + size_of::<Object>()
   }
-  
-  fn get_total_size(&self) -> usize {
-    Self::calc_object_size(&self.get_descriptor().layout)
-  }
 }
 
 pub struct ObjectManager<A: HeapAlloc> {
@@ -181,7 +177,7 @@ impl<A: HeapAlloc> ObjectManager<A> {
   unsafe fn dealloc(&self, obj: *mut Object) {
     // SAFETY: Caller already ensure 'obj' is valid pointer
     let obj = unsafe { &mut *obj };
-    let total_size = obj.get_total_size();
+    let total_size = Object::calc_object_size(&obj.get_descriptor().layout);
     
     // SAFETY: Caller ensured that 'obj' pointer is only user left
     // and safe to be deallocated
