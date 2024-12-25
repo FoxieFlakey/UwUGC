@@ -5,7 +5,7 @@ use portable_atomic::AtomicBool;
 
 use crate::{descriptor::{self, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, Descriptor};
 
-use super::{AllocError, ObjectManager};
+use super::{meta_word::MetaWord, AllocError, ObjectManager};
 
 pub struct LocalObjectsChain {
   // Maintains start and end of chain
@@ -107,7 +107,10 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
       next: UnsafeCell::new(ptr::null_mut()),
       
-      descriptor: descriptor_obj_ptr
+      // SAFETY: Caller ensured object pointer is correct and GC ensures
+      // that the object pointer to descriptor remains valid as long as
+      // there are users of it
+      meta_word: unsafe{ MetaWord::new(descriptor_obj_ptr) }
     }));
     
     // Ensure changes made previously by potential flush_to_global

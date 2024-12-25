@@ -1,13 +1,15 @@
 use std::{any::TypeId, cell::UnsafeCell, collections::HashMap, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use crate::allocator::HeapAlloc;
+use meta_word::MetaWord;
 use parking_lot::{Mutex, RwLock};
 
 use context::LocalObjectsChain;
 pub use context::Handle;
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::{self, Descriptor}, gc::GCExclusiveLockCookie, ObjectLikeTrait};
+use crate::{descriptor::Descriptor, gc::GCExclusiveLockCookie, ObjectLikeTrait};
 
+mod meta_word;
 mod context;
 
 #[derive(Debug)]
@@ -19,10 +21,9 @@ pub struct Object {
   // function, the 'marked' meaning on this always changes
   marked: AtomicBool,
   
-  // Contains pointer to object containing the descriptor
-  // so GC can trace it normally, and if None then it is
-  // the descriptor itself
-  descriptor: Option<NonNull<Object>>,
+  // Containing metadata about this object compressed into
+  // single machine word
+  meta_word: MetaWord,
   
   // Data can only contain owned structs
   data: Box<dyn ObjectLikeTrait>
@@ -36,7 +37,7 @@ unsafe impl Send for Object {}
 
 impl Object {
   pub fn get_descriptor_obj_ptr(&self) -> Option<NonNull<Object>> {
-    self.descriptor
+    self.meta_word.get_descriptor_obj_ptr()
   }
   
   pub fn get_raw_ptr_to_data(&self) -> *const () {
@@ -48,19 +49,11 @@ impl Object {
   }
   
   fn is_descriptor(&self) -> bool {
-    self.descriptor.is_none()
+    self.meta_word.is_descriptor()
   }
   
   fn get_descriptor(&self) -> &Descriptor {
-    let Some(descriptor_obj) = self.descriptor else { return &descriptor::SELF_DESCRIPTOR };
-    
-    // SAFETY: Validity of this will be ensured by GC because if this called
-    // it means marking process encounter this object which then GC has to not
-    // deallocate the descriptor
-    let descriptor = unsafe { descriptor_obj.as_ref() };
-    
-    // SAFETY: The type is correct, descriptor will always be type of descriptor
-    unsafe { descriptor.get_raw_ptr_to_data().cast::<Descriptor>().as_ref().unwrap_unchecked() }
+    self.meta_word.get_descriptor()
   }
   
   pub fn trace(&self, tracer: impl FnMut(&portable_atomic::AtomicPtr<Object>)) {
