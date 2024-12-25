@@ -84,11 +84,10 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
   // type of Descriptor and make sure GC won't GC it away
   unsafe fn try_alloc_unchecked<T: ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie<A>, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
-    let descriptor = descriptor_obj_ptr.map(|x| {
+    let descriptor = descriptor_obj_ptr.map_or(&descriptor::SELF_DESCRIPTOR, |x| {
         // SAFETY: Caller ensured its valid and correct reference
         unsafe { x.as_ref().get_raw_ptr_to_data().cast::<Descriptor>().as_ref().unwrap_unchecked() }
-      })
-      .unwrap_or(&descriptor::SELF_DESCRIPTOR);
+      });
     
     manager.used_size.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
       x += size_of::<Object>() + descriptor.layout.size();

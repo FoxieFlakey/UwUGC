@@ -41,11 +41,10 @@ impl MetaWord {
     MetaWord {
       word: AtomicPtr::new(
         desc
-          .map(|ptr| {
+          .map_or(ptr::null_mut(), |ptr| {
             assert!(ptr.addr().trailing_zeros() >= OBJECT_ALIGNMENT_SHIFT, "Incorrect alignment was given!");
             ptr.as_ptr()
           })
-          .unwrap_or(ptr::null_mut())
           .map_addr(|mut x| {
             x |= ORDINARY_OBJECT_BIT;
             
@@ -56,7 +55,7 @@ impl MetaWord {
             
             x
           })
-        )
+      )
     }
   }
   
