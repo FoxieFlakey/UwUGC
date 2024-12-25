@@ -76,11 +76,13 @@ impl Object {
     self.meta_word.get_descriptor()
   }
   
-  pub fn trace(&self, tracer: impl FnMut(&portable_atomic::AtomicPtr<Object>)) {
+  // SAFETY: Caller has to make sure that 'obj' is valid object pointer
+  pub unsafe fn trace(obj: NonNull<Self>, tracer: impl FnMut(&portable_atomic::AtomicPtr<Object>)) {
     // SAFETY: The safety that descriptor is the one needed is enforced by
     // type system and unsafe contract of the getting descriptor for a type
+    // SAFETY: Caller also make sure 'obj' is valid
     unsafe {
-      self.get_descriptor().trace(Self::get_raw_ptr_to_data(NonNull::from_ref(self)), tracer);
+      obj.as_ref().get_descriptor().trace(Self::get_raw_ptr_to_data(obj), tracer);
     }
   }
   

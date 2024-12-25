@@ -1,4 +1,4 @@
-use std::{cell::LazyCell, ptr, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use std::{cell::LazyCell, ptr::{self, NonNull}, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
 use crate::allocator::HeapAlloc;
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use portable_atomic::AtomicBool;
@@ -33,10 +33,10 @@ struct GCCommandStruct {
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
-struct ObjectPtrSend(*const Object);
-impl From<&Object> for ObjectPtrSend {
-  fn from(value: &Object) -> Self {
-    Self(ptr::from_ref(value))
+struct ObjectPtrSend(NonNull<Object>);
+impl From<NonNull<Object>> for ObjectPtrSend {
+  fn from(value: NonNull<Object>) -> Self {
+    Self(value)
   }
 }
 
@@ -233,12 +233,15 @@ impl<A: HeapAlloc> GCState<A> {
       return false;
     }
     
+    // SAFETY: References are always non null
+    let obj_nonnull = unsafe { NonNull::new_unchecked(ptr::from_ref(object).cast_mut()) };
+    
     // SAFETY: This always succeded because the receiver end will
     // only be destroyed if Heap is no longer exist anywhere and there
     // can't be a way this be called as load barrier only can be triggered
     // by Heap existing on mutator code
     unsafe {
-      self.inner_state.remark_queue_sender.send(object.into()).unwrap_unchecked();
+      self.inner_state.remark_queue_sender.send(obj_nonnull.into()).unwrap_unchecked();
     }
     true
   }
@@ -325,28 +328,34 @@ impl<A: HeapAlloc> GCState<A> {
     self.call_gc(GCCommand::RunGC);
   }
   
-  fn do_mark(heap: &HeapState<A>, obj: &Object) {
+  // SAFETY: Caller has to make 'obj' is valid
+  unsafe fn do_mark(heap: &HeapState<A>, obj: NonNull<Object>) {
     let mut queue = Vec::new();
-    queue.push(ptr::from_ref(obj));
+    queue.push(obj);
     
     while let Some(obj) = queue.pop() {
       // SAFETY: It is reachable by GC and GC controls
       // the lifetime of it, so if it reachs here, then
       // its guaranteed to be alive
-      let obj = unsafe { &*obj };
-      if obj.set_mark_bit(&heap.object_manager) {
+      let obj_ref = unsafe { obj.as_ref() };
+      if obj_ref.set_mark_bit(&heap.object_manager) {
         // The object is already marked, don't trace it anymore
         continue;
       }
       
       // Add the descriptor to be traced
-      if let Some(x) = obj.get_descriptor_obj_ptr() {
-        queue.push(x.as_ptr());
+      if let Some(x) = obj_ref.get_descriptor_obj_ptr() {
+        queue.push(x);
       }
       
-      obj.trace(|reference| {
-        queue.push(reference.load(Ordering::Relaxed));
-      });
+      // SAFETY: Objects are in control by GC so objects are valid
+      unsafe {
+        Object::trace(obj, |reference| {
+          if let Some(reference) = NonNull::new(reference.load(Ordering::Relaxed)) {
+            queue.push(reference);
+          }
+        });
+      }
     }
   }
   
@@ -373,12 +382,10 @@ impl<A: HeapAlloc> GCState<A> {
     
     // Step 2 (Concurrent): Mark objects
     for obj in root_snapshot {
+      // Mark it
       // SAFETY: Object is reference from root that mean
       // mutator still using it therefore GC must keep it alive
-      let obj = unsafe { obj.as_ref() };
-      
-      // Mark it
-      Self::do_mark(heap, obj);
+      unsafe { Self::do_mark(heap, obj) };
     }
     
     // Step 2 (STW): Final remark (to catchup with potentially missed objects)
@@ -393,16 +400,18 @@ impl<A: HeapAlloc> GCState<A> {
     for obj in private.remark_queue_receiver.try_iter() {
       // SAFETY: Object is was loaded by mutator therefore
       // it must be alive at this point so safe
-      let obj = unsafe { &*obj.0 };
+      let obj_ref = unsafe { obj.0.as_ref() };
       
       // Unmark it, so the code for marking can be shared
       // for non final remark and normal mark, because both
       // is exactly the same except that in here it started
       // as marked, so unmark it to remark it later
-      obj.unset_mark_bit(&heap.object_manager);
+      obj_ref.unset_mark_bit(&heap.object_manager);
       
       // Mark it
-      Self::do_mark(heap, obj);
+      // SAFETY: GC has control of the objects and because mutator
+      // can access it that mean GC must keep it alive
+      unsafe { Self::do_mark(heap, obj.0) };
     }
     
     // Step 2.2: Prune descriptor cache from dead descriptors

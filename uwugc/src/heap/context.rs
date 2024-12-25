@@ -122,8 +122,11 @@ pub struct RootRefRaw<'a, A: HeapAlloc, T: ObjectLikeTrait> {
 
 impl<A: HeapAlloc, T: ObjectLikeTrait> RootRefRaw<'_, A, T> {
   fn get_raw_ptr_to_data(&self) -> NonNull<()> {
+    // SAFETY: References are always non null
+    let obj = unsafe { NonNull::new_unchecked(ptr::from_ref(self.get_object_borrow()).cast_mut()) };
+    
     // SAFETY: As long as RootRefRaw exist object pointer will remains valid
-    unsafe { Object::get_raw_ptr_to_data(NonNull::from_ref(self.get_object_borrow())) }
+    unsafe { Object::get_raw_ptr_to_data(obj) }
   }
   
   // SAFETY: The root reference may not be safe in face of
