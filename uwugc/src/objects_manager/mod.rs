@@ -34,8 +34,8 @@ unsafe impl Sync for Object {}
 unsafe impl Send for Object {}
 
 impl Object {
-  pub fn new<A: HeapAlloc, T: ObjectLikeTrait, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, descriptor_obj_ptr: Option<NonNull<Object>>) -> NonNull<Object> {
-    let ptr = ptr::from_mut(Box::leak(Box::new(Object {
+  pub fn new<A: HeapAlloc, T: ObjectLikeTrait, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<NonNull<Object>, AllocError> {
+    let allocated = Box::try_new(Object {
       data: Box::new(initializer()),
       next: UnsafeCell::new(ptr::null_mut()),
       
@@ -43,10 +43,12 @@ impl Object {
       // that the object pointer to descriptor remains valid as long as
       // there are users of it
       meta_word: unsafe { MetaWord::new(descriptor_obj_ptr, Self::compute_new_object_mark_bit(owner)) }
-    })));
+    }).map_err(|_| AllocError /* This just replace allocator API's AllocError with custom one */)?;
+    
+    let ptr = ptr::from_mut(Box::leak(allocated));
     
     // SAFETY: Just allocated the pointer
-    unsafe { NonNull::new_unchecked(ptr) }
+    unsafe { Ok(NonNull::new_unchecked(ptr)) }
   }
   
   pub fn get_descriptor_obj_ptr(&self) -> Option<NonNull<Object>> {

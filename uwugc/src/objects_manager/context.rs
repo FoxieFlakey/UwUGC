@@ -89,8 +89,9 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         unsafe { Object::get_raw_ptr_to_data(x).cast::<Descriptor>().as_ref() }
       });
     
+    let object_size = Object::calc_layout(&descriptor.layout).0.size();
     manager.used_size.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
-      x += Object::calc_layout(&descriptor.layout).0.size();
+      x += object_size;
       
       if x <= self.owner.max_size {
         Some(x)
@@ -100,7 +101,12 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     }).map_err(|_| AllocError)?;
     
     // Allocate the object
-    let obj_ptr = Object::new(self.owner, func, descriptor_obj_ptr).as_ptr();
+    let Ok(obj) = Object::new(self.owner, func, descriptor_obj_ptr) else {
+        // Undo what just did to the usage counter
+        self.owner.used_size.fetch_sub(object_size, Ordering::Relaxed);
+        return Err(AllocError);
+      };
+    let obj_ptr = obj.as_ptr();
     
     // SAFETY: Just allocated it before
     let obj_header = unsafe { obj_ptr.as_ref().unwrap_unchecked() };
