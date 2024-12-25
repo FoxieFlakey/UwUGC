@@ -95,11 +95,12 @@ impl Object {
   }
   
   // Calculate a layout containing both the Object and padding
-  // necessary to the data
-  pub fn calc_layout(data_layout: &Layout) -> Layout {
+  // necessary to the data and return new layout and offset to
+  // data part of object
+  pub fn calc_layout(data_layout: &Layout) -> (Layout, usize) {
     Layout::new::<Object>()
       .extend(*data_layout)
-      .unwrap().0
+      .unwrap()
   }
 }
 
@@ -190,7 +191,7 @@ impl<A: HeapAlloc> ObjectManager<A> {
   unsafe fn dealloc(&self, obj: *mut Object) {
     // SAFETY: Caller already ensure 'obj' is valid pointer
     let obj = unsafe { &mut *obj };
-    let total_size = Object::calc_layout(&obj.get_descriptor().layout).size();
+    let total_size = Object::calc_layout(&obj.get_descriptor().layout).0.size();
     
     // SAFETY: Caller ensured that 'obj' pointer is only user left
     // and safe to be deallocated
