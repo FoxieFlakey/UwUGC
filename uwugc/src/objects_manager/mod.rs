@@ -18,9 +18,6 @@ pub struct AllocError;
 #[repr(align(4))]
 pub struct Object {
   next: UnsafeCell<*mut Object>,
-  // WARNING: Do not rely on this, always use is_marked
-  // function, the 'marked' meaning on this always changes
-  marked: AtomicBool,
   
   // Containing metadata about this object compressed into
   // single machine word
@@ -67,17 +64,17 @@ impl Object {
   
   pub fn unset_mark_bit<A: HeapAlloc>(&self, owner: &ObjectManager<A>) {
     let marked_bit_value = owner.marked_bit_value.load(Ordering::Relaxed);
-    self.marked.store(!marked_bit_value, Ordering::Relaxed);
+    self.meta_word.swap_mark_bit(!marked_bit_value);
   }
   
   // Return if object was unmark or marked
   pub fn set_mark_bit<A: HeapAlloc>(&self, owner: &ObjectManager<A>) -> bool {
     let marked_bit_value = owner.marked_bit_value.load(Ordering::Relaxed);
-    self.marked.swap(marked_bit_value, Ordering::Relaxed) == marked_bit_value
+    self.meta_word.swap_mark_bit(marked_bit_value) == marked_bit_value
   }
   
   fn is_marked<A: HeapAlloc>(&self, owner: &ObjectManager<A>) -> bool {
-    let mark_bit = self.marked.load(Ordering::Relaxed);
+    let mark_bit = self.meta_word.get_mark_bit();
     mark_bit == owner.marked_bit_value.load(Ordering::Relaxed)
   }
   

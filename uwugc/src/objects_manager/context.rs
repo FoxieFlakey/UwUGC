@@ -1,7 +1,6 @@
 use std::{any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr::{self, NonNull}, sync::{atomic::{self, Ordering}, Arc}, thread};
 
 use crate::allocator::HeapAlloc;
-use portable_atomic::AtomicBool;
 
 use crate::{descriptor::{self, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, Descriptor};
 
@@ -104,13 +103,12 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     // Leak it and we'll handle it here
     let obj = Box::leak(Box::new(Object {
       data: Box::new(func()),
-      marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
       next: UnsafeCell::new(ptr::null_mut()),
       
       // SAFETY: Caller ensured object pointer is correct and GC ensures
       // that the object pointer to descriptor remains valid as long as
       // there are users of it
-      meta_word: unsafe { MetaWord::new(descriptor_obj_ptr) }
+      meta_word: unsafe { MetaWord::new(descriptor_obj_ptr, Object::compute_new_object_mark_bit(self.owner)) }
     }));
     
     // Ensure changes made previously by potential flush_to_global

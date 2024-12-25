@@ -23,6 +23,7 @@ const METADATA_MASK: usize = 0b11;
 const DATA_MASK: usize = !METADATA_MASK;
 
 const ORDINARY_OBJECT_BIT: usize = 0b01;
+const MARK_BIT: usize            = 0b10;
 
 enum ObjectType {
   // Corresponds to ORDINARY_OBJECT_BIT set
@@ -36,7 +37,7 @@ impl MetaWord {
   //
   // Caller also have to make sure the 'desc' pointer given
   // is valid as long as the MetaWord exists
-  pub unsafe fn new(desc: Option<NonNull<Object>>) -> MetaWord {
+  pub unsafe fn new(desc: Option<NonNull<Object>>, mark_bit: bool) -> MetaWord {
     MetaWord {
       word: AtomicPtr::new(
         desc
@@ -45,9 +46,41 @@ impl MetaWord {
             ptr.as_ptr()
           })
           .unwrap_or(ptr::null_mut())
-          .map_addr(|x| x | ORDINARY_OBJECT_BIT)
+          .map_addr(|mut x| {
+            x |= ORDINARY_OBJECT_BIT;
+            
+            // Set the mark bit
+            if mark_bit {
+              x |= MARK_BIT;
+            }
+            
+            x
+          })
         )
     }
+  }
+  
+  // Swap MARK_BIT part of metadata and return old one
+  //
+  // Mark bit is only part which changes throughout lifetime
+  // of MetaWord, the rest don't change so CAS loop is unnecessary
+  pub fn swap_mark_bit(&self, new_bit: bool) -> bool {
+    let new = self.word.load(Ordering::Relaxed);
+    let old = self.word.swap(new.map_addr(|mut x| {
+      if new_bit {
+        x |= MARK_BIT;
+      } else {
+        x &= !MARK_BIT;
+      }
+      
+      x
+    }), Ordering::Relaxed);
+    
+    (old.addr() & MARK_BIT) == MARK_BIT
+  }
+  
+  pub fn get_mark_bit(&self) -> bool {
+    (self.word.load(Ordering::Relaxed).addr() & MARK_BIT) == MARK_BIT
   }
   
   fn get_object_type(&self) -> ObjectType {
