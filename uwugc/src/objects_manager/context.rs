@@ -103,7 +103,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     let obj_ptr = Object::new(self.owner, func, descriptor_obj_ptr);
     
     // SAFETY: Just allocated it before
-    let obj_header = unsafe { &*obj_ptr };
+    let obj_header = unsafe { obj_ptr.as_ref().unwrap_unchecked() };
     
     // Ensure changes made previously by potential flush_to_global
     // emptying the local list visible to this
