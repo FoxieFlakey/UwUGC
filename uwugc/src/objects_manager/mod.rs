@@ -1,4 +1,4 @@
-use std::{any::TypeId, cell::UnsafeCell, collections::HashMap, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::HashMap, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use crate::allocator::HeapAlloc;
 use meta_word::MetaWord;
 use parking_lot::{Mutex, RwLock};
@@ -82,8 +82,15 @@ impl Object {
     owner.new_object_mark_value.load(Ordering::Relaxed)
   }
   
+  // Calculate total size of an object after including space
+  // for the metadata and potential padding to align data part
+  // to statisfy layout
+  pub fn calc_object_size(layout: &Layout) -> usize {
+    layout.size() + size_of::<Object>()
+  }
+  
   fn get_total_size(&self) -> usize {
-    self.get_descriptor().layout.size() + size_of::<Object>()
+    Self::calc_object_size(&self.get_descriptor().layout)
   }
 }
 
