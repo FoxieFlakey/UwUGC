@@ -103,9 +103,9 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       next: UnsafeCell::new(ptr::null_mut()),
       
       // Will be filled later by try_alloc
-      descriptor_obj_ptr: None,
-      
-      descriptor,
+      // or left empty, if this object is
+      // a descriptor
+      descriptor: None
     }));
     
     // Ensure changes made previously by potential flush_to_global
@@ -195,7 +195,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     
     // SAFETY: Just allocated the object so it is safe and GC won't be able to GC it
     new_obj.inspect(|&x| unsafe {
-      (*x).descriptor_obj_ptr = Some(descriptor_obj_ptr);
+      (*x).descriptor = Some(descriptor_obj_ptr);
     })
   }
 }

@@ -18,11 +18,11 @@ pub struct Object {
   // WARNING: Do not rely on this, always use is_marked
   // function, the 'marked' meaning on this always changes
   marked: AtomicBool,
-  descriptor: &'static Descriptor,
   
-  // Temporarily contains pointer to object containing the descriptor
-  // so GC can trace it normally
-  descriptor_obj_ptr: Option<NonNull<Object>>,
+  // Contains pointer to object containing the descriptor
+  // so GC can trace it normally, and if None then it is
+  // the descriptor itself
+  descriptor: Option<NonNull<Object>>,
   
   // Data can only contain owned structs
   data: Box<dyn ObjectLikeTrait>
@@ -36,7 +36,7 @@ unsafe impl Send for Object {}
 
 impl Object {
   pub fn get_descriptor_obj_ptr(&self) -> Option<NonNull<Object>> {
-    self.descriptor_obj_ptr
+    self.descriptor
   }
   
   pub fn get_raw_ptr_to_data(&self) -> *const () {
@@ -47,11 +47,27 @@ impl Object {
     Box::as_ptr(&self.data).cast()
   }
   
+  fn is_descriptor(&self) -> bool {
+    self.descriptor.is_none()
+  }
+  
+  fn get_descriptor(&self) -> &Descriptor {
+    let Some(descriptor_obj) = self.descriptor else { return &descriptor::SELF_DESCRIPTOR };
+    
+    // SAFETY: Validity of this will be ensured by GC because if this called
+    // it means marking process encounter this object which then GC has to not
+    // deallocate the descriptor
+    let descriptor = unsafe { descriptor_obj.as_ref() };
+    
+    // SAFETY: The type is correct, descriptor will always be type of descriptor
+    unsafe { descriptor.get_raw_ptr_to_data().cast::<Descriptor>().as_ref().unwrap_unchecked() }
+  }
+  
   pub fn trace(&self, tracer: impl FnMut(&portable_atomic::AtomicPtr<Object>)) {
     // SAFETY: The safety that descriptor is the one needed is enforced by
     // type system and unsafe contract of the getting descriptor for a type
     unsafe {
-      self.descriptor.trace(self.get_raw_ptr_to_data(), tracer);
+      self.get_descriptor().trace(self.get_raw_ptr_to_data(), tracer);
     }
   }
   
@@ -76,7 +92,7 @@ impl Object {
   }
   
   fn get_total_size(&self) -> usize {
-    self.descriptor.layout.size() + size_of::<Object>()
+    self.get_descriptor().layout.size() + size_of::<Object>()
   }
 }
 
@@ -270,7 +286,7 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
         let current = unsafe { &*current_ptr };
         
         // It is descriptor object, defer it to deallocate later
-        if ptr::from_ref(current.descriptor) == ptr::from_ref(&descriptor::SELF_DESCRIPTOR) {
+        if current.is_descriptor() {
           if deferred_dealloc_list.is_null() {
             deferred_dealloc_list = current_ptr;
           } else {
