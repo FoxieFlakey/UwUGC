@@ -110,7 +110,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       // SAFETY: Caller ensured object pointer is correct and GC ensures
       // that the object pointer to descriptor remains valid as long as
       // there are users of it
-      meta_word: unsafe{ MetaWord::new(descriptor_obj_ptr) }
+      meta_word: unsafe { MetaWord::new(descriptor_obj_ptr) }
     }));
     
     // Ensure changes made previously by potential flush_to_global
