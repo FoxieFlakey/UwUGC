@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, pin::Pin, ptr, sync::{atomic, Arc}, thread};
+use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, pin::Pin, ptr::{self, NonNull}, sync::{atomic, Arc}, thread};
 
 use crate::allocator::HeapAlloc;
 
@@ -122,7 +122,8 @@ pub struct RootRefRaw<'a, A: HeapAlloc, T: ObjectLikeTrait> {
 
 impl<A: HeapAlloc, T: ObjectLikeTrait> RootRefRaw<'_, A, T> {
   fn get_raw_ptr_to_data(&self) -> *const () {
-    Object::get_raw_ptr_to_data(self.get_object_borrow())
+    // SAFETY: As long as RootRefRaw exist object pointer will remains valid
+    unsafe { Object::get_raw_ptr_to_data(NonNull::from_ref(self.get_object_borrow())) }
   }
   
   // SAFETY: The root reference may not be safe in face of

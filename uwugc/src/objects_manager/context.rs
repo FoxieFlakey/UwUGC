@@ -86,7 +86,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     let manager = self.owner;
     let descriptor = descriptor_obj_ptr.map_or(&descriptor::SELF_DESCRIPTOR, |x| {
         // SAFETY: Caller ensured its valid and correct reference
-        unsafe { Object::get_raw_ptr_to_data(x.as_ref()).cast::<Descriptor>().as_ref().unwrap_unchecked() }
+        unsafe { Object::get_raw_ptr_to_data(x).cast::<Descriptor>().as_ref().unwrap_unchecked() }
       });
     
     manager.used_size.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
