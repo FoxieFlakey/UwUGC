@@ -1,4 +1,6 @@
-use std::ptr::{self, NonNull};
+use std::{ptr::{self, NonNull}, sync::atomic::Ordering};
+
+use portable_atomic::AtomicPtr;
 
 use crate::{descriptor, Descriptor};
 
@@ -6,7 +8,25 @@ use super::Object;
 
 // It is a single "multi-purpose" descriptor pointer
 pub struct MetaWord {
-  word: *const Object
+  word: AtomicPtr<Object>
+}
+
+// Minimum alignment object needed to ensure
+// bottom two bits remains unused and can be
+// used for metadata purposes
+const OBJECT_ALIGNMENT_SHIFT: u32 = 2;
+const _: () = assert!(align_of::<Object>() >= (1 << OBJECT_ALIGNMENT_SHIFT), "Object is not in correct alignment! Correct alignment is REQUIRED for MetaWord to be correct");
+
+// Lower two bit of properly aligned
+// object pointer is used for metadata
+const METADATA_MASK: usize = 0b11;
+const DATA_MASK: usize = !METADATA_MASK;
+
+const ORDINARY_OBJECT_BIT: usize = 0b01;
+
+enum ObjectType {
+  // Corresponds to ORDINARY_OBJECT_BIT set
+  Ordinary
 }
 
 impl MetaWord {
@@ -18,22 +38,37 @@ impl MetaWord {
   // is valid as long as the MetaWord exists
   pub unsafe fn new(desc: Option<NonNull<Object>>) -> MetaWord {
     MetaWord {
-      word: desc
-        .map(|ptr| ptr.as_ptr().cast_const())
-        .unwrap_or(ptr::null())
+      word: AtomicPtr::new(
+        desc
+          .map(|ptr| {
+            assert!(ptr.addr().trailing_zeros() >= OBJECT_ALIGNMENT_SHIFT, "Incorrect alignment was given!");
+            ptr.as_ptr()
+          })
+          .unwrap_or(ptr::null_mut())
+          .map_addr(|x| x | ORDINARY_OBJECT_BIT)
+        )
     }
+  }
+  
+  fn get_object_type(&self) -> ObjectType {
+    let word = self.word.load(Ordering::Relaxed);
+    if word.addr() & ORDINARY_OBJECT_BIT !=0  {
+      return ObjectType::Ordinary;
+    }
+    
+    unimplemented!();
   }
   
   pub fn is_descriptor(&self) -> bool {
-    self.word.is_null()
+    match self.get_object_type() {
+      ObjectType::Ordinary => self.get_descriptor_obj_ptr().is_none()
+    }
   }
   
   pub fn get_descriptor_obj_ptr(&self) -> Option<NonNull<Object>> {
-    if self.is_descriptor() {
-      return None;
+    match self.get_object_type() {
+      ObjectType::Ordinary => NonNull::new(self.word.load(Ordering::Relaxed).map_addr(|x| x & DATA_MASK))
     }
-    
-    NonNull::new(self.word.cast_mut())
   }
   
   pub fn get_descriptor(&self) -> &Descriptor {

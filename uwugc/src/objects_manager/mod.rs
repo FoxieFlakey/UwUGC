@@ -15,6 +15,7 @@ mod context;
 #[derive(Debug)]
 pub struct AllocError;
 
+#[repr(align(4))]
 pub struct Object {
   next: UnsafeCell<*mut Object>,
   // WARNING: Do not rely on this, always use is_marked
