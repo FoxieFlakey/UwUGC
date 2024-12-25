@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, ops::Deref, sync::Arc, thread::{self, ThreadId}};
+use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, ops::Deref, ptr::NonNull, sync::Arc, thread::{self, ThreadId}};
 use crate::allocator::HeapAlloc;
 use parking_lot::Mutex;
 
@@ -117,7 +117,7 @@ impl<A: HeapAlloc> Heap<A> {
 impl<A: HeapAlloc> State<A> {
   // SAFETY: Caller must ensure that mutators arent actively trying
   // to use the root concurrently
-  pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<*const Object>) {
+  pub unsafe fn take_root_snapshot_unlocked(&self, buffer: &mut Vec<NonNull<Object>>) {
     let contexts = self.contexts.lock();
     for ctx in contexts.values() {
       // SAFETY: Its caller responsibility to make sure there are no
@@ -128,7 +128,9 @@ impl<A: HeapAlloc> State<A> {
           // return caller must ensure that *mut Object is valid
           // because after this returns no lock ensures that GC isn't
           // actively collect that potential *mut Object
-          buffer.push(entry.obj);
+          //
+          // SAFETY: root references are never null
+          buffer.push(NonNull::new_unchecked(entry.obj));
         });
       }
     }

@@ -51,13 +51,16 @@ impl Object {
   }
   
   // SAFETY: Caller has to ensure 'obj' is valid object pointer
-  pub unsafe fn get_raw_ptr_to_data(obj: NonNull<Self>) -> *const () {
+  pub unsafe fn get_raw_ptr_to_data(obj: NonNull<Self>) -> NonNull<()> {
     // LOOKING at downcast_ref_unchecked method in dyn Any
     // it looked like &dyn Any can be casted to pointer to
     // T directly therefore can be casted to get untyped
     // pointer to underlying data T
     // SAFETY: Caller ensured 'obj' is valid object pointer
-    Box::as_ptr(unsafe { &obj.as_ref().data }).cast()
+    let ptr = Box::as_ptr(unsafe { &obj.as_ref().data });
+    // SAFETY: 'ptr' guarantee to be non null because Box contains pointer to the
+    // data
+    unsafe { NonNull::new_unchecked(ptr.cast_mut().cast::<()>()) }
   }
   
   fn is_descriptor(&self) -> bool {

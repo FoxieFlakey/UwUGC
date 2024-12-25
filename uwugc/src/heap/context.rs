@@ -121,7 +121,7 @@ pub struct RootRefRaw<'a, A: HeapAlloc, T: ObjectLikeTrait> {
 }
 
 impl<A: HeapAlloc, T: ObjectLikeTrait> RootRefRaw<'_, A, T> {
-  fn get_raw_ptr_to_data(&self) -> *const () {
+  fn get_raw_ptr_to_data(&self) -> NonNull<()> {
     // SAFETY: As long as RootRefRaw exist object pointer will remains valid
     unsafe { Object::get_raw_ptr_to_data(NonNull::from_ref(self.get_object_borrow())) }
   }
@@ -132,7 +132,7 @@ impl<A: HeapAlloc, T: ObjectLikeTrait> RootRefRaw<'_, A, T> {
     // SAFETY: Type already statically checked by Rust
     // via this type's T and caller ensure safetyness
     // of making the reference
-    unsafe { &*self.get_raw_ptr_to_data().cast::<T>() }
+    unsafe { self.get_raw_ptr_to_data().cast::<T>().as_ref() }
   }
   
   // SAFETY: The root reference may not be safe in face of
@@ -141,7 +141,7 @@ impl<A: HeapAlloc, T: ObjectLikeTrait> RootRefRaw<'_, A, T> {
     // SAFETY: Type already statically checked by Rust
     // via this type's T and caller ensure safetyness
     // of making the reference
-    unsafe { &mut *self.get_raw_ptr_to_data().cast_mut().cast::<T>() }
+    unsafe { self.get_raw_ptr_to_data().cast::<T>().as_mut() }
   }
   
   pub fn get_object_borrow(&self) -> &Object {

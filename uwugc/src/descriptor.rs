@@ -1,6 +1,6 @@
 // NOTE: Everything in this file is considered to be part of public API
 
-use std::alloc::Layout;
+use std::{alloc::Layout, ptr::NonNull};
 
 use portable_atomic::AtomicPtr;
 
@@ -24,7 +24,7 @@ pub static SELF_DESCRIPTOR: Descriptor = Descriptor {
 impl Descriptor {
   // Caller must properly match the descriptor to correct type so trace can
   // correctly get pointer to fields
-  pub(crate) unsafe fn trace(&self, data: *const (), mut tracer: impl FnMut(&AtomicPtr<Object>)) {
+  pub(crate) unsafe fn trace(&self, data: NonNull<()>, mut tracer: impl FnMut(&AtomicPtr<Object>)) {
     let Some(fields) = self.fields else { return };
     for field in fields {
       // SAFETY: The code which constructs this descriptor must give correct offsets
@@ -34,7 +34,7 @@ impl Descriptor {
       // safety of this is responsibility of the implementor, and its impossible to pass
       // any constructed descriptor from safe code to create arbitrary potentially unsafe
       // descriptors for object allocations
-      tracer(unsafe { &*data.byte_add(field.offset).cast::<AtomicPtr<Object>>() });
+      tracer(unsafe { data.byte_add(field.offset).cast::<AtomicPtr<Object>>().as_ref() });
     }
   }
 }

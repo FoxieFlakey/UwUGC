@@ -375,7 +375,7 @@ impl<A: HeapAlloc> GCState<A> {
     for obj in root_snapshot {
       // SAFETY: Object is reference from root that mean
       // mutator still using it therefore GC must keep it alive
-      let obj = unsafe { &*obj };
+      let obj = unsafe { obj.as_ref() };
       
       // Mark it
       Self::do_mark(heap, obj);
