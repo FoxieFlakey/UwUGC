@@ -81,11 +81,16 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     }
   }
   
-  // SAFETY: 
-  // Caller has to ensure 'descriptor' live longer than all objects that currently
-  // uses it but caller may 'kill' it if there no living objects using it anymore
-  unsafe fn try_alloc_unchecked<T: ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie<A>, descriptor: &'static Descriptor) -> Result<*mut Object, AllocError> {
+  // SAFETY: Caller has to ensure descriptor_obj_ptr is valid descriptor and also
+  // type of Descriptor and make sure GC won't GC it away
+  unsafe fn try_alloc_unchecked<T: ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie<A>, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
+    let descriptor = descriptor_obj_ptr.map(|x| {
+        // SAFETY: Caller ensured its valid and correct reference
+        unsafe { x.as_ref().get_raw_ptr_to_data().cast::<Descriptor>().as_ref().unwrap_unchecked() }
+      })
+      .unwrap_or(&descriptor::SELF_DESCRIPTOR);
+    
     manager.used_size.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
       x += size_of::<Object>() + descriptor.layout.size();
       
@@ -102,10 +107,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       marked: AtomicBool::new(Object::compute_new_object_mark_bit(self.owner)),
       next: UnsafeCell::new(ptr::null_mut()),
       
-      // Will be filled later by try_alloc
-      // or left empty, if this object is
-      // a descriptor
-      descriptor: None
+      descriptor: descriptor_obj_ptr
     }));
     
     // Ensure changes made previously by potential flush_to_global
@@ -161,9 +163,9 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         // there has to be already existing descriptor in heap so break
         // the cycle with statically allocated 'root' descriptor.
         //
-        // SAFETY: The descriptor is correct for Descriptor and because just allocated
-        // it cannot be null
-        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(&mut T::get_descriptor, gc_lock_cookie, &descriptor::SELF_DESCRIPTOR)?) };
+        // SAFETY: The descriptor is correct for Descriptor and because its statically
+        // referenced thus no object pointer used
+        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(&mut T::get_descriptor, gc_lock_cookie, None)?) };
         
         // If not present in cache, try insert into it with upgraded rwlock
         Ok(
@@ -183,20 +185,8 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       gc_lock_cookie.get_gc().load_barrier(obj_ref, self.owner, gc_lock_cookie);
     }
     
-    // SAFETY: The object data ptr is non null and it is valid because GC won't
-    // be GC-ing it away because its being blocked and if it exist in cache it
-    // means there other object using it and references in there can't dangle due
-    // GC is only thing which can prune the descriptor cache and deallocates unused
-    // descriptors
-    let descriptor = unsafe { obj_ref.get_raw_ptr_to_data().cast::<Descriptor>().as_ref().unwrap_unchecked() };
-    
     // SAFETY: Already make sure that the descriptor is correct
-    let new_obj = unsafe { self.try_alloc_unchecked(func, gc_lock_cookie, descriptor) };
-    
-    // SAFETY: Just allocated the object so it is safe and GC won't be able to GC it
-    new_obj.inspect(|&x| unsafe {
-      (*x).descriptor = Some(descriptor_obj_ptr);
-    })
+    unsafe { self.try_alloc_unchecked(func, gc_lock_cookie, Some(descriptor_obj_ptr)) }
   }
 }
 
