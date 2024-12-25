@@ -18,7 +18,7 @@ impl<T: ObjectLikeTrait> GCBox<T> {
   // owner of it
   pub fn new(reference: RootRef<Sendable, Exclusive, GlobalHeap, T>, _alloc_context: &mut ConstructorScope) -> Self {
     Self {
-      inner: GCRefRaw::new(RootRef::into_raw(reference).get_object_borrow())
+      inner: GCRefRaw::new(RootRef::into_raw(reference).get_object_ptr().as_ptr())
     }
   }
   

@@ -122,11 +122,8 @@ pub struct RootRefRaw<'a, A: HeapAlloc, T: ObjectLikeTraitInternal> {
 
 impl<A: HeapAlloc, T: ObjectLikeTraitInternal> RootRefRaw<'_, A, T> {
   fn get_raw_ptr_to_data(&self) -> NonNull<()> {
-    // SAFETY: References are always non null
-    let obj = unsafe { NonNull::new_unchecked(ptr::from_ref(self.get_object_borrow()).cast_mut()) };
-    
     // SAFETY: As long as RootRefRaw exist object pointer will remains valid
-    unsafe { Object::get_raw_ptr_to_data(obj) }
+    unsafe { Object::get_raw_ptr_to_data(self.get_object_ptr()) }
   }
   
   // SAFETY: The root reference may not be safe in face of
@@ -147,14 +144,13 @@ impl<A: HeapAlloc, T: ObjectLikeTraitInternal> RootRefRaw<'_, A, T> {
     unsafe { self.get_raw_ptr_to_data().cast::<T>().as_mut() }
   }
   
-  pub fn get_object_borrow(&self) -> &Object {
+  pub fn get_object_ptr(&self) -> NonNull<Object> {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
     // same thread
     let root_entry = unsafe { &*self.entry_ref };
-    // SAFETY: Objects accessible by this root reference guaranteed
-    // to be alive by the GC
-    unsafe { &*root_entry.obj }
+    // SAFETY: References in root refs are always non null
+    unsafe { NonNull::new_unchecked(root_entry.obj) }
   }
 }
 
