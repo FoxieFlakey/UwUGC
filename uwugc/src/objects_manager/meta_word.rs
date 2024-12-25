@@ -107,7 +107,7 @@ impl MetaWord {
     if let Some(obj_ptr) = self.get_descriptor_obj_ptr() {
       // SAFETY: The constructor's caller already guarantee that the descriptor
       // pointer valid as long MetaWord exists and correct type of object too
-      unsafe { obj_ptr.as_ref().get_raw_ptr_to_data().cast::<Descriptor>().as_ref().unwrap_unchecked() } 
+      unsafe { Object::get_raw_ptr_to_data(obj_ptr.as_ref()).cast::<Descriptor>().as_ref().unwrap_unchecked() } 
     } else {
       &descriptor::SELF_DESCRIPTOR
     }

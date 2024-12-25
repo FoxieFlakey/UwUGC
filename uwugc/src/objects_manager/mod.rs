@@ -50,12 +50,12 @@ impl Object {
     self.meta_word.get_descriptor_obj_ptr()
   }
   
-  pub fn get_raw_ptr_to_data(&self) -> *const () {
+  pub fn get_raw_ptr_to_data(obj: &Self) -> *const () {
     // LOOKING at downcast_ref_unchecked method in dyn Any
     // it looked like &dyn Any can be casted to pointer to
     // T directly therefore can be casted to get untyped
     // pointer to underlying data T
-    Box::as_ptr(&self.data).cast()
+    Box::as_ptr(&obj.data).cast()
   }
   
   fn is_descriptor(&self) -> bool {
@@ -70,7 +70,7 @@ impl Object {
     // SAFETY: The safety that descriptor is the one needed is enforced by
     // type system and unsafe contract of the getting descriptor for a type
     unsafe {
-      self.get_descriptor().trace(self.get_raw_ptr_to_data(), tracer);
+      self.get_descriptor().trace(Self::get_raw_ptr_to_data(self), tracer);
     }
   }
   

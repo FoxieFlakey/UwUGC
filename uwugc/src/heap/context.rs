@@ -122,7 +122,7 @@ pub struct RootRefRaw<'a, A: HeapAlloc, T: ObjectLikeTrait> {
 
 impl<A: HeapAlloc, T: ObjectLikeTrait> RootRefRaw<'_, A, T> {
   fn get_raw_ptr_to_data(&self) -> *const () {
-    self.get_object_borrow().get_raw_ptr_to_data()
+    Object::get_raw_ptr_to_data(self.get_object_borrow())
   }
   
   // SAFETY: The root reference may not be safe in face of
