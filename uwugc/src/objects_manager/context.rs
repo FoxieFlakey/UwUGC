@@ -112,8 +112,8 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     // Add object to local chain
     // SAFETY: Safe because the concurrent access by other is protected by GC lock
     // See comment for LocalObjectsChain#flush_to_global method
-    let start = unsafe { &mut *self.ctx.start.get() };
-    let end = unsafe { &mut *self.ctx.end.get() };
+    let start = unsafe { self.ctx.start.get().as_mut().unwrap_unchecked() };
+    let end = unsafe { self.ctx.end.get().as_mut().unwrap_unchecked() };
     match start.as_mut() {
       // The list has some objects, append current 'start' to end of this object
       // SAFETY: The object isn't visible yet to other thread so its safe from
