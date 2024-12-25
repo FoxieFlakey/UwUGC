@@ -100,7 +100,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     }).map_err(|_| AllocError)?;
     
     // Allocate the object
-    let obj_ptr = Object::new(self.owner, func, descriptor_obj_ptr);
+    let obj_ptr = Object::new(self.owner, func, descriptor_obj_ptr).as_ptr();
     
     // SAFETY: Just allocated it before
     let obj_header = unsafe { obj_ptr.as_ref().unwrap_unchecked() };
