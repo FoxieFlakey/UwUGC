@@ -99,7 +99,6 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       }
     }).map_err(|_| AllocError)?;
     
-    // Leak it and we'll handle it here
     // Allocate the object
     let obj_ptr = Object::new(self.owner, func, descriptor_obj_ptr);
     
