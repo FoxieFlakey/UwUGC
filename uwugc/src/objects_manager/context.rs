@@ -101,7 +101,10 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     
     // Leak it and we'll handle it here
     // Allocate the object
-    let obj = Object::new(self.owner, func, descriptor_obj_ptr);
+    let obj_ptr = Object::new(self.owner, func, descriptor_obj_ptr);
+    
+    // SAFETY: Just allocated it before
+    let obj_header = unsafe { &*obj_ptr };
     
     // Ensure changes made previously by potential flush_to_global
     // emptying the local list visible to this
@@ -116,18 +119,18 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       // The list has some objects, append current 'start' to end of this object
       // SAFETY: The object isn't visible yet to other thread so its safe from
       // concurrent accesses
-      Some(x) => unsafe { *obj.next.get() = *x },
+      Some(x) => unsafe { *obj_header.next.get() = *x },
       
       // The list was empty this object is the 'end' of current list
-      None => *end = Some(obj)
+      None => *end = Some(obj_ptr)
     }
     
     // Update the 'start' so it point to newly made object
-    *start = Some(obj);
+    *start = Some(obj_ptr);
     
     // Make sure potential flush_to_global can see latest items
     atomic::fence(Ordering::Release);
-    Ok(obj)
+    Ok(obj_ptr)
   }
   
   pub fn try_alloc<T: Describeable + ObjectLikeTrait, F: FnOnce() -> T>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
