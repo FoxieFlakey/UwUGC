@@ -2,6 +2,7 @@
 
 pub(crate) mod helper;
 
+use std::ptr;
 use std::sync::Arc;
 
 use crate::allocator::GlobalHeap;
@@ -34,10 +35,16 @@ impl<T: 'static> ObjectLikeTrait for T {
 
 // Internal trait used by crate, to include 
 // internal stuffs
-pub(crate) trait ObjectLikeTraitInternal: 'static {
+pub(crate) trait ObjectLikeTraitInternal: ObjectLikeTrait + 'static {
+  fn drop_helper(this: *mut ());
 }
 
 impl<T: ObjectLikeTrait + 'static> ObjectLikeTraitInternal for T {
+  fn drop_helper(this: *mut ()) {
+    // SAFETY: The GC ensures that 'this' is correct type to be casted
+    // as T because the drop_helper 
+    unsafe { ptr::drop_in_place(this.cast::<T>()); }
+  }
 }
 
 

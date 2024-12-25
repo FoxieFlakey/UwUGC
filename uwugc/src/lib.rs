@@ -8,10 +8,6 @@
 #![forbid(clippy::as_conversions)]
 #![forbid(unsafe_op_in_unsafe_fn)]
 
-#![feature(box_as_ptr)]
-#![feature(allocator_api)]
-#![feature(non_null_from_ref)]
-
 mod api;
 mod objects_manager;
 mod heap;

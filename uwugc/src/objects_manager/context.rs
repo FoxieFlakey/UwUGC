@@ -166,7 +166,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         //
         // SAFETY: The descriptor is correct for Descriptor and because its statically
         // referenced thus no object pointer used
-        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(|| DescriptorInternal { api: T::get_descriptor() }, gc_lock_cookie, None)?) };
+        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(|| DescriptorInternal { api: T::get_descriptor(), drop_helper: T::drop_helper }, gc_lock_cookie, None)?) };
         
         // If not present in cache, try insert into it with upgraded rwlock
         Ok(

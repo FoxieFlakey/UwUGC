@@ -1,6 +1,6 @@
 // NOTE: Everything in this file is considered to be part of public API
 
-use std::{alloc::Layout, ops::{Deref, DerefMut}, ptr::NonNull};
+use std::{alloc::Layout, ops::{Deref, DerefMut}, ptr::{self, NonNull}};
 
 use portable_atomic::AtomicPtr;
 
@@ -16,7 +16,15 @@ pub struct DescriptorAPI {
 }
 
 pub struct DescriptorInternal {
-  pub api: DescriptorAPI
+  pub api: DescriptorAPI,
+  
+  // A drop helper to help drop data region
+  // it is placed here because all objects of
+  // same descriptor are the same type
+  //
+  // the function can cast the "void pointer"
+  // into what it needs
+  pub drop_helper: fn(*mut ())
 }
 
 impl DerefMut for DescriptorInternal {
@@ -38,7 +46,8 @@ pub static SELF_DESCRIPTOR: DescriptorInternal = DescriptorInternal {
   api: DescriptorAPI {
     fields: None,
     layout: Layout::new::<DescriptorInternal>()
-  }
+  },
+  drop_helper: DescriptorInternal::drop_helper
 };
 
 impl DescriptorInternal {
@@ -56,6 +65,12 @@ impl DescriptorInternal {
       // descriptors for object allocations
       tracer(unsafe { data.byte_add(field.offset).cast::<AtomicPtr<Object>>().as_ref() });
     }
+  }
+  
+  fn drop_helper(this: *mut ()) {
+    // SAFETY: Caller already make sure that 'this' is correct type
+    // via SELF_DESCRIPTOR which describe itself
+    unsafe { ptr::drop_in_place(this.cast::<Self>()) };
   }
 }
 

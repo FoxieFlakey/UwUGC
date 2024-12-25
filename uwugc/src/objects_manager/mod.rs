@@ -21,10 +21,7 @@ pub struct Object {
   
   // Containing metadata about this object compressed into
   // single machine word
-  meta_word: MetaWord,
-  
-  // Data can only contain owned structs
-  data: Box<dyn ObjectLikeTraitInternal>
+  meta_word: MetaWord
 }
 
 // SAFETY: 'next' pointer for majority of its lifetime
@@ -35,20 +32,36 @@ unsafe impl Send for Object {}
 
 impl Object {
   pub fn new<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<NonNull<Object>, AllocError> {
-    let allocated = Box::try_new(Object {
-      data: Box::new(initializer()),
+    let header = Object {
       next: UnsafeCell::new(ptr::null_mut()),
       
       // SAFETY: Caller ensured object pointer is correct and GC ensures
       // that the object pointer to descriptor remains valid as long as
       // there are users of it
       meta_word: unsafe { MetaWord::new(descriptor_obj_ptr, Self::compute_new_object_mark_bit(owner)) }
-    }).map_err(|_| AllocError /* This just replace allocator API's AllocError with custom one */)?;
+    };
     
-    let ptr = ptr::from_mut(Box::leak(allocated));
+    let (object_layout, data_offset) = Self::calc_layout(&header.get_descriptor().layout);
     
-    // SAFETY: Just allocated the pointer
-    unsafe { Ok(NonNull::new_unchecked(ptr)) }
+    owner.alloc.allocate(object_layout)
+      .map(|new_obj| {
+        let new_obj = new_obj.cast::<()>();
+        
+        // SAFETY: Already calculated proper offset for getting
+        // to data region and just allocated the memory
+        unsafe {
+          let header_region = new_obj.cast::<Object>().as_ptr();
+          let data_region = new_obj.byte_add(data_offset).cast::<T>().as_ptr();
+          
+          // Initialize the header region
+          header_region.write(header);
+          // Initialize the data region
+          data_region.write(initializer());
+        }
+        
+        new_obj.cast::<Object>()
+      })
+      .map_err(|_| AllocError /* This just replace allocator API's AllocError with custom one */ )
   }
   
   pub fn get_descriptor_obj_ptr(&self) -> Option<NonNull<Object>> {
@@ -57,15 +70,14 @@ impl Object {
   
   // SAFETY: Caller has to ensure 'obj' is valid object pointer
   pub unsafe fn get_raw_ptr_to_data(obj: NonNull<Self>) -> NonNull<()> {
-    // LOOKING at downcast_ref_unchecked method in dyn Any
-    // it looked like &dyn Any can be casted to pointer to
-    // T directly therefore can be casted to get untyped
-    // pointer to underlying data T
-    // SAFETY: Caller ensured 'obj' is valid object pointer
-    let ptr = Box::as_ptr(unsafe { &obj.as_ref().data });
-    // SAFETY: 'ptr' guarantee to be non null because Box contains pointer to the
-    // data
-    unsafe { NonNull::new_unchecked(ptr.cast_mut().cast::<()>()) }
+    // SAFETY: Caller ensured obj is valid pointer
+    let header = unsafe { obj.as_ref() };
+    let (_, data_offset) = Self::calc_layout(&header.meta_word.get_descriptor().layout);
+    
+    // SAFETY: Already calculated correct offset for it
+    // and constructor allocated suitable region for required
+    // layout
+    unsafe { obj.byte_add(data_offset).cast() }
   }
   
   fn is_descriptor(&self) -> bool {
@@ -121,7 +133,6 @@ pub struct ObjectManager<A: HeapAlloc> {
   used_size: AtomicUsize,
   contexts: Mutex<HashMap<ThreadId, Arc<LocalObjectsChain>>>,
   max_size: usize,
-  #[expect(dead_code)]
   alloc: Arc<A>,
   
   // Descriptors are plain GC objects
@@ -202,13 +213,25 @@ impl<A: HeapAlloc> ObjectManager<A> {
   // which is mutably owned (or there is no other users)
   unsafe fn dealloc(&self, obj: *mut Object) {
     // SAFETY: Caller already ensure 'obj' is valid pointer
-    let obj = unsafe { &mut *obj };
-    let total_size = Object::calc_layout(&obj.get_descriptor().layout).0.size();
+    let obj_ref = unsafe { obj.as_ref().unwrap_unchecked() };
+    let drop_helper = obj_ref.get_descriptor().drop_helper;
+    let (layout, data_offset) = Object::calc_layout(&obj_ref.get_descriptor().layout);
+    
+    // SAFETY: Caller already ensure 'obj' is valid pointer
+    // and already calculate the offset correctly
+    unsafe {
+      // Drop the header
+      ptr::drop_in_place(obj);
+      
+      // Drop the data itself with helper, because cannot
+      // know the type at this point so ask helper to do it
+      drop_helper(obj.cast::<()>().byte_add(data_offset));
+    }
     
     // SAFETY: Caller ensured that 'obj' pointer is only user left
     // and safe to be deallocated
-    unsafe { drop(Box::from_raw(obj)) };
-    self.used_size.fetch_sub(total_size, Ordering::Relaxed);
+    unsafe { self.alloc.deallocate(NonNull::new_unchecked(obj.cast()), layout); };
+    self.used_size.fetch_sub(layout.size(), Ordering::Relaxed);
   }
   
   pub fn create_context(&self) -> Handle<A> {
