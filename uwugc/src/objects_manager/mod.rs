@@ -34,6 +34,18 @@ unsafe impl Sync for Object {}
 unsafe impl Send for Object {}
 
 impl Object {
+  pub fn new<A: HeapAlloc, T: ObjectLikeTrait>(owner: &ObjectManager<A>, initializer: &mut dyn FnMut() -> T, descriptor_obj_ptr: Option<NonNull<Object>>) -> &'static mut Object {
+    Box::leak(Box::new(Object {
+      data: Box::new(initializer()),
+      next: UnsafeCell::new(ptr::null_mut()),
+      
+      // SAFETY: Caller ensured object pointer is correct and GC ensures
+      // that the object pointer to descriptor remains valid as long as
+      // there are users of it
+      meta_word: unsafe { MetaWord::new(descriptor_obj_ptr, Self::compute_new_object_mark_bit(owner)) }
+    }))
+  }
+  
   pub fn get_descriptor_obj_ptr(&self) -> Option<NonNull<Object>> {
     self.meta_word.get_descriptor_obj_ptr()
   }

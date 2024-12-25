@@ -1,10 +1,10 @@
-use std::{any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr::{self, NonNull}, sync::{atomic::{self, Ordering}, Arc}, thread};
+use std::{any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr::NonNull, sync::{atomic::{self, Ordering}, Arc}, thread};
 
 use crate::allocator::HeapAlloc;
 
 use crate::{descriptor::{self, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, Descriptor};
 
-use super::{meta_word::MetaWord, AllocError, ObjectManager};
+use super::{AllocError, ObjectManager};
 
 pub struct LocalObjectsChain {
   // Maintains start and end of chain
@@ -100,15 +100,8 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     }).map_err(|_| AllocError)?;
     
     // Leak it and we'll handle it here
-    let obj = Box::leak(Box::new(Object {
-      data: Box::new(func()),
-      next: UnsafeCell::new(ptr::null_mut()),
-      
-      // SAFETY: Caller ensured object pointer is correct and GC ensures
-      // that the object pointer to descriptor remains valid as long as
-      // there are users of it
-      meta_word: unsafe { MetaWord::new(descriptor_obj_ptr, Object::compute_new_object_mark_bit(self.owner)) }
-    }));
+    // Allocate the object
+    let obj = Object::new(self.owner, func, descriptor_obj_ptr);
     
     // Ensure changes made previously by potential flush_to_global
     // emptying the local list visible to this
