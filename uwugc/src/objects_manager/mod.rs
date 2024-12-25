@@ -34,7 +34,7 @@ unsafe impl Sync for Object {}
 unsafe impl Send for Object {}
 
 impl Object {
-  pub fn new<A: HeapAlloc, T: ObjectLikeTrait>(owner: &ObjectManager<A>, initializer: &mut dyn FnMut() -> T, descriptor_obj_ptr: Option<NonNull<Object>>) -> &'static mut Object {
+  pub fn new<A: HeapAlloc, T: ObjectLikeTrait, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, descriptor_obj_ptr: Option<NonNull<Object>>) -> &'static mut Object {
     Box::leak(Box::new(Object {
       data: Box::new(initializer()),
       next: UnsafeCell::new(ptr::null_mut()),

@@ -82,7 +82,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
   
   // SAFETY: Caller has to ensure descriptor_obj_ptr is valid descriptor and also
   // type of Descriptor and make sure GC won't GC it away
-  unsafe fn try_alloc_unchecked<T: ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, _gc_lock_cookie: &mut GCLockCookie<A>, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<*mut Object, AllocError> {
+  unsafe fn try_alloc_unchecked<T: ObjectLikeTrait, F: FnOnce() -> T>(&self, func: F, _gc_lock_cookie: &mut GCLockCookie<A>, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
     let descriptor = descriptor_obj_ptr.map_or(&descriptor::SELF_DESCRIPTOR, |x| {
         // SAFETY: Caller ensured its valid and correct reference
@@ -130,7 +130,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     Ok(obj)
   }
   
-  pub fn try_alloc<T: Describeable + ObjectLikeTrait>(&self, func: &mut dyn FnMut() -> T, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
+  pub fn try_alloc<T: Describeable + ObjectLikeTrait, F: FnOnce() -> T>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
     let mut desc_cache = self.owner.descriptor_cache.upgradable_read();
     let id = TypeId::of::<T>();
     
@@ -158,7 +158,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         //
         // SAFETY: The descriptor is correct for Descriptor and because its statically
         // referenced thus no object pointer used
-        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(&mut T::get_descriptor, gc_lock_cookie, None)?) };
+        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(T::get_descriptor, gc_lock_cookie, None)?) };
         
         // If not present in cache, try insert into it with upgraded rwlock
         Ok(
