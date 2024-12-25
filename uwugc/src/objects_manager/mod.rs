@@ -7,7 +7,7 @@ use context::LocalObjectsChain;
 pub use context::Handle;
 use portable_atomic::AtomicBool;
 
-use crate::{descriptor::Descriptor, gc::GCExclusiveLockCookie, ObjectLikeTrait};
+use crate::{descriptor::DescriptorInternal, gc::GCExclusiveLockCookie, ObjectLikeTrait};
 
 mod meta_word;
 mod context;
@@ -72,7 +72,7 @@ impl Object {
     self.meta_word.is_descriptor()
   }
   
-  fn get_descriptor(&self) -> &Descriptor {
+  fn get_descriptor(&self) -> &DescriptorInternal {
     self.meta_word.get_descriptor()
   }
   

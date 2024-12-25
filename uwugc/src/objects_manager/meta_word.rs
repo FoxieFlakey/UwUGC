@@ -2,7 +2,7 @@ use std::{ptr::{self, NonNull}, sync::atomic::Ordering};
 
 use portable_atomic::AtomicPtr;
 
-use crate::{descriptor, Descriptor};
+use crate::descriptor::{self, DescriptorInternal};
 
 use super::Object;
 
@@ -103,11 +103,11 @@ impl MetaWord {
     }
   }
   
-  pub fn get_descriptor(&self) -> &Descriptor {
+  pub fn get_descriptor(&self) -> &DescriptorInternal {
     if let Some(obj_ptr) = self.get_descriptor_obj_ptr() {
       // SAFETY: The constructor's caller already guarantee that the descriptor
       // pointer valid as long MetaWord exists and correct type of object too
-      unsafe { Object::get_raw_ptr_to_data(obj_ptr).cast::<Descriptor>().as_ref() }
+      unsafe { Object::get_raw_ptr_to_data(obj_ptr).cast::<DescriptorInternal>().as_ref() }
     } else {
       &descriptor::SELF_DESCRIPTOR
     }

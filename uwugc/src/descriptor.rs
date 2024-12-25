@@ -1,6 +1,6 @@
 // NOTE: Everything in this file is considered to be part of public API
 
-use std::{alloc::Layout, ptr::NonNull};
+use std::{alloc::Layout, ops::{Deref, DerefMut}, ptr::NonNull};
 
 use portable_atomic::AtomicPtr;
 
@@ -10,18 +10,38 @@ pub struct Field {
   pub offset: usize
 }
 
-pub struct Descriptor {
+pub struct DescriptorAPI {
   pub fields: Option<&'static [Field]>,
   pub layout: Layout
 }
 
+pub struct DescriptorInternal {
+  pub api: DescriptorAPI
+}
+
+impl DerefMut for DescriptorInternal {
+  fn deref_mut(&mut self) -> &mut Self::Target {
+    &mut self.api
+  }
+}
+
+impl Deref for DescriptorInternal {
+  type Target = DescriptorAPI;
+  
+  fn deref(&self) -> &Self::Target {
+    &self.api
+  }
+}
+
 // The root descriptor which describes well itself
-pub static SELF_DESCRIPTOR: Descriptor = Descriptor {
-  fields: None,
-  layout: Layout::new::<Descriptor>()
+pub static SELF_DESCRIPTOR: DescriptorInternal = DescriptorInternal {
+  api: DescriptorAPI {
+    fields: None,
+    layout: Layout::new::<DescriptorInternal>()
+  }
 };
 
-impl Descriptor {
+impl DescriptorInternal {
   // Caller must properly match the descriptor to correct type so trace can
   // correctly get pointer to fields
   pub(crate) unsafe fn trace(&self, data: NonNull<()>, mut tracer: impl FnMut(&AtomicPtr<Object>)) {
@@ -53,7 +73,7 @@ impl Descriptor {
 /// Descriptor is only way GC knows how
 /// to the read the data
 pub unsafe trait Describeable {
-  fn get_descriptor() -> Descriptor;
+  fn get_descriptor() -> DescriptorAPI;
 }
 
 // Few explicit blanket implementations
@@ -63,8 +83,8 @@ macro_rules! impl_for_trait {
   ($trait_name:ident) => {
     unsafe impl<T: $trait_name> Describeable for T {
       #[inline]
-      fn get_descriptor() -> Descriptor {
-        Descriptor {
+      fn get_descriptor() -> DescriptorAPI {
+        DescriptorAPI {
           fields: None,
           layout: Layout::new::<T>()
         }

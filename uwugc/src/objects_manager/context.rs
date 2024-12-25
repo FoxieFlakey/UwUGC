@@ -2,7 +2,7 @@ use std::{any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr::NonNull, sync
 
 use crate::allocator::HeapAlloc;
 
-use crate::{descriptor::{self, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}, Descriptor};
+use crate::{descriptor::{self, DescriptorInternal, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTrait}};
 
 use super::{AllocError, ObjectManager};
 
@@ -86,7 +86,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     let manager = self.owner;
     let descriptor = descriptor_obj_ptr.map_or(&descriptor::SELF_DESCRIPTOR, |x| {
         // SAFETY: Caller ensured its valid and correct reference
-        unsafe { Object::get_raw_ptr_to_data(x).cast::<Descriptor>().as_ref() }
+        unsafe { Object::get_raw_ptr_to_data(x).cast::<DescriptorInternal>().as_ref() }
       });
     
     let object_size = Object::calc_layout(&descriptor.layout).0.size();
@@ -166,7 +166,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         //
         // SAFETY: The descriptor is correct for Descriptor and because its statically
         // referenced thus no object pointer used
-        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(T::get_descriptor, gc_lock_cookie, None)?) };
+        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(|| DescriptorInternal { api: T::get_descriptor() }, gc_lock_cookie, None)?) };
         
         // If not present in cache, try insert into it with upgraded rwlock
         Ok(
