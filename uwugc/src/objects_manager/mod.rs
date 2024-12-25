@@ -94,11 +94,12 @@ impl Object {
     owner.new_object_mark_value.load(Ordering::Relaxed)
   }
   
-  // Calculate total size of an object after including space
-  // for the metadata and potential padding to align data part
-  // to statisfy layout
-  pub fn calc_object_size(layout: &Layout) -> usize {
-    layout.size() + size_of::<Object>()
+  // Calculate a layout containing both the Object and padding
+  // necessary to the data
+  pub fn calc_layout(data_layout: &Layout) -> Layout {
+    Layout::new::<Object>()
+      .extend(*data_layout)
+      .unwrap().0
   }
 }
 
@@ -189,7 +190,7 @@ impl<A: HeapAlloc> ObjectManager<A> {
   unsafe fn dealloc(&self, obj: *mut Object) {
     // SAFETY: Caller already ensure 'obj' is valid pointer
     let obj = unsafe { &mut *obj };
-    let total_size = Object::calc_object_size(&obj.get_descriptor().layout);
+    let total_size = Object::calc_layout(&obj.get_descriptor().layout).size();
     
     // SAFETY: Caller ensured that 'obj' pointer is only user left
     // and safe to be deallocated

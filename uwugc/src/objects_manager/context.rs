@@ -90,7 +90,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       });
     
     manager.used_size.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
-      x += Object::calc_object_size(&descriptor.layout);
+      x += Object::calc_layout(&descriptor.layout).size();
       
       if x <= self.owner.max_size {
         Some(x)
