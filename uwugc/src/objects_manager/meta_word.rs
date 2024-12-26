@@ -25,9 +25,15 @@ const DATA_MASK: usize = !METADATA_MASK;
 const ORDINARY_OBJECT_BIT: usize = 0b01;
 const MARK_BIT: usize            = 0b10;
 
+#[non_exhaustive]
 enum ObjectType {
   // Corresponds to ORDINARY_OBJECT_BIT set
   Ordinary
+}
+
+#[derive(Debug)]
+pub enum GetDescriptorError {
+  IncorrectObjectType
 }
 
 impl MetaWord {
@@ -91,25 +97,30 @@ impl MetaWord {
     unimplemented!();
   }
   
-  pub fn is_descriptor(&self) -> bool {
+  pub fn is_descriptor(&self) -> Result<bool, GetDescriptorError> {
     match self.get_object_type() {
-      ObjectType::Ordinary => self.get_descriptor_obj_ptr().is_none()
+      ObjectType::Ordinary => Ok(self.get_descriptor_obj_ptr()?.is_none())
     }
   }
   
-  pub fn get_descriptor_obj_ptr(&self) -> Option<NonNull<Object>> {
+  pub fn get_descriptor_obj_ptr(&self) -> Result<Option<NonNull<Object>>, GetDescriptorError> {
     match self.get_object_type() {
-      ObjectType::Ordinary => NonNull::new(self.word.load(Ordering::Relaxed).map_addr(|x| x & DATA_MASK))
+      ObjectType::Ordinary => Ok(NonNull::new(self.word.load(Ordering::Relaxed).map_addr(|x| x & DATA_MASK))),
+      
+      // Currently there no other type implemented yet
+      // so catch all arm here to silence clippy warning
+      #[expect(unreachable_patterns)]
+      _ => Err(GetDescriptorError::IncorrectObjectType)
     }
   }
   
-  pub fn get_descriptor(&self) -> &DescriptorInternal {
-    if let Some(obj_ptr) = self.get_descriptor_obj_ptr() {
+  pub fn get_descriptor(&self) -> Result<&DescriptorInternal, GetDescriptorError> {
+    if let Some(obj_ptr) = self.get_descriptor_obj_ptr()? {
       // SAFETY: The constructor's caller already guarantee that the descriptor
       // pointer valid as long MetaWord exists and correct type of object too
-      unsafe { Object::get_raw_ptr_to_data(obj_ptr).cast::<DescriptorInternal>().as_ref() }
+      unsafe { Ok(Object::get_raw_ptr_to_data(obj_ptr).cast::<DescriptorInternal>().as_ref()) }
     } else {
-      &descriptor::SELF_DESCRIPTOR
+      Ok(&descriptor::SELF_DESCRIPTOR)
     }
   }
 }

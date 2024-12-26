@@ -1,6 +1,6 @@
 use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::HashMap, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use crate::allocator::HeapAlloc;
-use meta_word::MetaWord;
+use meta_word::{GetDescriptorError, MetaWord};
 use parking_lot::{Mutex, RwLock};
 
 use context::LocalObjectsChain;
@@ -41,7 +41,7 @@ impl Object {
       meta_word: unsafe { MetaWord::new(descriptor_obj_ptr, Self::compute_new_object_mark_bit(owner)) }
     };
     
-    let (object_layout, data_offset) = Self::calc_layout(&header.get_descriptor().layout);
+    let (object_layout, data_offset) = Self::calc_layout(&header.get_descriptor().unwrap().layout);
     
     owner.alloc.allocate(object_layout)
       .map(|new_obj| {
@@ -64,7 +64,7 @@ impl Object {
       .map_err(|_| AllocError /* This just replace allocator API's AllocError with custom one */ )
   }
   
-  pub fn get_descriptor_obj_ptr(&self) -> Option<NonNull<Object>> {
+  pub fn get_descriptor_obj_ptr(&self) -> Result<Option<NonNull<Object>>, GetDescriptorError> {
     self.meta_word.get_descriptor_obj_ptr()
   }
   
@@ -72,7 +72,7 @@ impl Object {
   pub unsafe fn get_raw_ptr_to_data(obj: NonNull<Self>) -> NonNull<()> {
     // SAFETY: Caller ensured obj is valid pointer
     let header = unsafe { obj.as_ref() };
-    let (_, data_offset) = Self::calc_layout(&header.meta_word.get_descriptor().layout);
+    let (_, data_offset) = Self::calc_layout(&header.meta_word.get_descriptor().unwrap().layout);
     
     // SAFETY: Already calculated correct offset for it
     // and constructor allocated suitable region for required
@@ -80,11 +80,11 @@ impl Object {
     unsafe { obj.byte_add(data_offset).cast() }
   }
   
-  fn is_descriptor(&self) -> bool {
+  fn is_descriptor(&self) -> Result<bool, GetDescriptorError> {
     self.meta_word.is_descriptor()
   }
   
-  fn get_descriptor(&self) -> &DescriptorInternal {
+  fn get_descriptor(&self) -> Result<&DescriptorInternal, GetDescriptorError> {
     self.meta_word.get_descriptor()
   }
   
@@ -94,7 +94,7 @@ impl Object {
     // type system and unsafe contract of the getting descriptor for a type
     // SAFETY: Caller also make sure 'obj' is valid
     unsafe {
-      obj.as_ref().get_descriptor().trace(Self::get_raw_ptr_to_data(obj), tracer);
+      obj.as_ref().get_descriptor().unwrap().trace(Self::get_raw_ptr_to_data(obj), tracer);
     }
   }
   
@@ -214,8 +214,9 @@ impl<A: HeapAlloc> ObjectManager<A> {
   unsafe fn dealloc(&self, obj: *mut Object) {
     // SAFETY: Caller already ensure 'obj' is valid pointer
     let obj_ref = unsafe { obj.as_ref().unwrap_unchecked() };
-    let drop_helper = obj_ref.get_descriptor().drop_helper;
-    let (layout, data_offset) = Object::calc_layout(&obj_ref.get_descriptor().layout);
+    let desc = obj_ref.get_descriptor().unwrap();
+    let drop_helper = desc.drop_helper;
+    let (layout, data_offset) = Object::calc_layout(&desc.layout);
     
     // SAFETY: Caller already ensure 'obj' is valid pointer
     // and already calculate the offset correctly
@@ -329,7 +330,7 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
         let current = unsafe { &*current_ptr };
         
         // It is descriptor object, defer it to deallocate later
-        if current.is_descriptor() {
+        if current.is_descriptor().unwrap_or(false) {
           if deferred_dealloc_list.is_null() {
             deferred_dealloc_list = current_ptr;
           } else {

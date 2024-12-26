@@ -344,7 +344,7 @@ impl<A: HeapAlloc> GCState<A> {
       }
       
       // Add the descriptor to be traced
-      if let Some(x) = obj_ref.get_descriptor_obj_ptr() {
+      if let Ok(Some(x)) = obj_ref.get_descriptor_obj_ptr() {
         queue.push(x);
       }
       
