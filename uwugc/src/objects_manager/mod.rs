@@ -119,6 +119,14 @@ impl Object {
     owner.new_object_mark_value.load(Ordering::Relaxed)
   }
   
+  pub fn get_object_and_data_layout(&self) -> (Layout, usize) {
+    let data_layout = match self.meta_word.get_object_metadata() {
+      ObjectMetadata::Ordinary(meta) => meta.get_descriptor().layout
+    };
+    
+    Self::calc_layout(&data_layout)
+  }
+  
   // Calculate a layout containing both the Object and padding
   // necessary to the data and return new layout and offset to
   // data part of object
@@ -215,11 +223,10 @@ impl<A: HeapAlloc> ObjectManager<A> {
   unsafe fn dealloc(&self, obj: NonNull<Object>) {
     // SAFETY: Caller already ensure 'obj' is valid pointer
     let obj_ref = unsafe { obj.as_ref() };
-    let desc = match obj_ref.meta_word.get_object_metadata() {
-      ObjectMetadata::Ordinary(meta) => meta.get_descriptor()
+    let drop_helper = match obj_ref.meta_word.get_object_metadata() {
+      ObjectMetadata::Ordinary(meta) => meta.get_descriptor().drop_helper
     };
-    let drop_helper = desc.drop_helper;
-    let (layout, data_offset) = Object::calc_layout(&desc.layout);
+    let (layout, data_offset) = obj_ref.get_object_and_data_layout();
     
     // SAFETY: Caller already ensure 'obj' is valid pointer
     // and already calculate the offset correctly
