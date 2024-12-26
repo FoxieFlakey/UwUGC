@@ -19,13 +19,7 @@ impl<T: ObjectLikeTraitInternal> GCRefRaw<T> {
     }
   }
   
-  #[expect(dead_code)]
-  pub unsafe fn store<'a, A: HeapAlloc>(&self, _ctx: &'a Context<A>, root_ref: &RootRefRaw<'a, A, T>, _block_gc_cookie: &mut GCLockCookie<A>) {
-    self.ptr.swap(root_ref.get_object_ptr().as_ptr(), Ordering::Relaxed);
-  }
-  
-  pub fn load<'a, A: HeapAlloc>(&self, ctx: &'a Context<A>, block_gc_cookie: &mut GCLockCookie<A>) -> Option<RootRefRaw<'a, A, T>> {
-    let ptr = self.ptr.load(Ordering::Relaxed);
+  fn create_root_ref<'a, A: HeapAlloc>(ptr: *mut Object, ctx: &'a Context<A>, block_gc_cookie: &mut GCLockCookie<A>)  -> Option<RootRefRaw<'a, A, T>> {
     if ptr.is_null() {
       return None;
     }
@@ -36,6 +30,16 @@ impl<T: ObjectLikeTraitInternal> GCRefRaw<T> {
     // therefore GC won't collect it and will remains valid
     heap.gc.load_barrier(unsafe { root_ref.get_object_ptr().as_ref() }, &heap.object_manager, block_gc_cookie);
     Some(root_ref)
+  }
+  
+  #[expect(dead_code)]
+  pub fn swap<'a, A: HeapAlloc>(&self, ctx: &'a Context<A>, block_gc_cookie: &mut GCLockCookie<A>, root_ref: &RootRefRaw<'a, A, T>) -> Option<RootRefRaw<'a, A, T>>{
+    let old = self.ptr.swap(root_ref.get_object_ptr().as_ptr(), Ordering::Relaxed);
+    Self::create_root_ref(old, ctx, block_gc_cookie)
+  }
+  
+  pub fn load<'a, A: HeapAlloc>(&self, ctx: &'a Context<A>, block_gc_cookie: &mut GCLockCookie<A>) -> Option<RootRefRaw<'a, A, T>> {
+    Self::create_root_ref(self.ptr.load(Ordering::Relaxed), ctx, block_gc_cookie)
   }
 }
 
