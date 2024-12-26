@@ -212,9 +212,9 @@ impl<A: HeapAlloc> ObjectManager<A> {
   
   // SAFETY: 'obj' must be valid pointer to object
   // which is mutably owned (or there is no other users)
-  unsafe fn dealloc(&self, obj: *mut Object) {
+  unsafe fn dealloc(&self, obj: NonNull<Object>) {
     // SAFETY: Caller already ensure 'obj' is valid pointer
-    let obj_ref = unsafe { obj.as_ref().unwrap_unchecked() };
+    let obj_ref = unsafe { obj.as_ref() };
     let desc = match obj_ref.meta_word.get_object_metadata() {
       ObjectMetadata::Ordinary(meta) => meta.get_descriptor()
     };
@@ -225,16 +225,16 @@ impl<A: HeapAlloc> ObjectManager<A> {
     // and already calculate the offset correctly
     unsafe {
       // Drop the header
-      ptr::drop_in_place(obj);
+      ptr::drop_in_place(obj.as_ptr());
       
       // Drop the data itself with helper, because cannot
       // know the type at this point so ask helper to do it
-      drop_helper(obj.cast::<()>().byte_add(data_offset));
+      drop_helper(obj.cast::<()>().byte_add(data_offset).as_ptr());
     }
     
     // SAFETY: Caller ensured that 'obj' pointer is only user left
     // and safe to be deallocated
-    unsafe { self.alloc.deallocate(NonNull::new_unchecked(obj.cast()), layout); };
+    unsafe { self.alloc.deallocate(obj.cast(), layout); };
     self.used_size.fetch_sub(layout.size(), Ordering::Relaxed);
   }
   
@@ -318,30 +318,30 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
     let mut deferred_dealloc_list: *mut Object = ptr::null_mut();
     
     while !next_ptr.is_null() {
-      let current_ptr = next_ptr;
+      // SAFETY: Already checked before that it is nonnull
+      let current_ptr = unsafe { NonNull::new_unchecked(next_ptr) };
+      
+      // SAFETY: 'current' is valid because its leaked
+      let current = unsafe { current_ptr.as_ref() };
       
       // SAFETY: Sweeper "owns" the individual object's 'next' field
       unsafe {
         // Get pointer to next, and disconnect current object from chain
-        next_ptr = *(*current_ptr).next.get();
-        *(*current_ptr).next.get() = ptr::null_mut();
+        next_ptr = *current.next.get();
+        *current.next.get() = ptr::null_mut();
       }
       
-      // SAFETY: 'current' is valid because its leaked
-      if unsafe { !(*current_ptr).is_marked(self.owner) } {
-        // SAFETY: 'current' is valid because its leaked
-        let current = unsafe { &*current_ptr };
-        
+      if !current.is_marked(self.owner) {
         // It is descriptor object, defer it to deallocate later
         #[allow(irrefutable_let_patterns)]
         if let ObjectMetadata::Ordinary(meta) = current.meta_word.get_object_metadata() {
           if meta.is_descriptor() {
             if deferred_dealloc_list.is_null() {
-              deferred_dealloc_list = current_ptr;
+              deferred_dealloc_list = current_ptr.as_ptr();
             } else {
               // SAFETY: Sweeper "owns" the individual object's 'next' field
               unsafe { *current.next.get() = deferred_dealloc_list };
-              deferred_dealloc_list = current_ptr;
+              deferred_dealloc_list = current_ptr.as_ptr();
             }
             
             // Defer deallocation beacuse descriptor object might
@@ -357,29 +357,27 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
         continue;
       }
       
-      // SAFETY: 'current' is valid because its leaked
-      let current = unsafe { &*current_ptr };
-      
       // First live object, init the chain
       if live_objects.is_null() {
-        live_objects = current_ptr;
-        last_live_objects = current_ptr;
+        live_objects = current_ptr.as_ptr();
+        last_live_objects = current_ptr.as_ptr();
       } else {
         // Append current object to list of live objects
         // SAFETY: Sweeper "owns" the individual object's 'next' field
         unsafe { *current.next.get() = live_objects };
-        live_objects = current_ptr;
+        live_objects = current_ptr.as_ptr();
       }
     }
     
     // Now dealloc the deferred deallocs
     next_ptr = deferred_dealloc_list;
     while !next_ptr.is_null() {
-      let current = next_ptr;
+      // SAFETY: Already checked that pointer is non null
+      let current = unsafe { NonNull::new_unchecked(next_ptr) };
       
       // SAFETY: Sweeper "owns" the individual object's 'next' field
       // and Sweeper hasn't deallocated it
-      next_ptr = unsafe { *(*current).next.get() };
+      next_ptr = unsafe { *current.as_ref().next.get() };
       
       // SAFETY: *const can be safely converted to *mut as unmarked object
       // mean mutator has no way accesing it
