@@ -18,7 +18,7 @@ pub mod root_refs;
 
 mod gc_box;
 pub use gc_box::GCBox;
-use gc_box::GCNullableBox;
+pub use gc_box::GCNullableBox;
 use sealed::sealed;
 
 helper::export_type_as_wrapper!(HeapArc, Arc<HeapInternal<GlobalHeap>>);
