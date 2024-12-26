@@ -84,7 +84,7 @@ impl MetaWord {
   
   fn get_object_type(&self) -> ObjectType {
     let word = self.word.load(Ordering::Relaxed);
-    if word.addr() & ORDINARY_OBJECT_BIT !=0  {
+    if word.addr() & ORDINARY_OBJECT_BIT != 0  {
       return ObjectType::Ordinary;
     }
     
