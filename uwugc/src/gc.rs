@@ -351,7 +351,7 @@ impl<A: HeapAlloc> GCState<A> {
       // SAFETY: Objects are in control by GC so objects are valid
       unsafe {
         Object::trace(obj, |reference| {
-          if let Some(reference) = NonNull::new(reference.load(Ordering::Relaxed)) {
+          if let Some(reference) = reference {
             queue.push(reference);
           }
         });
