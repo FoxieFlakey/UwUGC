@@ -18,6 +18,8 @@ pub mod root_refs;
 
 mod gc_box;
 pub use gc_box::GCBox;
+use gc_box::GCNullableBox;
+use sealed::sealed;
 
 helper::export_type_as_wrapper!(HeapArc, Arc<HeapInternal<GlobalHeap>>);
 mod heap;
@@ -46,5 +48,24 @@ impl<T: ObjectLikeTrait + 'static> ObjectLikeTraitInternal for T {
     unsafe { ptr::drop_in_place(this.cast::<T>()); }
   }
 }
+
+// Used to mark types which can be safely transmuted/reinterpreted
+// as AtomicPtr<Object>
+//
+// SAFETY: The types implement this must be #[repr(transparent)]
+// and must be safe to have same bit validity as AtomicPtr<Object>
+#[sealed]
+pub unsafe trait ReferenceType {
+}
+
+// SAFETY: GCBox boils down to AtomicPtr<Object> and has
+// #[repr(transparent)]
+#[sealed]
+unsafe impl<T: ObjectLikeTrait> ReferenceType for GCBox<T> {}
+
+// SAFETY: GCNullableBox boils down to AtomicPtr<Object> and has
+// #[repr(transparent)]
+#[sealed]
+unsafe impl<T: ObjectLikeTrait> ReferenceType for GCNullableBox<T> {}
 
 
