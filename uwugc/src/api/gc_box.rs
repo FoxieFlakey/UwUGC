@@ -56,6 +56,20 @@ impl<T: ObjectLikeTrait> GCNullableBox<T> {
         unsafe { RootRef::new(raw) }
       })
   }
+  
+  // Swap this box's content with another, returns old one (which is now
+  // free to use by caller as there no longer potential problem with sending
+  // it to other thread)
+  pub fn swap<'context>(&mut self, ctx: &'context Context, other: Option<RootRef<'context, Sendable, Exclusive, GlobalHeap, T>>) -> Option<RootRef<'context, Sendable, Exclusive, GlobalHeap, T>> {
+    let raw_ref = other.map(|x| RootRef::into_raw(x));
+    self.inner.swap(&ctx.inner, &mut ctx.inner.get_heap().gc.block_gc(), raw_ref.as_ref())
+      .map(|raw| {
+        // SAFETY: The box no longer contain the reference
+        // and its transferred to the caller and &mut ensure
+        // there no other reference to this box
+        unsafe { RootRef::new(raw) }
+      })
+  }
 }
 
 // A non-null counterpart of GCNullableBox
@@ -79,6 +93,11 @@ impl<T: ObjectLikeTrait> GCBox<T> {
   pub fn load_mut<'this, 'context: 'this>(&'this mut self, ctx: &'context Context) -> RootRef<'this, Unsendable, Exclusive, GlobalHeap, T> {
     // SAFETY: GCBox<T> will never be null/nothing
     unsafe { self.inner.load_mut(ctx).unwrap_unchecked() }
+  }
+  
+  pub fn swap<'context>(&mut self, ctx: &'context Context, other: RootRef<'context, Sendable, Exclusive, GlobalHeap, T>) -> RootRef<'context, Sendable, Exclusive, GlobalHeap, T> {
+    // SAFETY: GCBox<T> will never be null/nothing
+    unsafe { self.inner.swap(ctx, Some(other)).unwrap_unchecked() }
   }
 }
 

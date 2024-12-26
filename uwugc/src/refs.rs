@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::atomic::Ordering};
+use std::{marker::PhantomData, ptr, sync::atomic::Ordering};
 
 use crate::allocator::HeapAlloc;
 use portable_atomic::AtomicPtr;
@@ -32,7 +32,6 @@ impl<T: ObjectLikeTraitInternal> GCRefRaw<T> {
     Some(root_ref)
   }
   
-  #[expect(dead_code)]
   pub fn swap<'a, A: HeapAlloc>(&self, ctx: &'a Context<A>, block_gc_cookie: &mut GCLockCookie<A>, root_ref: Option<&RootRefRaw<'a, A, T>>) -> Option<RootRefRaw<'a, A, T>>{
     let new_ptr = root_ref.map_or(ptr::null_mut(), |x| x.get_object_ptr().as_ptr());
     let old = self.ptr.swap(new_ptr, Ordering::Relaxed);
