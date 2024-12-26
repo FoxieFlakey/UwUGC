@@ -31,11 +31,6 @@ pub enum ObjectMetadata<'word> {
   Ordinary(OrdinaryObjectMetadata<'word>)
 }
 
-#[derive(Debug)]
-pub enum GetDescriptorError {
-  IncorrectObjectType
-}
-
 pub struct OrdinaryObjectMetadata<'word> {
   descriptor: Option<NonNull<Object>>,
   _phantom: PhantomData<&'word ()>
@@ -123,29 +118,6 @@ impl MetaWord {
     }
     
     unimplemented!();
-  }
-  
-  pub fn is_descriptor(&self) -> Result<bool, GetDescriptorError> {
-    match self.get_object_metadata() {
-      ObjectMetadata::Ordinary(meta) => Ok(meta.is_descriptor())
-    }
-  }
-  
-  pub fn get_descriptor_obj_ptr(&self) -> Result<Option<NonNull<Object>>, GetDescriptorError> {
-    match self.get_object_metadata() {
-      ObjectMetadata::Ordinary(meta) => Ok(meta.get_descriptor_obj()),
-      
-      // Currently there no other type implemented yet
-      // so catch all arm here to silence clippy warning
-      #[expect(unreachable_patterns)]
-      _ => Err(GetDescriptorError::IncorrectObjectType)
-    }
-  }
-  
-  pub fn get_descriptor(&self) -> Result<&DescriptorInternal, GetDescriptorError> {
-    match self.get_object_metadata() {
-      ObjectMetadata::Ordinary(meta) => Ok(meta.get_descriptor())
-    }
   }
 }
 
