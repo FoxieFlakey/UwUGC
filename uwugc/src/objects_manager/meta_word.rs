@@ -25,7 +25,6 @@ const DATA_MASK: usize = !METADATA_MASK;
 const ORDINARY_OBJECT_BIT: usize = 0b01;
 const MARK_BIT: usize            = 0b10;
 
-#[non_exhaustive]
 pub enum ObjectMetadata<'word> {
   // Corresponds to ORDINARY_OBJECT_BIT set
   Ordinary(OrdinaryObjectMetadata<'word>)
