@@ -55,7 +55,7 @@ impl<T: ObjectLikeTrait + 'static> ObjectLikeTraitInternal for T {
 // SAFETY: The types implement this must be #[repr(transparent)]
 // and must be safe to have same bit validity as AtomicPtr<Object>
 #[sealed]
-pub unsafe trait ReferenceType {
+pub unsafe trait ReferenceType: 'static {
 }
 
 // SAFETY: GCBox boils down to AtomicPtr<Object> and has
