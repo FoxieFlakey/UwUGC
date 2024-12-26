@@ -343,11 +343,6 @@ impl<A: HeapAlloc> GCState<A> {
         continue;
       }
       
-      // Add the descriptor to be traced
-      if let Ok(Some(x)) = obj_ref.get_descriptor_obj_ptr() {
-        queue.push(x);
-      }
-      
       // SAFETY: Objects are in control by GC so objects are valid
       unsafe {
         Object::trace(obj, |reference| {

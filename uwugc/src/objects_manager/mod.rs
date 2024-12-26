@@ -89,12 +89,16 @@ impl Object {
   }
   
   // SAFETY: Caller has to make sure that 'obj' is valid object pointer
-  pub unsafe fn trace(obj: NonNull<Self>, mut tracer: impl FnMut(Option<NonNull<Object>>)) {
-    // SAFETY: The safety that descriptor is the one needed is enforced by
-    // type system and unsafe contract of the getting descriptor for a type
+  pub unsafe fn trace(obj_ptr: NonNull<Self>, mut tracer: impl FnMut(Option<NonNull<Object>>)) {
     // SAFETY: Caller also make sure 'obj' is valid
-    unsafe {
-      obj.as_ref().get_descriptor().unwrap().trace(Self::get_raw_ptr_to_data(obj), |field| tracer(NonNull::new(field.load(Ordering::Relaxed))));
+    let obj = unsafe { obj_ptr.as_ref() };
+    if let Ok(desc) = obj.get_descriptor() {
+      // Trace the descriptor too
+      tracer(obj.get_descriptor_obj_ptr().unwrap());
+      
+      // SAFETY: The safety that descriptor is the one needed is enforced by
+      // type system and unsafe contract of the getting descriptor for a type
+      unsafe { desc.trace(Self::get_raw_ptr_to_data(obj_ptr), |field| tracer(NonNull::new(field.load(Ordering::Relaxed)))) };
     }
   }
   
