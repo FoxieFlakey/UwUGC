@@ -1,4 +1,4 @@
-use std::{ptr::{self, NonNull}, sync::atomic::Ordering};
+use std::{marker::PhantomData, ptr::{self, NonNull}, sync::atomic::Ordering};
 
 use portable_atomic::AtomicPtr;
 
@@ -26,14 +26,39 @@ const ORDINARY_OBJECT_BIT: usize = 0b01;
 const MARK_BIT: usize            = 0b10;
 
 #[non_exhaustive]
-enum ObjectType {
+pub enum ObjectMetadata<'word> {
   // Corresponds to ORDINARY_OBJECT_BIT set
-  Ordinary
+  Ordinary(OrdinaryObjectMetadata<'word>)
 }
 
 #[derive(Debug)]
 pub enum GetDescriptorError {
   IncorrectObjectType
+}
+
+pub struct OrdinaryObjectMetadata<'word> {
+  descriptor: Option<NonNull<Object>>,
+  _phantom: PhantomData<&'word ()>
+}
+
+impl<'word> OrdinaryObjectMetadata<'word> {
+  pub fn get_descriptor(&self) -> &'word DescriptorInternal {
+    if let Some(obj_ptr) = self.descriptor {
+      // SAFETY: The metaword constructor's caller already guarantee that the descriptor
+      // pointer valid as long MetaWord exists and correct type of object too
+      unsafe { Object::get_raw_ptr_to_data(obj_ptr).cast::<DescriptorInternal>().as_ref() }
+    } else {
+      &descriptor::SELF_DESCRIPTOR
+    }
+  }
+  
+  pub fn is_descriptor(&self) -> bool {
+    self.descriptor.is_none()
+  }
+  
+  pub fn get_descriptor_obj(&self) -> Option<NonNull<Object>> {
+    self.descriptor
+  }
 }
 
 impl MetaWord {
@@ -88,24 +113,27 @@ impl MetaWord {
     (self.word.load(Ordering::Relaxed).addr() & MARK_BIT) == MARK_BIT
   }
   
-  fn get_object_type(&self) -> ObjectType {
+  pub fn get_object_metadata(&self) -> ObjectMetadata {
     let word = self.word.load(Ordering::Relaxed);
     if word.addr() & ORDINARY_OBJECT_BIT != 0  {
-      return ObjectType::Ordinary;
+      return ObjectMetadata::Ordinary(OrdinaryObjectMetadata {
+        descriptor: NonNull::new(self.word.load(Ordering::Relaxed).map_addr(|x| x & DATA_MASK)),
+        _phantom: PhantomData
+      });
     }
     
     unimplemented!();
   }
   
   pub fn is_descriptor(&self) -> Result<bool, GetDescriptorError> {
-    match self.get_object_type() {
-      ObjectType::Ordinary => Ok(self.get_descriptor_obj_ptr()?.is_none())
+    match self.get_object_metadata() {
+      ObjectMetadata::Ordinary(meta) => Ok(meta.is_descriptor())
     }
   }
   
   pub fn get_descriptor_obj_ptr(&self) -> Result<Option<NonNull<Object>>, GetDescriptorError> {
-    match self.get_object_type() {
-      ObjectType::Ordinary => Ok(NonNull::new(self.word.load(Ordering::Relaxed).map_addr(|x| x & DATA_MASK))),
+    match self.get_object_metadata() {
+      ObjectMetadata::Ordinary(meta) => Ok(meta.get_descriptor_obj()),
       
       // Currently there no other type implemented yet
       // so catch all arm here to silence clippy warning
@@ -115,12 +143,8 @@ impl MetaWord {
   }
   
   pub fn get_descriptor(&self) -> Result<&DescriptorInternal, GetDescriptorError> {
-    if let Some(obj_ptr) = self.get_descriptor_obj_ptr()? {
-      // SAFETY: The constructor's caller already guarantee that the descriptor
-      // pointer valid as long MetaWord exists and correct type of object too
-      unsafe { Ok(Object::get_raw_ptr_to_data(obj_ptr).cast::<DescriptorInternal>().as_ref()) }
-    } else {
-      Ok(&descriptor::SELF_DESCRIPTOR)
+    match self.get_object_metadata() {
+      ObjectMetadata::Ordinary(meta) => Ok(meta.get_descriptor())
     }
   }
 }
