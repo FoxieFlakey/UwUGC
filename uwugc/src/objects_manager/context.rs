@@ -139,6 +139,13 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
   }
   
   pub fn try_alloc<T: Describeable + ObjectLikeTraitInternal, F: FnOnce() -> T>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
+    // SAFETY: The descriptor is correct and retrieved from T::get_descriptor so the
+    // correctnes of it depends on the unsafe trait Describeable being upheld by the
+    // type
+    unsafe { self.try_alloc_common(func, gc_lock_cookie, || DescriptorInternal { api: T::get_descriptor(), drop_helper: T::drop_helper }) }
+  }
+  
+  unsafe fn try_alloc_common<T: ObjectLikeTraitInternal, F: FnOnce() -> T, U: FnOnce() -> DescriptorInternal>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>, descriptor_suplier: U) -> Result<*mut Object, AllocError> {
     let mut desc_cache = self.owner.descriptor_cache.upgradable_read();
     let id = TypeId::of::<T>();
     
@@ -166,7 +173,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         //
         // SAFETY: The descriptor is correct for Descriptor and because its statically
         // referenced thus no object pointer used
-        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(|| DescriptorInternal { api: T::get_descriptor(), drop_helper: T::drop_helper }, gc_lock_cookie, None)?) };
+        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(descriptor_suplier, gc_lock_cookie, None)?) };
         
         // If not present in cache, try insert into it with upgraded rwlock
         Ok(
