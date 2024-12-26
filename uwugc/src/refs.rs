@@ -33,8 +33,9 @@ impl<T: ObjectLikeTraitInternal> GCRefRaw<T> {
   }
   
   #[expect(dead_code)]
-  pub fn swap<'a, A: HeapAlloc>(&self, ctx: &'a Context<A>, block_gc_cookie: &mut GCLockCookie<A>, root_ref: &RootRefRaw<'a, A, T>) -> Option<RootRefRaw<'a, A, T>>{
-    let old = self.ptr.swap(root_ref.get_object_ptr().as_ptr(), Ordering::Relaxed);
+  pub fn swap<'a, A: HeapAlloc>(&self, ctx: &'a Context<A>, block_gc_cookie: &mut GCLockCookie<A>, root_ref: Option<&RootRefRaw<'a, A, T>>) -> Option<RootRefRaw<'a, A, T>>{
+    let new_ptr = root_ref.map_or(ptr::null_mut(), |x| x.get_object_ptr().as_ptr());
+    let old = self.ptr.swap(new_ptr, Ordering::Relaxed);
     Self::create_root_ref(old, ctx, block_gc_cookie)
   }
   
