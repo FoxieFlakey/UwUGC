@@ -1,8 +1,8 @@
 use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, marker::PhantomData, num::NonZeroUsize, ptr::NonNull, sync::{atomic::{self, Ordering}, Arc}, thread};
 
-use crate::{allocator::HeapAlloc, Descriptor, ReferenceType};
+use crate::{allocator::HeapAlloc, descriptor::SELF_DESCRIPTOR, Descriptor, ReferenceType};
 
-use crate::{descriptor::{self, DescriptorInternal, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTraitInternal}};
+use crate::{descriptor::{DescriptorInternal, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTraitInternal}};
 
 use super::{AllocError, ObjectManager};
 
@@ -82,14 +82,9 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
   
   // SAFETY: Caller has to ensure descriptor_obj_ptr is valid descriptor and also
   // type of Descriptor and make sure GC won't GC it away
-  unsafe fn try_alloc_unchecked<T: ObjectLikeTraitInternal, F: FnOnce() -> T>(&self, func: F, _gc_lock_cookie: &mut GCLockCookie<A>, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<*mut Object, AllocError> {
+  unsafe fn try_alloc_unchecked<F: FnOnce() -> Result<NonNull<Object>, AllocError>>(&self, func: F, data_layout: Layout, _gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
-    let descriptor = descriptor_obj_ptr.map_or(&descriptor::SELF_DESCRIPTOR, |x| {
-        // SAFETY: Caller ensured its valid and correct reference
-        unsafe { Object::get_raw_ptr_to_data(x).cast::<DescriptorInternal>().as_ref() }
-      });
-    
-    let object_size = Object::calc_layout(&descriptor.layout).0.size();
+    let object_size = Object::calc_layout(&data_layout).0.size();
     manager.used_size.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
       x += object_size;
       
@@ -101,7 +96,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     }).map_err(|_| AllocError)?;
     
     // Allocate the object
-    let Ok(obj) = Object::new(self.owner, func, descriptor_obj_ptr) else {
+    let Ok(obj) = func() else {
         // Undo what just did to the usage counter
         self.owner.used_size.fetch_sub(object_size, Ordering::Relaxed);
         return Err(AllocError);
@@ -194,9 +189,19 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         // there has to be already existing descriptor in heap so break
         // the cycle with statically allocated 'root' descriptor.
         //
-        // SAFETY: The descriptor is correct for Descriptor and because its statically
-        // referenced thus no object pointer used
-        let new_descriptor = unsafe { NonNull::new_unchecked(self.try_alloc_unchecked(descriptor_suplier, gc_lock_cookie, None)?) };
+        // SAFETY: The descriptor is correct for Descriptor because it None
+        // for object pointer which is treated as special value to reference
+        // statically declared descriptor::SELF_DESCRIPTOR
+        let new_descriptor = unsafe {
+          NonNull::new_unchecked(
+            self.try_alloc_unchecked(|| {
+                Object::new(self.owner, descriptor_suplier, None)
+              },
+              SELF_DESCRIPTOR.layout,
+              gc_lock_cookie
+            )?
+          )
+        };
         
         // If not present in cache, try insert into it with upgraded rwlock
         Ok(
@@ -216,8 +221,28 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       gc_lock_cookie.get_gc().load_barrier(obj_ref, self.owner, gc_lock_cookie);
     }
     
+    // SAFETY: descriptor still alive because GC is blocked so it can
+    // be gone
+    let data_layout = unsafe {
+        Object::get_raw_ptr_to_data(descriptor_obj_ptr)
+          .cast::<DescriptorInternal>()
+          .as_ref()
+          .layout
+      };
+    
     // SAFETY: Already make sure that the descriptor is correct
-    unsafe { self.try_alloc_unchecked(func, gc_lock_cookie, Some(descriptor_obj_ptr)) }
+    unsafe {
+      self.try_alloc_unchecked(|| {
+          Object::new(
+            self.owner,
+            func,
+            Some(descriptor_obj_ptr)
+          )
+        },
+        data_layout,
+        gc_lock_cookie
+      )
+    }
   }
 }
 
