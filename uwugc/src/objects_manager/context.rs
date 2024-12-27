@@ -80,8 +80,8 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     }
   }
   
-  // SAFETY: Caller has to ensure descriptor_obj_ptr is valid descriptor and also
-  // type of Descriptor and make sure GC won't GC it away
+  // SAFETY: Caller has to ensure layout is correct for the data contained
+  // so 'usage' can be counted correctly
   unsafe fn try_alloc_unchecked<F: FnOnce() -> Result<NonNull<Object>, AllocError>>(&self, func: F, data_layout: Layout, _gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
     let manager = self.owner;
     let object_size = Object::calc_layout(&data_layout).0.size();
