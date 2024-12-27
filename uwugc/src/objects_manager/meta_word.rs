@@ -25,9 +25,30 @@ const DATA_MASK: usize = !METADATA_MASK;
 const ORDINARY_OBJECT_BIT: usize = 0b01;
 const MARK_BIT: usize            = 0b10;
 
+// When meta word represents non ordinary (ordinary is
+// object which has descriptor present, so non ordinary
+// has no descriptor, therefore opens data bits for other
+// purpose)
+//
+// These masks must be used instead of above if ORDINARY_OBJECT_BIT
+// is unset as the format is different than ordinary object
+const NON_ORDINARY_METADATA_MASK: usize = 0b111;
+const NON_ORDINARY_DATA_MASK: usize = !NON_ORDINARY_METADATA_MASK;
+const NON_ORDINARY_DATA_SHIFT: usize = 3;
+const NON_ORDINARY_REF_ARRAY_BIT: usize = 0b100;
+
+// Largest value can be represented by data part of 'non ordinary' format
+const NON_ORDINARY_DATA_MAX: usize = usize::MAX >> NON_ORDINARY_DATA_SHIFT;
+
+#[derive(Debug)]
+pub struct SizeTooBig;
+
 pub enum ObjectMetadata<'word> {
   // Corresponds to ORDINARY_OBJECT_BIT set
-  Ordinary(OrdinaryObjectMetadata<'word>)
+  Ordinary(OrdinaryObjectMetadata<'word>),
+  
+  // Corresponds to ORDINARY_OBJECT_BIT unset and NON_ORDINARY_REF_ARRAY_BIT set
+  ReferenceArray(ReferenceArrayMetadata)
 }
 
 pub struct OrdinaryObjectMetadata<'word> {
@@ -52,6 +73,16 @@ impl<'word> OrdinaryObjectMetadata<'word> {
   
   pub fn get_descriptor_obj(&self) -> Option<NonNull<Object>> {
     self.descriptor
+  }
+}
+
+pub struct ReferenceArrayMetadata {
+  array_length: usize
+}
+
+impl ReferenceArrayMetadata {
+  pub fn get_array_len(&self) -> usize {
+    self.array_length
   }
 }
 
@@ -84,6 +115,31 @@ impl MetaWord {
     }
   }
   
+  pub fn new_array(array_len: usize, mark_bit: bool) -> Result<Self, SizeTooBig> {
+    if array_len > NON_ORDINARY_DATA_MAX {
+      return Err(SizeTooBig);
+    }
+    
+    Ok(MetaWord {
+      word: AtomicPtr::new(
+        ptr::null_mut::<Object>()
+          .map_addr(|mut x| {
+            // Set the mark bit
+            if mark_bit {
+              x |= MARK_BIT;
+            }
+            
+            // This is not ordinary object
+            x &= !ORDINARY_OBJECT_BIT;
+            x |= NON_ORDINARY_REF_ARRAY_BIT;
+            x |= array_len << NON_ORDINARY_DATA_SHIFT;
+            
+            x
+          })
+      )
+    })
+  }
+  
   // Swap MARK_BIT part of metadata and return old one
   //
   // Mark bit is only part which changes throughout lifetime
@@ -110,13 +166,36 @@ impl MetaWord {
   pub fn get_object_metadata(&self) -> ObjectMetadata {
     let word = self.word.load(Ordering::Relaxed);
     if word.addr() & ORDINARY_OBJECT_BIT != 0  {
+      // Its an ordinary object with descriptor
       return ObjectMetadata::Ordinary(OrdinaryObjectMetadata {
         descriptor: NonNull::new(self.word.load(Ordering::Relaxed).map_addr(|x| x & DATA_MASK)),
         _phantom: PhantomData
       });
+    } else {
+      let word = word.addr();
+      
+      if word & NON_ORDINARY_REF_ARRAY_BIT != 0 {
+        // Its a reference array
+        return ObjectMetadata::ReferenceArray(ReferenceArrayMetadata {
+          // This is able to represent all possible array length because each
+          // pointer on 64-bit systems is 8 bytes which means arrays are always
+          // multiple of 8 bytes in size which leaves with bottom 3 bits unused
+          // and can be used for metadata and can be shifted to right effectively
+          // (SIZE_IN_BYTES / 8) with SIZE_IN_BYTES always multiples of 8 and still
+          // able to represent all possible array sizes (2^61 entries and 2^64
+          // bytes of array)
+          //
+          // For 32-bit systems, sacrifice HAS TO BE MADE to maximum length of array
+          // as 32-bit length can be represented by 30 bit value but needed 3 bits
+          // instead 2 bits for metadata, so upper bit is required to be shaved away
+          // and limits 32-bit systems to only have maximum 2^31 bytes of array or
+          // simply 2 GiB maximum with ~537 millions entries (or 2^29 entries)
+          array_length: (word & NON_ORDINARY_DATA_MASK) >> NON_ORDINARY_DATA_SHIFT
+        });
+      }
+      
+      unimplemented!();
     }
-    
-    unimplemented!();
   }
 }
 

@@ -1,5 +1,5 @@
 use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::HashMap, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
-use crate::allocator::HeapAlloc;
+use crate::{allocator::HeapAlloc, ReferenceType};
 use meta_word::{MetaWord, ObjectMetadata};
 use parking_lot::{Mutex, RwLock};
 
@@ -32,20 +32,32 @@ unsafe impl Send for Object {}
 
 impl Object {
   pub fn new<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<NonNull<Object>, AllocError> {
+    // SAFETY: Caller ensured object pointer is correct and GC ensures
+    // that the object pointer to descriptor remains valid as long as
+    // there are users of it
+    let meta_word = unsafe { MetaWord::new(descriptor_obj_ptr, Self::compute_new_object_mark_bit(owner)) };
+    Self::new_common(owner, initializer, meta_word)
+  }
+  
+  pub fn new_array<A: HeapAlloc, Ref: ReferenceType, F: FnOnce() -> [Ref; LEN], const LEN: usize>(owner: &ObjectManager<A>, initializer: F) -> Result<NonNull<Object>, AllocError> {
+    let meta_word = MetaWord::new_array(LEN, Self::compute_new_object_mark_bit(owner));
+    
+    // Oversized arrays consider out of memory because in practical case the limits
+    // imposed by it is actually many many time larger than what available like on 64-bit
+    // well its maximum is 2^61 entries and modern CPUs at the time of writing only can
+    // address somewhere around 2^48 bytes while on 32-bit system its 2^29 entries but
+    // it needs 2^31 bytes and that basically half of what can be addressed by it and
+    // "that big of chunk of memory" is really scarce on 32-bit userspaces
+    Self::new_common(owner, initializer, meta_word.map_err(|_| AllocError)?)
+  }
+  
+  fn new_common<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, meta_word: MetaWord) -> Result<NonNull<Object>, AllocError> {
     let header = Object {
       next: UnsafeCell::new(ptr::null_mut()),
-      
-      // SAFETY: Caller ensured object pointer is correct and GC ensures
-      // that the object pointer to descriptor remains valid as long as
-      // there are users of it
-      meta_word: unsafe { MetaWord::new(descriptor_obj_ptr, Self::compute_new_object_mark_bit(owner)) }
+      meta_word
     };
     
-    let descriptor = match header.meta_word.get_object_metadata() {
-      ObjectMetadata::Ordinary(meta) => meta.get_descriptor()
-    };
-    
-    let (object_layout, data_offset) = Self::calc_layout(&descriptor.layout);
+    let (object_layout, data_offset) = header.get_object_and_data_layout();
     
     owner.alloc.allocate(object_layout)
       .map(|new_obj| {
@@ -92,6 +104,17 @@ impl Object {
         // SAFETY: The safety that descriptor is the one needed is enforced by
         // type system and unsafe contract of the getting descriptor for a type
         unsafe { meta.get_descriptor().trace(Self::get_raw_ptr_to_data(obj_ptr), |field| tracer(NonNull::new(field.load(Ordering::Relaxed)))) };
+      },
+      ObjectMetadata::ReferenceArray(meta) => {
+        // SAFETY: obj_ptr is ensured to be safe by caller
+        let array_ptr = unsafe { Self::get_raw_ptr_to_data(obj_ptr).cast::<AtomicPtr<Object>>() };
+        for i in 0..meta.get_array_len() {
+          // SAFETY: Reference array are guaranteed to be type of [AtomicPtr<Object>; N]
+          // and is guaranteed tightly packed
+          // Source: https://doc.rust-lang.org/nomicon/repr-rust.html
+          let item = unsafe { (*array_ptr.add(i).as_ptr()).load(Ordering::Relaxed) };
+          tracer(NonNull::new(item));
+        }
       }
     }
   }
@@ -118,7 +141,15 @@ impl Object {
   
   pub fn get_object_and_data_layout(&self) -> (Layout, usize) {
     let data_layout = match self.meta_word.get_object_metadata() {
-      ObjectMetadata::Ordinary(meta) => meta.get_descriptor().layout
+      ObjectMetadata::Ordinary(meta) => meta.get_descriptor().layout,
+      ObjectMetadata::ReferenceArray(meta) => {
+        // Can safely assume [AtomicPtr<Object>; N] is tightly packed
+        // Rust guarantee that
+        // source: https://doc.rust-lang.org/nomicon/repr-rust.html
+        Layout::new::<AtomicPtr<Object>>()
+          .repeat_packed(meta.get_array_len())
+          .unwrap()
+      }
     };
     
     Self::calc_layout(&data_layout)
@@ -221,13 +252,10 @@ impl<A: HeapAlloc> ObjectManager<A> {
     // SAFETY: Caller already ensure 'obj' is valid pointer
     let obj_ref = unsafe { obj.as_ref() };
     let drop_helper = match obj_ref.meta_word.get_object_metadata() {
-      ObjectMetadata::Ordinary(meta) => {
-        if meta.get_descriptor().ref_array_length.is_some() {
-          None
-        } else {
-          Some(meta.get_descriptor().drop_helper)
-        }
-      }
+      ObjectMetadata::Ordinary(meta) => Some(meta.get_descriptor().drop_helper),
+      
+      // Reference array, does not need to call its drop function
+      ObjectMetadata::ReferenceArray(_) => None
     };
     let (layout, data_offset) = obj_ref.get_object_and_data_layout();
     

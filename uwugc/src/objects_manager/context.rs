@@ -1,6 +1,6 @@
-use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, marker::PhantomData, num::NonZeroUsize, ptr::NonNull, sync::{atomic::{self, Ordering}, Arc}, thread};
+use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr::NonNull, sync::{atomic::{self, Ordering}, Arc}, thread};
 
-use crate::{allocator::HeapAlloc, descriptor::SELF_DESCRIPTOR, Descriptor, ReferenceType};
+use crate::{allocator::HeapAlloc, descriptor::SELF_DESCRIPTOR, ReferenceType};
 
 use crate::{descriptor::{DescriptorInternal, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTraitInternal}};
 
@@ -137,30 +137,20 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     // SAFETY: The descriptor is correct and retrieved from T::get_descriptor so the
     // correctnes of it depends on the unsafe trait Describeable being upheld by the
     // type
-    unsafe { self.try_alloc_common(func, gc_lock_cookie, || DescriptorInternal { api: T::get_descriptor(), drop_helper: T::drop_helper, ref_array_length: None }) }
+    unsafe { self.try_alloc_common(func, gc_lock_cookie, || DescriptorInternal { api: T::get_descriptor(), drop_helper: T::drop_helper }) }
   }
   
   pub fn try_alloc_array<Ref: ReferenceType, F: FnOnce() -> [Ref; LEN], const LEN: usize>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
-    // SAFETY: The descriptor is correct for an array
-    // TODO: Replace u32::drop_helper with something else, this is finnicky! ;w;
-    unsafe { self.try_alloc_common(func, gc_lock_cookie, || {
-      let (array_layout, stride) = Layout::new::<Ref>()
-        .repeat(LEN)
-        .unwrap();
-      
-      // Not sure if above is correct because Rust's [T; N] array
-      // is array where 'stride' of it is the size of T itself
-      assert!(stride == size_of::<Ref>(), "Strange corner case?");
-      
-      DescriptorInternal {
-        api: Descriptor {
-          fields: None,
-          layout: array_layout
-        },
-        drop_helper: u32::drop_helper,
-        ref_array_length: Some(NonZeroUsize::new(LEN).unwrap())
-      }
-    } ) }
+    let (array_layout, stride) = Layout::new::<Ref>()
+      .repeat(LEN)
+      .unwrap();
+    
+    // Not sure if above is correct because Rust's [T; N] array
+    // is array where 'stride' of it is the size of T itself
+    assert!(stride == size_of::<Ref>(), "Strange corner case?");
+    
+    // SAEFTY: Layout is correct for given type
+    unsafe { self.try_alloc_unchecked(|| Object::new_array(self.owner, func), array_layout, gc_lock_cookie) }
   }
   
   unsafe fn try_alloc_common<T: ObjectLikeTraitInternal, F: FnOnce() -> T, U: FnOnce() -> DescriptorInternal>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>, descriptor_suplier: U) -> Result<*mut Object, AllocError> {
