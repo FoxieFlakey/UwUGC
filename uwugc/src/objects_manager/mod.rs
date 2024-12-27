@@ -224,7 +224,13 @@ impl<A: HeapAlloc> ObjectManager<A> {
     // SAFETY: Caller already ensure 'obj' is valid pointer
     let obj_ref = unsafe { obj.as_ref() };
     let drop_helper = match obj_ref.meta_word.get_object_metadata() {
-      ObjectMetadata::Ordinary(meta) => meta.get_descriptor().drop_helper
+      ObjectMetadata::Ordinary(meta) => {
+        if meta.get_descriptor().ref_array_length.is_some() {
+          None
+        } else {
+          Some(meta.get_descriptor().drop_helper)
+        }
+      }
     };
     let (layout, data_offset) = obj_ref.get_object_and_data_layout();
     
@@ -236,7 +242,7 @@ impl<A: HeapAlloc> ObjectManager<A> {
       
       // Drop the data itself with helper, because cannot
       // know the type at this point so ask helper to do it
-      drop_helper(obj.cast::<()>().byte_add(data_offset).as_ptr());
+      drop_helper.map(|func| func(obj.cast::<()>().byte_add(data_offset).as_ptr()));
     }
     
     // SAFETY: Caller ensured that 'obj' pointer is only user left

@@ -8,6 +8,8 @@
 #![forbid(clippy::as_conversions)]
 #![forbid(unsafe_op_in_unsafe_fn)]
 
+#![feature(alloc_layout_extra)]
+
 mod api;
 mod objects_manager;
 mod heap;

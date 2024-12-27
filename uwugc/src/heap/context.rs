@@ -1,6 +1,6 @@
 use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, pin::Pin, ptr::{self, NonNull}, sync::{atomic, Arc}, thread};
 
-use crate::allocator::HeapAlloc;
+use crate::{allocator::HeapAlloc, ReferenceType};
 
 use super::{Heap, RootEntry};
 use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{self, Object}, root_refs::{Exclusive, RootRef, Sendable}, ObjectLikeTraitInternal};
@@ -258,6 +258,33 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
       gc_lock_cookie = self.owner.gc.block_gc();
       
       obj = self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie);
+      assert!(obj.is_ok(), "Heap run out of memory!");
+    }
+    
+    let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
+    // SAFETY: The object reference is exclusively owned by this thread
+    unsafe { RootRef::new(root_ref) }
+  }
+  
+  // TODO: Try deduplicate alloc and alloc_array without coming a foul with borrow
+  // checker
+  pub fn alloc_array<Ref: ReferenceType, const LEN: usize>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> [Ref; LEN]) -> RootRef<'a, Sendable, Exclusive, A, [Ref; LEN]> {
+    // Shouldn't panic if try_alloc succeded once, and with this
+    // method this function shouldnt try alloc again
+    let mut special_ctx = ConstructorScope { _private: () };
+    let mut inited_value = Some(initer);
+    let mut must_init_once = || inited_value.take().unwrap()(&mut special_ctx);
+    
+    let mut gc_lock_cookie = self.owner.gc.block_gc();
+    let mut obj = self.obj_manager_ctx.try_alloc_array(&mut must_init_once, &mut gc_lock_cookie);
+    
+    if obj.is_err() {
+      drop(gc_lock_cookie);
+      println!("Out of memory, triggering GC!");
+      self.owner.run_gc();
+      gc_lock_cookie = self.owner.gc.block_gc();
+      
+      obj = self.obj_manager_ctx.try_alloc_array(&mut must_init_once, &mut gc_lock_cookie);
       assert!(obj.is_ok(), "Heap run out of memory!");
     }
     

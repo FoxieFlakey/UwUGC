@@ -6,14 +6,14 @@ use std::{alloc::Layout, hint::black_box, io::{self, Write}, mem::offset_of, syn
 use std::sync::atomic::AtomicBool;
 use data_collector::DataCollector;
 
-use uwugc::{root_refs::RootRef, Describeable, Descriptor, Field, GCBox, GCParams, HeapArc, Params};
+use uwugc::{root_refs::RootRef, Describeable, Descriptor, Field, GCBox, GCNullableBox, GCParams, HeapArc, Params};
 
 mod data_collector;
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 512 * 1024 * 1024;
 const POLL_RATE: u64 = 20;
-const TRIGGER_SIZE: usize = 64 * 1024 * 1024;
+const TRIGGER_SIZE: usize = 4 * 1024;
 
 // #[cfg(not(miri))]
 // mod non_miri;
@@ -129,10 +129,23 @@ fn main() {
   let name = parent.name;
   println!("Parent: Name: {name}");
   
+  let mut array = ctx.alloc_array(|alloc_context| [
+    GCNullableBox::<Parent>::new(None, alloc_context),
+    GCNullableBox::<Parent>::new(None, alloc_context),
+    GCNullableBox::<Parent>::new(None, alloc_context),
+    GCNullableBox::<Parent>::new(None, alloc_context),
+    GCNullableBox::<Parent>::new(None, alloc_context),
+    GCNullableBox::<Parent>::new(None, alloc_context),
+    GCNullableBox::<Parent>::new(None, alloc_context),
+    GCNullableBox::<Parent>::new(None, alloc_context),
+    GCNullableBox::<Parent>::new(None, alloc_context)
+  ]);
+  array[3].swap(&ctx, Some(parent));
+  
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
   let temp = [198; 1024];
-  for _ in 1..200_000 {
+  for _ in 1..5 {
     let mut res = ctx.alloc(|_| temp);
     black_box(do_test(&mut res));
     black_box(RootRef::downgrade(res));
@@ -141,6 +154,7 @@ fn main() {
   
   println!("Doing sanity checks UwU...");
   
+  let parent = array[3].swap(&ctx, None).unwrap();
   let name = parent.name;
   println!("Parent's name: {name}");
   
@@ -150,6 +164,7 @@ fn main() {
   drop(child);
   
   drop(parent);
+  drop(array);
   drop(ctx);
   
   let complete_time = (start_time.elapsed().as_millis() as f32) / 1024.0;
