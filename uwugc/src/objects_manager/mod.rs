@@ -72,10 +72,7 @@ impl Object {
   pub unsafe fn get_raw_ptr_to_data(obj: NonNull<Self>) -> NonNull<()> {
     // SAFETY: Caller ensured obj is valid pointer
     let header = unsafe { obj.as_ref() };
-    let descriptor = match header.meta_word.get_object_metadata() {
-      ObjectMetadata::Ordinary(meta) => meta.get_descriptor()
-    };
-    let (_, data_offset) = Self::calc_layout(&descriptor.layout);
+    let (_, data_offset) = header.get_object_and_data_layout();
     
     // SAFETY: Already calculated correct offset for it
     // and constructor allocated suitable region for required
