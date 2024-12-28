@@ -13,6 +13,23 @@ pub struct Field {
 pub struct DescriptorAPI {
   pub fields: Option<&'static [Field]>,
   pub layout: Layout,
+  
+  // This is crucial for POD support because
+  // some type have special codes to be ran
+  // on its drop code which if not ran would
+  // result in memory leaks like Arc/Rc of
+  // other crate's type which isn't uwugc aware
+  //
+  // Setting false, equals to mem::forget but the
+  // memory for type is only deallocated and pointers
+  // which assumes if it not dropped yet then its safe
+  // becomes dangling/invalid
+  //
+  // It is safer to set to true if don't know what that
+  // mean.
+  //
+  // NOTE: Should that includes unsoundness warning?
+  // or nah
   pub has_drop: bool
 }
 
