@@ -19,11 +19,11 @@ const _: () = assert!(align_of::<Object>() >= (1 << OBJECT_ALIGNMENT_SHIFT), "Ob
 
 // Lower two bit of properly aligned
 // object pointer is used for metadata
-const METADATA_MASK: usize = 0b11;
-const DATA_MASK: usize = !METADATA_MASK;
+const METADATA_MASK: usize       = 0b0000_0011;
+const ORDINARY_OBJECT_BIT: usize = 0b0000_0001;
+const MARK_BIT: usize            = 0b0000_0010;
 
-const ORDINARY_OBJECT_BIT: usize = 0b01;
-const MARK_BIT: usize            = 0b10;
+const DATA_MASK: usize = !METADATA_MASK;
 
 // When meta word represents non ordinary (ordinary is
 // object which has descriptor present, so non ordinary
@@ -32,10 +32,11 @@ const MARK_BIT: usize            = 0b10;
 //
 // These masks must be used instead of above if ORDINARY_OBJECT_BIT
 // is unset as the format is different than ordinary object
-const NON_ORDINARY_METADATA_MASK: usize = 0b111;
+const NON_ORDINARY_METADATA_MASK: usize = 0b0000_0111;
+const NON_ORDINARY_REF_ARRAY_BIT: usize = 0b0000_0100;
+
 const NON_ORDINARY_DATA_MASK: usize = !NON_ORDINARY_METADATA_MASK;
 const NON_ORDINARY_DATA_SHIFT: usize = 3;
-const NON_ORDINARY_REF_ARRAY_BIT: usize = 0b100;
 
 // Largest value can be represented by data part of 'non ordinary' format
 const NON_ORDINARY_DATA_MAX: usize = usize::MAX >> NON_ORDINARY_DATA_SHIFT;
