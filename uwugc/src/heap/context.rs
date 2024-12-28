@@ -241,7 +241,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     }
   }
   
-  pub fn alloc<T: Describeable + ObjectLikeTraitInternal>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, A, T> {
+  pub fn alloc<T: Describeable + ObjectLikeTraitInternal>(&self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, A, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut special_ctx = ConstructorScope { _private: () };
@@ -268,7 +268,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
   
   // TODO: Try deduplicate alloc and alloc_array without coming a foul with borrow
   // checker
-  pub fn alloc_array<Ref: ReferenceType, const LEN: usize>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> [Ref; LEN]) -> RootRef<'a, Sendable, Exclusive, A, [Ref; LEN]> {
+  pub fn alloc_array<Ref: ReferenceType, const LEN: usize>(&self, initer: impl FnOnce(&mut ConstructorScope) -> [Ref; LEN]) -> RootRef<'a, Sendable, Exclusive, A, [Ref; LEN]> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut special_ctx = ConstructorScope { _private: () };

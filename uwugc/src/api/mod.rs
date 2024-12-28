@@ -5,7 +5,6 @@ pub(crate) mod helper;
 use std::ptr;
 use std::sync::Arc;
 
-use crate::allocator::GlobalHeap;
 use crate::heap::Context as HeapContext;
 use crate::heap::Heap as HeapInternal;
 
@@ -13,6 +12,7 @@ pub use crate::heap::Params;
 pub use crate::gc::GCParams;
 pub use crate::descriptor::{Describeable, DescriptorAPI as Descriptor, Field};
 pub use crate::heap::ConstructorScope;
+pub use crate::allocator::GlobalHeap;
 
 pub mod root_refs;
 

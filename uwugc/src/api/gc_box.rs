@@ -71,7 +71,7 @@ impl<T: ObjectLikeTrait> GCNullableBox<T> {
       })
   }
   
-  pub fn store<'context>(&mut self, ctx: &'context Context, other: Option<RootRef<'context, Sendable, Exclusive, GlobalHeap, T>>) {
+  pub fn store(&mut self, ctx: &Context, other: Option<RootRef<'_, Sendable, Exclusive, GlobalHeap, T>>) {
     let raw_ref = other.map(|x| RootRef::into_raw(x));
     self.inner.store(&ctx.inner, &mut ctx.inner.get_heap().gc.block_gc(), raw_ref.as_ref());
   }

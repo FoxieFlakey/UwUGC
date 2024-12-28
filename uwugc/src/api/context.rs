@@ -4,12 +4,12 @@ use super::{root_refs::{Exclusive, RootRef, Sendable}, ConstructorScope, Context
 
 impl<'a> Context<'a> {
   #[must_use = "If not used, this would create unnecessary GC pressure"]
-  pub fn alloc<T: Describeable + ObjectLikeTrait>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, GlobalHeap, T> {
+  pub fn alloc<T: Describeable + ObjectLikeTrait>(&self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, GlobalHeap, T> {
     self.inner.alloc(initer)
   }
   
   #[must_use = "If not used, this would create unnecessary GC pressure"]
-  pub fn alloc_array<Ref: ReferenceType, const LEN: usize>(&mut self, initer: impl FnOnce(&mut ConstructorScope) -> [Ref; LEN]) -> RootRef<'a, Sendable, Exclusive, GlobalHeap, [Ref; LEN]> {
+  pub fn alloc_array<Ref: ReferenceType, const LEN: usize>(&self, initer: impl FnOnce(&mut ConstructorScope) -> [Ref; LEN]) -> RootRef<'a, Sendable, Exclusive, GlobalHeap, [Ref; LEN]> {
     self.inner.alloc_array(initer)
   }
   
