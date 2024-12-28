@@ -1,12 +1,12 @@
 #![allow(clippy::needless_return)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::{alloc::Layout, hint::black_box, io::{self, Write}, mem::offset_of, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
+use std::{io::{self, Write}, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
 use std::sync::atomic::AtomicBool;
 use data_collector::DataCollector;
 
-use uwugc::{root_refs::RootRef, Describeable, Descriptor, Field, GCBox, GCNullableBox, GCParams, HeapArc, Params};
+use uwugc::{GCParams, HeapArc, Params};
 
 mod data_collector;
 
@@ -41,13 +41,6 @@ struct HeapStatRecord {
   trigger_size: usize
 }
 
-fn do_test<const LENGTH: usize>(input: &mut [i32; LENGTH]) -> &mut [i32; LENGTH] {
-  for byte in input.iter_mut() {
-    *byte += 2;
-  }
-  return input;
-}
-
 fn main() {
   println!("Hello, world!");
   #[cfg(not(miri))]
@@ -79,97 +72,14 @@ fn main() {
     }
   };
   
-  let mut ctx = heap.create_context();
-  
-  struct Child {
-    name: &'static str
-  }
-  
-  unsafe impl Describeable for Child {
-    fn get_descriptor() -> Descriptor {
-      return Descriptor {
-        fields: None,
-        layout: Layout::new::<Child>(),
-        has_drop: false
-      };
-    }
-  }
-  
-  struct Parent {
-    name: &'static str,
-    child: GCBox<Child>
-  }
-  
-  static PARENT_FIELDS: [Field; 1] = [
-    Field { offset: offset_of!(Parent, child) }
-  ];
-  
-  unsafe impl Describeable for Parent {
-    fn get_descriptor() -> Descriptor {
-      return Descriptor {
-        fields: Some(&PARENT_FIELDS),
-        layout: Layout::new::<Parent>(),
-        has_drop: false
-      };
-    }
-  }
-  
-  let mut child = ctx.alloc(|_| Child {
-    name: "Hello I'm a child UwU"
-  });
-  
-  let mut a = child.name;
-  println!("Child's name: {a}");
-  child.name = "Hello I'm a child OwO";
-  a = child.name;
-  println!("Child's name: {a}");
-  
-  let parent = ctx.alloc(|alloc_ctx| Parent {
-    name: "Hello I'm a parent >w<",
-    child: GCBox::new(child, alloc_ctx)
-  });
-  let name = parent.name;
-  println!("Parent: Name: {name}");
-  
-  let mut array = ctx.alloc_array(|alloc_context| [
-    GCNullableBox::<Parent>::new(None, alloc_context),
-    GCNullableBox::<Parent>::new(None, alloc_context),
-    GCNullableBox::<Parent>::new(None, alloc_context),
-    GCNullableBox::<Parent>::new(None, alloc_context),
-    GCNullableBox::<Parent>::new(None, alloc_context),
-    GCNullableBox::<Parent>::new(None, alloc_context),
-    GCNullableBox::<Parent>::new(None, alloc_context),
-    GCNullableBox::<Parent>::new(None, alloc_context),
-    GCNullableBox::<Parent>::new(None, alloc_context)
-  ]);
-  array[3].swap(&ctx, Some(parent));
+  let ctx = heap.create_context();
   
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
-  let temp = [198; 1024];
-  for _ in 1..5 {
-    let mut res = ctx.alloc(|_| temp);
-    black_box(do_test(&mut res));
-    black_box(RootRef::downgrade(res));
-  };
-  ctx.trigger_gc();
-  
-  println!("Doing sanity checks UwU...");
-  
-  let parent = array[3].swap(&ctx, None).unwrap();
-  let name = parent.name;
-  println!("Parent's name: {name}");
-  
-  let child = parent.child.load(&ctx);
-  let name = child.name;
-  println!("Child's name: {name}");
-  drop(child);
-  
-  drop(parent);
-  drop(array);
-  drop(ctx);
   
   let complete_time = (start_time.elapsed().as_millis() as f32) / 1024.0;
+  
+  drop(ctx);
   
   QUIT_THREADS.store(true, Ordering::Relaxed);
   println!();
