@@ -159,12 +159,21 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       drop_helper: T::drop_helper
     };
     
-    // SAFETY: Already make sure the layout is correct and there are no GC references
-    // in it and does not need to execute the drop function
-    if !descriptor.api.has_drop && descriptor.api.fields.unwrap_or(&[]).is_empty() {
-      match unsafe { Object::new_pod(self.owner, descriptor.layout, &mut func) } {
-        Ok(x) => return Ok(x.as_ptr()),
-        Err(x) => match x {
+    if !descriptor.has_drop && descriptor.fields.unwrap_or(&[]).is_empty() {
+      let mut real_error = None;
+      // SAFETY: Already make sure the layout is correct and there are no GC references
+      // in it and does not need to execute the drop function
+      let ret = unsafe { self.try_alloc_unchecked(|| {
+          Object::new_pod(self.owner, descriptor.layout, &mut func)
+            .map_err(|err| { real_error = Some(err); AllocError})
+        },
+        descriptor.layout,
+        gc_lock_cookie)
+      };
+      
+      match ret {
+        Ok(x) => return Ok(x),
+        Err(_) => match real_error.unwrap() {
           NewPodError::AllocError(x) =>  return Err(x),
           NewPodError::UnsuitableObject => ()
         }

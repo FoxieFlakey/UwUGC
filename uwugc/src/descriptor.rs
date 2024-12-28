@@ -64,7 +64,11 @@ pub static SELF_DESCRIPTOR: DescriptorInternal = DescriptorInternal {
   api: DescriptorAPI {
     fields: None,
     layout: Layout::new::<DescriptorInternal>(),
-    has_drop: false
+    
+    // Even if the drop does nothing for descriptor type, it still currently
+    // relying on "null" sentinel value to represent that it is descriptor
+    // type in ordinary object meta word
+    has_drop: true
   },
   drop_helper: DescriptorInternal::drop_helper
 };

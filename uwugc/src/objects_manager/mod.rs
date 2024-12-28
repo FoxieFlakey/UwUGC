@@ -32,7 +32,6 @@ unsafe impl Send for Object {}
 
 pub enum NewPodError {
   UnsuitableObject,
-  #[expect(dead_code)]
   AllocError(AllocError)
 }
 
@@ -62,14 +61,16 @@ impl Object {
   // descriptors for suitable objects (size and alignment
   // smaller than the limit of what can be stored in meta word)
   //
-  // Currently always activate fallback mode
-  // 
   // SAFETY: Caller has to make sure that T has no GC references in it
   // and also T doesn't have any special drop code to be ran like a structure
   // containing only primitives (Descendants of GCRefRaw<T> doesn't  have any
   // drop code to be ran)
-  pub unsafe fn new_pod<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(_owner: &ObjectManager<A>, _layout: Layout, _initializer: F) -> Result<NonNull<Object>, NewPodError> {
-    Err(NewPodError::UnsuitableObject)
+  pub unsafe fn new_pod<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, layout: Layout, initializer: F) -> Result<NonNull<Object>, NewPodError> {
+    let meta_word = MetaWord::new_pod(layout, Self::compute_new_object_mark_bit(owner))
+      .map_err(|_| NewPodError::UnsuitableObject)?;
+    
+    Self::new_common(owner, initializer, meta_word)
+      .map_err(|x| NewPodError::AllocError(x))
   }
   
   fn new_common<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, meta_word: MetaWord) -> Result<NonNull<Object>, AllocError> {
@@ -136,7 +137,11 @@ impl Object {
           let item = unsafe { (*array_ptr.add(i).as_ptr()).load(Ordering::Relaxed) };
           tracer(NonNull::new(item));
         }
-      }
+      },
+      
+      // POD data doesnt have any GC pointers
+      // so do nothing here
+      ObjectMetadata::PodData(_) => ()
     }
   }
   
@@ -170,7 +175,8 @@ impl Object {
         Layout::new::<AtomicPtr<Object>>()
           .repeat_packed(meta.get_array_len())
           .unwrap()
-      }
+      },
+      ObjectMetadata::PodData(meta) => meta.get_layout()
     };
     
     Self::calc_layout(&data_layout)
@@ -276,7 +282,13 @@ impl<A: HeapAlloc> ObjectManager<A> {
       ObjectMetadata::Ordinary(meta) => Some(meta.get_descriptor().drop_helper),
       
       // Reference array, does not need to call its drop function
-      ObjectMetadata::ReferenceArray(_) => None
+      ObjectMetadata::ReferenceArray(_) => None,
+      
+      // POD data does not have destructor (or drop)
+      // because type which does not do anything in drop code is no-op
+      // and POD is specifically exist for those types which has nothing
+      // to run in its drop code recursively too following its fields
+      ObjectMetadata::PodData(_) => None
     };
     let (layout, data_offset) = obj_ref.get_object_and_data_layout();
     

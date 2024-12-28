@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ptr::{self, NonNull}, sync::atomic::Ordering};
+use std::{alloc::Layout, marker::PhantomData, ptr::{self, NonNull}, sync::atomic::Ordering};
 
 use portable_atomic::AtomicPtr;
 
@@ -41,15 +41,78 @@ const NON_ORDINARY_DATA_SHIFT: usize = 3;
 // Largest value can be represented by data part of 'non ordinary' format
 const NON_ORDINARY_DATA_MAX: usize = usize::MAX >> NON_ORDINARY_DATA_SHIFT;
 
+// Only valid if ORDINARY_OBJECT_BIT unset and NON_ORDINARY_REF_ARRAY_BIT unset
+// Currently 3 bits after "non ordinary" format (reading right-to-left) is unused
+// at the moment and set to 0
+const NON_ORDINARY_POD_METADATA_MASK: usize       = 0b0011_1111;
+
+// The alignment is specially encoded as shift
+// because alignment must be power of two which easily
+// can be represented as shift where shift of 0 mean
+// alignment of 1, 3 mean alignment of 8 and so on
+const NON_ORDINARY_POD_ALIGNMENT_MASK: usize      = 0b1111_1100_0000;
+const NON_ORDINARY_POD_ALIGNMENT_SHIFT: usize = 6;
+const NON_ORDINARY_POD_SIZE_MASK: usize = !(NON_ORDINARY_POD_ALIGNMENT_MASK | NON_ORDINARY_POD_METADATA_MASK);
+const NON_ORDINARY_POD_SIZE_SHIFT: usize = 12;
+
+const NON_ORDINARY_POD_SIZE_MAX: usize = NON_ORDINARY_POD_SIZE_MASK >> NON_ORDINARY_POD_SIZE_SHIFT;
+const NON_ORDINARY_POD_ALIGNMENT_MAX: usize = 1 << (NON_ORDINARY_POD_ALIGNMENT_MASK >> NON_ORDINARY_POD_ALIGNMENT_SHIFT);
+
 #[derive(Debug)]
 pub struct SizeTooBig;
+
+#[derive(Debug)]
+pub struct UnsupportedLayout;
 
 pub enum ObjectMetadata<'word> {
   // Corresponds to ORDINARY_OBJECT_BIT set
   Ordinary(OrdinaryObjectMetadata<'word>),
   
   // Corresponds to ORDINARY_OBJECT_BIT unset and NON_ORDINARY_REF_ARRAY_BIT set
-  ReferenceArray(ReferenceArrayMetadata)
+  ReferenceArray(ReferenceArrayMetadata),
+  
+  // Corresponds to ORDINARY_OBJECT_BIT unset and NON_ORDINARY_REF_ARRAY_BIT unset
+  // Plain old data (just a struct with no GC references so the size and alignment
+  // is encoded in the data part of "non ordinary" word)
+  //
+  // For 64-bit system, there are 64-bit for meta word and 3 bits is used for non
+  // ordinary which left with 61-bit for data for
+  // 1. Alignment
+  //   There are 64 bits and its guarantee to be power of two sizes so only need
+  //   6 bits to represent each position in 64-bit alignment
+  // 2. Size
+  //   Left with 55 bits after reserving few bits for alignment so
+  //   for the size of structure itself which maxed out at 32 PiB or 32767 TiB which
+  //   is 33,554,432 GiB of RAM) modern x86_64 servers only capable of addressing max
+  //   2^52 bits physical which is 4096 TiB *ONLY* 12.5% of the what this format
+  //   in theory allow to represent sizes which is again 32 PiB. So for all practical
+  //   purposes this is more than enough and doesn't need to be able to represent all
+  //   sizes therefore the size capped at 52 which means 3 more bits available for
+  //   metadata about the POD. So POD is entirely new metadata format extending
+  //   non ordinary object. 
+  //
+  //   On 32-bit the size would be maxed at 32 - 6 bits of metadata - 6 alignment and
+  // left with 10 bits for the size which equates to 1 KiB. So there need of fallback
+  // to "fieldless "descriptor method for types larger than 1 KiB.
+  //
+  // Fallback mechanism
+  //   If needed to have larger objects than what POD metadata support it can fallback
+  // to creating descriptor objects with sizes and alignment that can't be described.
+  // That fallback allows system to switch between using descriptor to describe objects
+  // which has no field of interest to GC or embedding layout information in here
+  // depends if its possible or not. 
+  //
+  PodData(PodDataMetadata)
+}
+
+pub struct PodDataMetadata {
+  data_layout: Layout
+}
+
+impl PodDataMetadata {
+  pub fn get_layout(&self) -> Layout {
+    self.data_layout
+  }
 }
 
 pub struct OrdinaryObjectMetadata<'word> {
@@ -114,6 +177,41 @@ impl MetaWord {
           })
       )
     }
+  }
+  
+  pub fn is_suitable_for_pod(layout: Layout) -> bool{
+    layout.size() <= NON_ORDINARY_POD_SIZE_MAX &&
+      layout.align() <= NON_ORDINARY_POD_ALIGNMENT_MAX
+  }
+  
+  pub fn new_pod(layout: Layout, mark_bit: bool) -> Result<Self, UnsupportedLayout> {
+    if !Self::is_suitable_for_pod(layout) {
+      return Err(UnsupportedLayout);
+    }
+    
+    let x = MetaWord {
+      word: AtomicPtr::new(
+        ptr::null_mut::<Object>()
+          .map_addr(|mut x| {
+            // Set the mark bit
+            if mark_bit {
+              x |= MARK_BIT;
+            }
+            
+            // This is not ordinary object and not an array
+            x &= !ORDINARY_OBJECT_BIT;
+            x &= !NON_ORDINARY_REF_ARRAY_BIT;
+            
+            // Encodes the alignment and size
+            x |= usize::try_from(layout.align().trailing_zeros()).unwrap() << NON_ORDINARY_POD_ALIGNMENT_SHIFT;
+            x |= layout.size() << NON_ORDINARY_POD_SIZE_SHIFT;
+            
+            x
+          })
+      )
+    };
+    
+    Ok(x)
   }
   
   pub fn new_array(array_len: usize, mark_bit: bool) -> Result<Self, SizeTooBig> {
@@ -193,9 +291,15 @@ impl MetaWord {
           // simply 2 GiB maximum with ~537 millions entries (or 2^29 entries)
           array_length: (word & NON_ORDINARY_DATA_MASK) >> NON_ORDINARY_DATA_SHIFT
         });
+      } else {
+        let align_shift = (word & NON_ORDINARY_POD_ALIGNMENT_MASK) >> NON_ORDINARY_POD_ALIGNMENT_SHIFT;
+        return ObjectMetadata::PodData(PodDataMetadata {
+          data_layout: Layout::from_size_align(
+            (word & NON_ORDINARY_POD_SIZE_MASK) >> NON_ORDINARY_POD_SIZE_SHIFT,
+            1 << align_shift
+          ).unwrap()
+        });
       }
-      
-      unimplemented!();
     }
   }
 }
