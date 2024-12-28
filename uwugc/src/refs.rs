@@ -40,6 +40,13 @@ impl<T: ObjectLikeTraitInternal> GCRefRaw<T> {
     Self::create_root_ref(old, ctx, block_gc_cookie)
   }
   
+  pub fn store<'a, A: HeapAlloc>(&self, _ctx: &'a Context<A>, _block_gc_cookie: &mut GCLockCookie<A>, root_ref: Option<&RootRefRaw<'a, A, T>>) {
+    // SAFETY: The data is always valid only need read_volatile to deter Rust from
+    // optimizing that even with &mut because GC might see incorrect/illegal state
+    let new_ptr = root_ref.map_or(ptr::null_mut(), |x| x.get_object_ptr().as_ptr());
+    unsafe { (*ptr::read_volatile(&&raw const self.ptr)).store(new_ptr, Ordering::Relaxed) };
+  }
+  
   pub fn load<'a, A: HeapAlloc>(&self, ctx: &'a Context<A>, block_gc_cookie: &mut GCLockCookie<A>) -> Option<RootRefRaw<'a, A, T>> {
     // SAFETY: The data is always valid only need read_volatile to deter Rust from
     // optimizing that even with &mut because GC might see incorrect/illegal state

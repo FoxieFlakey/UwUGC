@@ -70,6 +70,11 @@ impl<T: ObjectLikeTrait> GCNullableBox<T> {
         unsafe { RootRef::new(raw) }
       })
   }
+  
+  pub fn store<'context>(&mut self, ctx: &'context Context, other: Option<RootRef<'context, Sendable, Exclusive, GlobalHeap, T>>) {
+    let raw_ref = other.map(|x| RootRef::into_raw(x));
+    self.inner.store(&ctx.inner, &mut ctx.inner.get_heap().gc.block_gc(), raw_ref.as_ref());
+  }
 }
 
 // A non-null counterpart of GCNullableBox
@@ -98,6 +103,10 @@ impl<T: ObjectLikeTrait> GCBox<T> {
   pub fn swap<'context>(&mut self, ctx: &'context Context, other: RootRef<'context, Sendable, Exclusive, GlobalHeap, T>) -> RootRef<'context, Sendable, Exclusive, GlobalHeap, T> {
     // SAFETY: GCBox<T> will never be null/nothing
     unsafe { self.inner.swap(ctx, Some(other)).unwrap_unchecked() }
+  }
+  
+  pub fn store<'context>(&mut self, ctx: &'context Context, other: RootRef<'context, Sendable, Exclusive, GlobalHeap, T>) {
+    self.inner.store(ctx, Some(other));
   }
 }
 
