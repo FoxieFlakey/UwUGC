@@ -159,9 +159,10 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       drop_helper: T::drop_helper
     };
     
-    if Object::is_suitable_for_pod(&descriptor) {
-      // SAFETY: Already check for requirement
-      match unsafe { Object::new_pod(self.owner, &mut func) } {
+    // SAFETY: Already make sure the layout is correct and there are no GC references
+    // in it
+    if descriptor.api.fields.unwrap_or(&[]).is_empty() {
+      match unsafe { Object::new_pod(self.owner, descriptor.layout, &mut func) } {
         Ok(x) => return Ok(x.as_ptr()),
         Err(x) => match x {
           NewPodError::AllocError(x) =>  return Err(x),

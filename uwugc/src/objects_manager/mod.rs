@@ -1,5 +1,5 @@
 use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::HashMap, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
-use crate::{allocator::HeapAlloc, descriptor::DescriptorInternal, ReferenceType};
+use crate::{allocator::HeapAlloc, ReferenceType};
 use meta_word::{MetaWord, ObjectMetadata};
 use parking_lot::{Mutex, RwLock};
 
@@ -65,12 +65,8 @@ impl Object {
   // Currently always activate fallback mode
   // 
   // SAFETY: Caller has to make sure that T has no GC references in it
-  pub unsafe fn new_pod<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(_owner: &ObjectManager<A>, _initializer: F) -> Result<NonNull<Object>, NewPodError> {
+  pub unsafe fn new_pod<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(_owner: &ObjectManager<A>, _layout: Layout, _initializer: F) -> Result<NonNull<Object>, NewPodError> {
     Err(NewPodError::UnsuitableObject)
-  }
-  
-  pub fn is_suitable_for_pod(_desc: &DescriptorInternal) -> bool {
-    false
   }
   
   fn new_common<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, meta_word: MetaWord) -> Result<NonNull<Object>, AllocError> {
