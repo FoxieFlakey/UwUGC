@@ -137,7 +137,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     // SAFETY: The descriptor is correct and retrieved from T::get_descriptor so the
     // correctnes of it depends on the unsafe trait Describeable being upheld by the
     // type
-    unsafe { self.try_alloc_common(func, gc_lock_cookie, || DescriptorInternal { api: T::get_descriptor(), drop_helper: T::drop_helper }) }
+    unsafe { self.try_alloc_common(func, gc_lock_cookie, DescriptorInternal { api: T::get_descriptor(), drop_helper: T::drop_helper }) }
   }
   
   pub fn try_alloc_array<Ref: ReferenceType, F: FnMut() -> [Ref; LEN], const LEN: usize>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
@@ -153,7 +153,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     unsafe { self.try_alloc_unchecked(|| Object::new_array(self.owner, func), array_layout, gc_lock_cookie) }
   }
   
-  unsafe fn try_alloc_common<T: ObjectLikeTraitInternal, F: FnMut() -> T, U: FnOnce() -> DescriptorInternal>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>, descriptor_suplier: U) -> Result<*mut Object, AllocError> {
+  unsafe fn try_alloc_common<T: ObjectLikeTraitInternal, F: FnMut() -> T>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>, desc: DescriptorInternal) -> Result<*mut Object, AllocError> {
     let mut desc_cache = self.owner.descriptor_cache.upgradable_read();
     let id = TypeId::of::<T>();
     
@@ -185,7 +185,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         let new_descriptor = unsafe {
           NonNull::new_unchecked(
             self.try_alloc_unchecked(|| {
-                Object::new(self.owner, descriptor_suplier, None)
+                Object::new(self.owner, || desc, None)
               },
               SELF_DESCRIPTOR.layout,
               gc_lock_cookie
