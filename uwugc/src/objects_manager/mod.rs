@@ -65,6 +65,9 @@ impl Object {
   // Currently always activate fallback mode
   // 
   // SAFETY: Caller has to make sure that T has no GC references in it
+  // and also T doesn't have any special drop code to be ran like a structure
+  // containing only primitives (Descendants of GCRefRaw<T> doesn't  have any
+  // drop code to be ran)
   pub unsafe fn new_pod<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(_owner: &ObjectManager<A>, _layout: Layout, _initializer: F) -> Result<NonNull<Object>, NewPodError> {
     Err(NewPodError::UnsuitableObject)
   }

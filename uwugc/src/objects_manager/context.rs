@@ -160,8 +160,8 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     };
     
     // SAFETY: Already make sure the layout is correct and there are no GC references
-    // in it
-    if descriptor.api.fields.unwrap_or(&[]).is_empty() {
+    // in it and does not need to execute the drop function
+    if !descriptor.api.has_drop && descriptor.api.fields.unwrap_or(&[]).is_empty() {
       match unsafe { Object::new_pod(self.owner, descriptor.layout, &mut func) } {
         Ok(x) => return Ok(x.as_ptr()),
         Err(x) => match x {

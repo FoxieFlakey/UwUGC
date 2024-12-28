@@ -12,7 +12,8 @@ pub struct Field {
 
 pub struct DescriptorAPI {
   pub fields: Option<&'static [Field]>,
-  pub layout: Layout
+  pub layout: Layout,
+  pub has_drop: bool
 }
 
 pub struct DescriptorInternal {
@@ -45,7 +46,8 @@ impl Deref for DescriptorInternal {
 pub static SELF_DESCRIPTOR: DescriptorInternal = DescriptorInternal {
   api: DescriptorAPI {
     fields: None,
-    layout: Layout::new::<DescriptorInternal>()
+    layout: Layout::new::<DescriptorInternal>(),
+    has_drop: false
   },
   drop_helper: DescriptorInternal::drop_helper
 };
@@ -101,7 +103,8 @@ macro_rules! impl_for_trait {
       fn get_descriptor() -> DescriptorAPI {
         DescriptorAPI {
           fields: None,
-          layout: Layout::new::<T>()
+          layout: Layout::new::<T>(),
+          has_drop: false
         }
       }
     }

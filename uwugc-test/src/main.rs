@@ -89,7 +89,8 @@ fn main() {
     fn get_descriptor() -> Descriptor {
       return Descriptor {
         fields: None,
-        layout: Layout::new::<Child>()
+        layout: Layout::new::<Child>(),
+        has_drop: false
       };
     }
   }
@@ -107,7 +108,8 @@ fn main() {
     fn get_descriptor() -> Descriptor {
       return Descriptor {
         fields: Some(&PARENT_FIELDS),
-        layout: Layout::new::<Parent>()
+        layout: Layout::new::<Parent>(),
+        has_drop: false
       };
     }
   }
