@@ -1,5 +1,5 @@
 use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::HashMap, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
-use crate::{allocator::HeapAlloc, ReferenceType};
+use crate::{allocator::HeapAlloc, descriptor::DescriptorInternal, ReferenceType};
 use meta_word::{MetaWord, ObjectMetadata};
 use parking_lot::{Mutex, RwLock};
 
@@ -30,6 +30,12 @@ pub struct Object {
 unsafe impl Sync for Object {}
 unsafe impl Send for Object {}
 
+pub enum NewPodError {
+  UnsuitableObject,
+  #[expect(dead_code)]
+  AllocError(AllocError)
+}
+
 impl Object {
   pub fn new<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<NonNull<Object>, AllocError> {
     // SAFETY: Caller ensured object pointer is correct and GC ensures
@@ -49,6 +55,22 @@ impl Object {
     // it needs 2^31 bytes and that basically half of what can be addressed by it and
     // "that big of chunk of memory" is really scarce on 32-bit userspaces
     Self::new_common(owner, initializer, meta_word.map_err(|_| AllocError)?)
+  }
+  
+  // Placeholder for future special support for POD to
+  // fit layout inside meta word, removing need for new
+  // descriptors for suitable objects (size and alignment
+  // smaller than the limit of what can be stored in meta word)
+  //
+  // Currently always activate fallback mode
+  // 
+  // SAFETY: Caller has to make sure that T has no GC references in it
+  pub unsafe fn new_pod<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(_owner: &ObjectManager<A>, _initializer: F) -> Result<NonNull<Object>, NewPodError> {
+    Err(NewPodError::UnsuitableObject)
+  }
+  
+  pub fn is_suitable_for_pod(_desc: &DescriptorInternal) -> bool {
+    false
   }
   
   fn new_common<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, meta_word: MetaWord) -> Result<NonNull<Object>, AllocError> {

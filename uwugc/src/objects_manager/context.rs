@@ -4,7 +4,7 @@ use crate::{allocator::HeapAlloc, descriptor::SELF_DESCRIPTOR, ReferenceType};
 
 use crate::{descriptor::{DescriptorInternal, Describeable}, gc::GCLockCookie, objects_manager::{Object, ObjectLikeTraitInternal}};
 
-use super::{AllocError, ObjectManager};
+use super::{AllocError, NewPodError, ObjectManager};
 
 pub struct LocalObjectsChain {
   // Maintains start and end of chain
@@ -153,7 +153,23 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     unsafe { self.try_alloc_unchecked(|| Object::new_array(self.owner, func), array_layout, gc_lock_cookie) }
   }
   
-  pub fn try_alloc<T: Describeable + ObjectLikeTraitInternal, F: FnMut() -> T>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
+  pub fn try_alloc<T: Describeable + ObjectLikeTraitInternal, F: FnMut() -> T>(&self, mut func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
+    let descriptor = DescriptorInternal {
+      api: T::get_descriptor(),
+      drop_helper: T::drop_helper
+    };
+    
+    if Object::is_suitable_for_pod(&descriptor) {
+      // SAFETY: Already check for requirement
+      match unsafe { Object::new_pod(self.owner, &mut func) } {
+        Ok(x) => return Ok(x.as_ptr()),
+        Err(x) => match x {
+          NewPodError::AllocError(x) =>  return Err(x),
+          NewPodError::UnsuitableObject => ()
+        }
+      }
+    }
+    
     let mut desc_cache = self.owner.descriptor_cache.upgradable_read();
     let id = TypeId::of::<T>();
     
@@ -185,10 +201,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         let new_descriptor = unsafe {
           NonNull::new_unchecked(
             self.try_alloc_unchecked(|| {
-                Object::new(self.owner, || DescriptorInternal {
-                  api: T::get_descriptor(),
-                  drop_helper: T::drop_helper
-                }, None)
+                Object::new(self.owner, || descriptor, None)
               },
               SELF_DESCRIPTOR.layout,
               gc_lock_cookie
