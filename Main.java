@@ -26,11 +26,32 @@ public class Main {
         }
     }
 
+    private static void run() {
+      final byte[][] store = new byte[windowSize][msgSize];
+      for (int i = 0; i < msgCount; i++) {
+          pushMessage(store, i);
+      }
+    }
+
     public static void main(String[] args) {
-        final byte[][] store = new byte[windowSize][msgSize];
-        for (int i = 0; i < msgCount; i++) {
-            pushMessage(store, i);
-        }
+        run();
+        worst = 0;
+        run();
+        worst = 0;
+        run();
+        worst = 0;
+        run();
+        System.gc();
+        System.gc();
+        System.gc();
+        System.gc();
+        System.gc();
+        System.gc();
+        System.gc();
+        System.gc();
+        try { Thread.sleep(10); } catch (InterruptedException e) {}
+        worst = 0;
+        run();
         System.out.println("Worst push time: " + (((float) (worst / 1000) / 1000.0)) + " ms");
     }
 }
