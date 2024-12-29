@@ -82,16 +82,18 @@ fn main() {
     const WINDOW_SIZE: usize  =   200_000;
     const MSG_COUNT: usize    = 1_000_000;
     const MSG_SIZE: usize     =     1_024;
-    let mut store = ctx.alloc_array(|_| {
-      unsafe { MaybeUninit::<[GCNullableBox<[u8; MSG_SIZE]>; MSG_COUNT]>::zeroed().assume_init() }
-    });
+    let mut store = unsafe { ctx.alloc_array2(|_, uninit: &mut MaybeUninit<[GCNullableBox<[u8; 1024]>; WINDOW_SIZE]>| {
+      // Is okay because AtomicPtr can be inited to zero and GCNullableBox
+      // boiled down to that
+      uninit.as_mut_ptr().write_bytes(0, 1);
+    }) };
     
     let create_message = |n| -> RootRef<'_, Sendable, Exclusive, GlobalHeap, [u8; 1024]> {
       ctx.alloc(|_| [(n & 0xFF) as u8; MSG_SIZE])
     };
     
     let mut worst: Option<Duration> = None;
-    let mut push_message = |store: &mut RootRef<'_, Sendable, Exclusive, GlobalHeap, [GCNullableBox<[u8; MSG_SIZE]>; MSG_COUNT]>, id: usize| {
+    let mut push_message = |store: &mut RootRef<'_, Sendable, Exclusive, GlobalHeap, [GCNullableBox<[u8; MSG_SIZE]>; WINDOW_SIZE]>, id: usize| {
       let start = Instant::now();
       store[id % WINDOW_SIZE].store(&ctx, Some(create_message(id)));
       let time = start.elapsed();
