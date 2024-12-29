@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, pin::Pin, ptr::{self, NonNull}, sync::{atomic, Arc}, thread};
+use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, mem::MaybeUninit, pin::Pin, ptr::{self, NonNull}, sync::{atomic, Arc}, thread};
 
 use crate::{allocator::HeapAlloc, ReferenceType};
 
@@ -241,15 +241,17 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     }
   }
   
-  pub fn alloc<T: Describeable + ObjectLikeTraitInternal>(&self, initer: impl FnOnce(&mut ConstructorScope) -> T) -> RootRef<'a, Sendable, Exclusive, A, T> {
+  // SAFETY: Caller must make sure that initializer properly initialize T
+  pub unsafe fn alloc<T: Describeable + ObjectLikeTraitInternal>(&self, initer: impl FnOnce(&mut ConstructorScope, &mut MaybeUninit<T>)) -> RootRef<'a, Sendable, Exclusive, A, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut special_ctx = ConstructorScope { _private: () };
     let mut inited_value = Some(initer);
-    let mut must_init_once = || inited_value.take().unwrap()(&mut special_ctx);
+    let mut must_init_once = |uninit: &mut MaybeUninit<T>| inited_value.take().unwrap()(&mut special_ctx, uninit);
     
     let mut gc_lock_cookie = self.owner.gc.block_gc();
-    let mut obj = self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie);
+    // SAFETY: Caller already make sure that initializer properly initialize T
+    let mut obj = unsafe { self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie) };
     
     if obj.is_err() {
       drop(gc_lock_cookie);
@@ -257,7 +259,9 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
       self.owner.run_gc();
       gc_lock_cookie = self.owner.gc.block_gc();
       
-      obj = self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie);
+      
+      // SAFETY: Caller already make sure that initializer properly initialize T
+      obj = unsafe { self.obj_manager_ctx.try_alloc(&mut must_init_once, &mut gc_lock_cookie) };
       assert!(obj.is_ok(), "Heap run out of memory!");
     }
     
@@ -268,15 +272,18 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
   
   // TODO: Try deduplicate alloc and alloc_array without coming a foul with borrow
   // checker
-  pub fn alloc_array<Ref: ReferenceType, const LEN: usize>(&self, initer: impl FnOnce(&mut ConstructorScope) -> [Ref; LEN]) -> RootRef<'a, Sendable, Exclusive, A, [Ref; LEN]> {
+  // SAFETY: Initializer has to make sure that array is properly initialized
+  pub unsafe fn alloc_array<Ref: ReferenceType, const LEN: usize>(&self, initer: impl FnOnce(&mut ConstructorScope, &mut MaybeUninit<[Ref; LEN]>)) -> RootRef<'a, Sendable, Exclusive, A, [Ref; LEN]> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut special_ctx = ConstructorScope { _private: () };
     let mut inited_value = Some(initer);
-    let mut must_init_once = || inited_value.take().unwrap()(&mut special_ctx);
+    let mut must_init_once = |uninit: &mut MaybeUninit<[Ref; LEN]>| inited_value.take().unwrap()(&mut special_ctx, uninit);
     
     let mut gc_lock_cookie = self.owner.gc.block_gc();
-    let mut obj = self.obj_manager_ctx.try_alloc_array(&mut must_init_once, &mut gc_lock_cookie);
+    
+    // SAFETY: Caller already make sure that initializer properly initialize the array
+    let mut obj = unsafe { self.obj_manager_ctx.try_alloc_array(&mut must_init_once, &mut gc_lock_cookie) };
     
     if obj.is_err() {
       drop(gc_lock_cookie);
@@ -284,7 +291,8 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
       self.owner.run_gc();
       gc_lock_cookie = self.owner.gc.block_gc();
       
-      obj = self.obj_manager_ctx.try_alloc_array(&mut must_init_once, &mut gc_lock_cookie);
+      // SAFETY: Caller already make sure that initializer properly initialize the array
+      obj = unsafe { self.obj_manager_ctx.try_alloc_array(&mut must_init_once, &mut gc_lock_cookie) };
       assert!(obj.is_ok(), "Heap run out of memory!");
     }
     

@@ -1,4 +1,4 @@
-use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::HashMap, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::HashMap, mem::MaybeUninit, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use crate::{allocator::HeapAlloc, ReferenceType};
 use meta_word::{MetaWord, ObjectMetadata};
 use parking_lot::{Mutex, RwLock};
@@ -36,7 +36,8 @@ pub enum NewPodError {
 }
 
 impl Object {
-  pub fn new<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<NonNull<Object>, AllocError> {
+  // SAFETY: Initializers must properly initialize T, before returning!
+  pub fn new<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce(&mut MaybeUninit<T>)>(owner: &ObjectManager<A>, initializer: F, descriptor_obj_ptr: Option<NonNull<Object>>) -> Result<NonNull<Object>, AllocError> {
     // SAFETY: Caller ensured object pointer is correct and GC ensures
     // that the object pointer to descriptor remains valid as long as
     // there are users of it
@@ -44,7 +45,8 @@ impl Object {
     Self::new_common(owner, initializer, meta_word)
   }
   
-  pub fn new_array<A: HeapAlloc, Ref: ReferenceType, F: FnOnce() -> [Ref; LEN], const LEN: usize>(owner: &ObjectManager<A>, initializer: F) -> Result<NonNull<Object>, AllocError> {
+  // SAFETY: Initializers must properly initialize the array, before returning!
+  pub unsafe fn new_array<A: HeapAlloc, Ref: ReferenceType, F: FnOnce(&mut MaybeUninit<[Ref; LEN]>), const LEN: usize>(owner: &ObjectManager<A>, initializer: F) -> Result<NonNull<Object>, AllocError> {
     let meta_word = MetaWord::new_array(LEN, Self::compute_new_object_mark_bit(owner));
     
     // Oversized arrays consider out of memory because in practical case the limits
@@ -64,8 +66,9 @@ impl Object {
   // SAFETY: Caller has to make sure that T has no GC references in it
   // and also T doesn't have any special drop code to be ran like a structure
   // containing only primitives (Descendants of GCRefRaw<T> doesn't  have any
-  // drop code to be ran)
-  pub unsafe fn new_pod<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, layout: Layout, initializer: F) -> Result<NonNull<Object>, NewPodError> {
+  // drop code to be ran) and initialize must properly inialize T before
+  // returning
+  pub unsafe fn new_pod<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce(&mut MaybeUninit<T>)>(owner: &ObjectManager<A>, layout: Layout, initializer: F) -> Result<NonNull<Object>, NewPodError> {
     let meta_word = MetaWord::new_pod(layout, Self::compute_new_object_mark_bit(owner))
       .map_err(|_| NewPodError::UnsuitableObject)?;
     
@@ -73,7 +76,7 @@ impl Object {
       .map_err(|x| NewPodError::AllocError(x))
   }
   
-  fn new_common<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce() -> T>(owner: &ObjectManager<A>, initializer: F, meta_word: MetaWord) -> Result<NonNull<Object>, AllocError> {
+  fn new_common<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce(&mut MaybeUninit<T>)>(owner: &ObjectManager<A>, initializer: F, meta_word: MetaWord) -> Result<NonNull<Object>, AllocError> {
     let header = Object {
       next: UnsafeCell::new(ptr::null_mut()),
       meta_word
@@ -94,7 +97,8 @@ impl Object {
           // Initialize the header region
           header_region.write(header);
           // Initialize the data region
-          data_region.write(initializer());
+          // SAFETY: The data_region currently uninitialized
+          initializer(data_region.as_uninit_mut().unwrap());
         }
         
         new_obj.cast::<Object>()

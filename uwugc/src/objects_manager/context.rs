@@ -1,4 +1,4 @@
-use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, marker::PhantomData, ptr::NonNull, sync::{atomic::{self, Ordering}, Arc}, thread};
+use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, marker::PhantomData, mem::MaybeUninit, ptr::NonNull, sync::{atomic::{self, Ordering}, Arc}, thread};
 
 use crate::{allocator::HeapAlloc, descriptor::SELF_DESCRIPTOR, ReferenceType};
 
@@ -140,7 +140,8 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
   //   unsafe { self.try_alloc_common(func, gc_lock_cookie, DescriptorInternal { api: T::get_descriptor(), drop_helper: T::drop_helper }) }
   // }
   
-  pub fn try_alloc_array<Ref: ReferenceType, F: FnMut() -> [Ref; LEN], const LEN: usize>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
+  // SAFETY: Initializer must properly initialize the array
+  pub unsafe fn try_alloc_array<Ref: ReferenceType, F: FnMut(&mut MaybeUninit<[Ref; LEN]>), const LEN: usize>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
     let (array_layout, stride) = Layout::new::<Ref>()
       .repeat(LEN)
       .unwrap();
@@ -150,10 +151,12 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     assert!(stride == size_of::<Ref>(), "Strange corner case?");
     
     // SAEFTY: Layout is correct for given type
+    // caller make sure that initialize properly initialize the array
     unsafe { self.try_alloc_unchecked(|| Object::new_array(self.owner, func), array_layout, gc_lock_cookie) }
   }
   
-  pub fn try_alloc<T: Describeable + ObjectLikeTraitInternal, F: FnMut() -> T>(&self, mut func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
+  // SAFETY: Initializer must properly initialize T
+  pub unsafe fn try_alloc<T: Describeable + ObjectLikeTraitInternal, F: FnMut(&mut MaybeUninit<T>)>(&self, mut func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
     let descriptor = DescriptorInternal {
       api: T::get_descriptor(),
       drop_helper: T::drop_helper
@@ -162,7 +165,8 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     if !descriptor.has_drop && descriptor.fields.unwrap_or(&[]).is_empty() {
       let mut real_error = None;
       // SAFETY: Already make sure the layout is correct and there are no GC references
-      // in it and does not need to execute the drop function
+      // in it and does not need to execute the drop function and caller already make
+      // sure that initializer properly initialize T
       let ret = unsafe { self.try_alloc_unchecked(|| {
           Object::new_pod(self.owner, descriptor.layout, &mut func)
             .map_err(|err| { real_error = Some(err); AllocError})
@@ -211,7 +215,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         let new_descriptor = unsafe {
           NonNull::new_unchecked(
             self.try_alloc_unchecked(|| {
-                Object::new(self.owner, || descriptor, None)
+                Object::new(self.owner, |x| { x.write(descriptor); }, None)
               },
               SELF_DESCRIPTOR.layout,
               gc_lock_cookie
@@ -247,6 +251,8 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       };
     
     // SAFETY: Already make sure that the descriptor is correct
+    // and caller already make sure initiliazer is properly initialized
+    // T
     unsafe {
       self.try_alloc_unchecked(|| {
           Object::new(

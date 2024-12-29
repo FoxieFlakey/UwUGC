@@ -9,6 +9,7 @@
 #![forbid(unsafe_op_in_unsafe_fn)]
 
 #![feature(alloc_layout_extra)]
+#![feature(ptr_as_uninit)]
 
 mod api;
 mod objects_manager;
