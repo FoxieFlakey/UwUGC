@@ -408,7 +408,6 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       
       if !current.is_marked(self.owner) {
         // It is descriptor object, defer it to deallocate later
-        #[allow(irrefutable_let_patterns)]
         if let ObjectMetadata::Ordinary(meta) = current.meta_word.get_object_metadata() {
           if meta.is_descriptor() {
             if deferred_dealloc_list.is_null() {
