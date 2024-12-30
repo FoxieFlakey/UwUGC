@@ -383,13 +383,13 @@ impl<A: HeapAlloc> GCState<A> {
       unsafe { Self::do_mark(heap, obj) };
     }
     
-    // Step 2 (STW): Final remark (to catchup with potentially missed objects)
+    // Step 3 (STW): Final remark (to catchup with potentially missed objects)
     // TODO: Move this into independent thread executing along with normal mark
     // so to keep this final remark time to be as low as just signaling that thread
     // and wait that thread
     let block_mutator_cookie = self.block_mutators();
     
-    // Step 2.1: Deactivate load barrier, GC does not need mutator assistant anymore
+    // Step 3.1: Deactivate load barrier, GC does not need mutator assistant anymore
     self.inner_state.activate_load_barrier.store(false, Ordering::Relaxed);
     
     for obj in private.remark_queue_receiver.try_iter() {
@@ -409,19 +409,19 @@ impl<A: HeapAlloc> GCState<A> {
       unsafe { Self::do_mark(heap, obj.0) };
     }
     
-    // Step 2.2: Prune descriptor cache from dead descriptors
+    // Step 3.2: Prune descriptor cache from dead descriptors
     // SAFETY: Mutator is being blocked so mutator cannot reference to
     // potential about-to-be swept descriptors and marking process ensure
     // that currently in use descriptors are properly marked
     unsafe { heap.object_manager.prune_descriptor_cache() };
     drop(block_mutator_cookie);
     
-    // Step 3 (Concurrent): Sweep dead objects and reset mark flags 
+    // Step 4 (Concurrent): Sweep dead objects and reset mark flags 
     // SAFETY: just marked live objects and dead objects
     // is well dead
     unsafe { sweeper.sweep_and_reset_mark_flag() };
     
-    // Step 4 (STW): Finalizations of various stuffs
+    // Step 5 (STW): Finalizations of various stuffs
     let block_mutator_cookie = self.block_mutators();
     
     // Flip the meaning of marked bit value, so on next cycle GC sees new
