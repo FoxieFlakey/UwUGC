@@ -1,5 +1,6 @@
-use std::{cell::LazyCell, ptr::{self, NonNull}, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use std::{cell::LazyCell, ops::{Add, AddAssign}, ptr::{self, NonNull}, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 use crate::allocator::HeapAlloc;
+use bounded_vec_deque::BoundedVecDeque;
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use portable_atomic::AtomicBool;
 
@@ -10,7 +11,54 @@ use crate::{heap::State as HeapState, objects_manager::{Object, ObjectManager}};
 #[derive(Clone)]
 pub struct GCParams {
   pub trigger_size: usize,
-  pub poll_rate: u64
+  pub poll_rate: u64,
+  pub cycle_stats_history_size: usize
+}
+
+// NOTE: This is considered public API
+// therefore be careful with breaking changes
+#[derive(Copy, Clone, Default)]
+pub struct CycleStat {
+  pub cycle_time: Duration,
+  pub stw_time: Duration,
+  pub steps_time: [Duration; 5]
+}
+
+impl Add for CycleStat {
+  type Output = CycleStat;
+  
+  fn add(self, rhs: Self) -> Self::Output {
+    let mut tmp = Self {
+      cycle_time: self.cycle_time + rhs.cycle_time,
+      stw_time: self.stw_time + rhs.stw_time,
+      steps_time: self.steps_time
+    };
+    tmp.steps_time.iter_mut()
+      .zip(rhs.steps_time.iter())
+      .for_each(|(lhs, rhs)| *lhs += *rhs);
+    tmp
+  }
+}
+
+impl AddAssign for CycleStat {
+  fn add_assign(&mut self, rhs: Self) {
+    *self = *self + rhs;
+  }
+}
+
+// NOTE: This is considered public API
+// therefore be careful with breaking changes
+#[derive(Clone)]
+pub struct GCStats {
+  // Use this to detect change, GC always increment
+  // this when updating this
+  pub sequence_id: u64,
+  
+  // New CycleStat inserted for every cycle executed by GC
+  // and lifetime_sum updated on every cycle
+  pub history: BoundedVecDeque<CycleStat>,
+  pub lifetime_sum: CycleStat,
+  pub lifetime_cycle_count: usize
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -61,7 +109,11 @@ struct GCInnerState<A: HeapAlloc> {
   
   // Remark queue for unmarked object
   // encountered by the load barrier
-  remark_queue_sender: mpsc::Sender<ObjectPtrSend>
+  remark_queue_sender: mpsc::Sender<ObjectPtrSend>,
+  
+  // GC statistics
+  stats: Mutex<GCStats>,
+  stats_updated_event: Condvar
 }
 
 pub struct GCState<A: HeapAlloc> {
@@ -107,6 +159,10 @@ impl<A: HeapAlloc> GCState<A> {
         join_handle.join().unwrap();
       }
     }
+  }
+  
+  pub fn get_gc_stats(&self) -> GCStats {
+    self.inner_state.stats.lock().clone()
   }
   
   // Panics if GC is already stopped (its only
@@ -249,6 +305,16 @@ impl<A: HeapAlloc> GCState<A> {
   pub fn new(params: GCParams, owner: Weak<HeapState<A>>) -> GCState<A> {
     let (remark_queue_sender, remark_queue_receiver) = mpsc::channel();
     let inner_state = Arc::new(GCInnerState {
+      cmd_executed_event: Condvar::new(),
+      
+      stats: Mutex::new(GCStats {
+        sequence_id: 0,
+        history: BoundedVecDeque::new(params.cycle_stats_history_size),
+        lifetime_sum: CycleStat::default(),
+        lifetime_cycle_count: 0
+      }),
+      stats_updated_event: Condvar::new(),
+      
       gc_lock: RwLock::new(()),
       owner,
       params,
@@ -263,8 +329,7 @@ impl<A: HeapAlloc> GCState<A> {
         command: None,
         execute_count: 0,
         submit_count: 0
-      }),
-      cmd_executed_event: Condvar::new()
+      })
     });
     
     let private_data = GCThreadPrivate {
@@ -355,7 +420,10 @@ impl<A: HeapAlloc> GCState<A> {
   }
   
   fn run_gc_internal(&self, heap: &HeapState<A>, is_shutting_down: bool, private: &GCThreadPrivate) {
+    let cycle_start_time = Instant::now();
+    
     // Step 1 (STW): Take root snapshot and take objects in heap snapshot
+    let step1_start = Instant::now();
     let mut block_mutator_cookie = self.block_mutators();
     
     let mut root_snapshot = Vec::new();
@@ -374,15 +442,19 @@ impl<A: HeapAlloc> GCState<A> {
     // during mark process
     self.inner_state.activate_load_barrier.store(true, Ordering::Relaxed);
     drop(block_mutator_cookie);
+    let step1_time = step1_start.elapsed();
     
     // Step 2 (Concurrent): Mark objects
+    let step2_start = Instant::now();
     for obj in root_snapshot {
       // Mark it
       // SAFETY: Object is reference from root that mean
       // mutator still using it therefore GC must keep it alive
       unsafe { Self::do_mark(heap, obj) };
     }
+    let step2_time = step2_start.elapsed();
     
+    let step3_start = Instant::now();
     // Step 3 (STW): Final remark (to catchup with potentially missed objects)
     // TODO: Move this into independent thread executing along with normal mark
     // so to keep this final remark time to be as low as just signaling that thread
@@ -415,12 +487,16 @@ impl<A: HeapAlloc> GCState<A> {
     // that currently in use descriptors are properly marked
     unsafe { heap.object_manager.prune_descriptor_cache() };
     drop(block_mutator_cookie);
+    let step3_time = step3_start.elapsed();
     
+    let step4_start = Instant::now();
     // Step 4 (Concurrent): Sweep dead objects and reset mark flags 
     // SAFETY: just marked live objects and dead objects
     // is well dead
     unsafe { sweeper.sweep_and_reset_mark_flag() };
+    let step4_time = step4_start.elapsed();
     
+    let step5_start = Instant::now();
     // Step 5 (STW): Finalizations of various stuffs
     let block_mutator_cookie = self.block_mutators();
     
@@ -429,6 +505,28 @@ impl<A: HeapAlloc> GCState<A> {
     // "unmarked"
     heap.object_manager.flip_marked_bit_value();
     drop(block_mutator_cookie);
+    let step5_time = step5_start.elapsed();
+    
+    let cycle_duration = cycle_start_time.elapsed();
+    let pause_time = step1_time + step3_time + step5_time;
+    let stat = CycleStat {
+      cycle_time: cycle_duration,
+      stw_time: pause_time,
+      steps_time: [
+        step1_time,
+        step2_time,
+        step3_time,
+        step4_time,
+        step5_time
+      ]
+    };
+    
+    let mut stats = self.inner_state.stats.lock();
+    stats.sequence_id += 1;
+    stats.lifetime_cycle_count += 1;
+    stats.lifetime_sum += stat;
+    stats.history.push_back(stat);
+    self.inner_state.stats_updated_event.notify_all();
   }
 }
 

@@ -1,5 +1,5 @@
 use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, ops::Deref, ptr::NonNull, sync::Arc, thread::{self, ThreadId}};
-use crate::allocator::HeapAlloc;
+use crate::{allocator::HeapAlloc, gc::GCStats};
 use parking_lot::Mutex;
 
 use context::DataWrapper;
@@ -142,6 +142,10 @@ impl<A: HeapAlloc> State<A> {
   
   pub fn get_usage(&self) -> usize {
     self.object_manager.get_usage()
+  }
+  
+  pub fn get_gc_stats(&self) -> GCStats {
+    self.gc.get_gc_stats()
   }
 }
 

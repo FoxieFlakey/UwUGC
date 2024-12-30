@@ -6,7 +6,7 @@ use std::{hint::black_box, io::{self, Write}, mem::MaybeUninit, sync::{atomic::O
 use std::sync::atomic::AtomicBool;
 use data_collector::DataCollector;
 
-use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, Context, GCNullableBox, GCParams, GlobalHeap, HeapArc, Params};
+use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleStat, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, Params};
 
 mod data_collector;
 
@@ -15,8 +15,8 @@ const MAX_SIZE: usize = 768 * 1024 * 1024;
 const POLL_RATE: u64 = 20;
 const TRIGGER_SIZE: usize = 250 * 1024 * 1024;
 
-#[cfg(not(miri))]
-mod non_miri;
+// #[cfg(not(miri))]
+// mod non_miri;
 
 fn start_stat_thread(heap: HeapArc, stat_collector: Arc<DataCollector<HeapStatRecord>>) -> JoinHandle<()> {
   return thread::spawn(move || {
@@ -43,26 +43,29 @@ struct HeapStatRecord {
 
 fn main() {
   println!("Hello, world!");
-  #[cfg(not(miri))]
-  non_miri::prepare_mimalloc();
+  // #[cfg(not(miri))]
+  // non_miri::prepare_mimalloc();
   
   let heap = HeapArc::new(Params {
     gc_params: GCParams {
       poll_rate: POLL_RATE,
-      trigger_size: TRIGGER_SIZE
+      trigger_size: TRIGGER_SIZE,
+      cycle_stats_history_size: 20
     },
     max_size: MAX_SIZE
   });
   let stat_collector = Arc::new(DataCollector::new(4096));
   
-  // stat_collector.add_consumer_fn(|data: &HeapStatRecord| {
-  //   let HeapStatRecord { max_size, usage, trigger_size } = data.clone();
-  //   let usage = (usage as f32) / 1024.0 / 1024.0;
-  //   let max_size = (max_size as f32) / 1024.0 / 1024.0;
-  //   let trigger_size = (trigger_size as f32) / 1024.0 / 1024.0;
-  //   print!("Usage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  Trigger: {trigger_size: >8.2} MiB\r");
-  //   io::stdout().flush().unwrap();
-  // });
+  stat_collector.add_consumer_fn(|data: &HeapStatRecord| {
+    let HeapStatRecord { max_size, usage, trigger_size } = data.clone();
+    let usage = (usage as f32) / 1024.0 / 1024.0;
+    let max_size = (max_size as f32) / 1024.0 / 1024.0;
+    let trigger_size = (trigger_size as f32) / 1024.0 / 1024.0;
+    if !QUIT_THREADS.load(Ordering::Relaxed) {
+      print!("Usage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  Trigger: {trigger_size: >8.2} MiB\r");
+      io::stdout().flush().unwrap();
+    }
+  });
   
   let stat_thread = {
     if true {
@@ -117,7 +120,7 @@ fn main() {
     black_box(store);
   }
   let complete_time = (start_time.elapsed().as_millis() as f32) / 1024.0;
-  
+  let gc_stats = heap.get_gc_stats();
   drop(ctx);
   
   QUIT_THREADS.store(true, Ordering::Relaxed);
@@ -130,6 +133,51 @@ fn main() {
   drop(stat_collector);
   
   println!("Test time was {complete_time:.2} secs");
+  println!("GC statistics:");
+  let GCStats {
+    lifetime_cycle_count,
+    lifetime_sum,
+    history,
+    ..
+  } = gc_stats;
+  
+  let cycle_time = lifetime_sum.cycle_time.as_secs_f32() * 1000.0;
+  let stw_time = lifetime_sum.stw_time.as_secs_f32() * 1000.0;
+  let steps_time = lifetime_sum.steps_time.clone()
+    .map(|time| time.as_secs_f32() * 1000.0);
+  
+  let cycle_time_avg = cycle_time / lifetime_cycle_count as f32;
+  let stw_time_avg = stw_time / lifetime_cycle_count as f32;
+  let steps_time_avg = steps_time.clone()
+    .map(|time| time / lifetime_cycle_count as f32);
+  
+  println!("Cycle count     : {lifetime_cycle_count} cycles");
+  println!("Total cycle time: {cycle_time:>12.3} ms ({cycle_time_avg:>12.3} ms average)");
+  println!("Total STW time  : {stw_time:>12.3} ms ({stw_time_avg:>12.3} ms average)");
+  steps_time.iter()
+    .zip(steps_time_avg.iter())
+    .enumerate()
+    .for_each(|(mut i, (total, avg))| {
+      i += 1;
+      println!("Total S{i}  time  : {total:>12.3} ms ({avg:>12.3} ms average)");
+    });
+  
+  println!("History of recent cycles:");
+  history.iter()
+    .rev()
+    .enumerate()
+    .for_each(|(mut cycle_num, &CycleStat { cycle_time, stw_time, steps_time })| {
+      cycle_num += 1;
+      let cycle_time = cycle_time.as_secs_f32() * 1000.0;
+      let stw_time = stw_time.as_secs_f32() * 1000.0;
+      let [s1, s2, s3, s4, s5] = steps_time
+        .map(|time| time.as_secs_f32() * 1000.0);
+      
+      println!("{cycle_num:2}: Time: {cycle_time:>8.3} ms  STW time: {stw_time:>8.3} ms");
+      println!("      S1: {s1:>8.3} ms        S2: {s2:>8.3} ms S3: {s3:>8.3} ms");
+      println!("      S4: {s4:>8.3} ms        S5: {s5:>8.3} ms");
+    });
+  
   println!("Quitting :3");
   drop(heap);
 }
