@@ -177,9 +177,10 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       
       match ret {
         Ok(x) => return Ok(x),
-        Err(_) => match real_error.unwrap() {
-          NewPodError::AllocError(x) =>  return Err(x),
-          NewPodError::UnsuitableObject => ()
+        Err(_) => match real_error {
+          Some(NewPodError::AllocError(x)) =>  return Err(x),
+          Some(NewPodError::UnsuitableObject) => (),
+          None => return Err(AllocError)
         }
       }
     }
