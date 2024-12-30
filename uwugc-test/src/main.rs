@@ -17,8 +17,8 @@ const MAX_SIZE: usize = 768 * 1024 * 1024;
 const POLL_RATE: u64 = 20;
 const TRIGGER_SIZE: usize = 250 * 1024 * 1024;
 
-// #[cfg(not(miri))]
-// mod non_miri;
+#[cfg(not(miri))]
+mod non_miri;
 
 // Information of heap at a point
 #[derive(Clone)]
@@ -31,8 +31,8 @@ struct HeapStatRecord {
 
 fn main() {
   println!("Hello, world!");
-  // #[cfg(not(miri))]
-  // non_miri::prepare_mimalloc();
+  #[cfg(not(miri))]
+  non_miri::prepare_mimalloc();
   
   let heap = HeapArc::new(Params {
     gc_params: GCParams {

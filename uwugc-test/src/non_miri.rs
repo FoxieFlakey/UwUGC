@@ -1,4 +1,4 @@
-use std::{ffi::{c_int, c_long}, hint::black_box};
+use std::ffi::{c_int, c_long};
 
 use mimalloc::MiMalloc;
 
@@ -36,7 +36,7 @@ pub fn prepare_mimalloc() {
   
   // Need to use the half a gig to actually commits it
   // Alloc half a gig and zero it and dealloc it
-  let mut tmp =unsafe { black_box(Box::<[u8; 768 * 1024 * 1024]>::new_uninit().assume_init()) };
-  tmp.fill(0xFC);
-  println!("Prepared the memory!");
+  // let mut tmp =unsafe { black_box(Box::<[u8; 768 * 1024 * 1024]>::new_uninit().assume_init()) };
+  // tmp.fill(0xFC);
+  // println!("Prepared the memory!");
 }
