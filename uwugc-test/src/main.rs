@@ -6,7 +6,8 @@ use std::{hint::black_box, io::{self, Write}, mem::MaybeUninit, sync::{atomic::O
 use std::sync::atomic::AtomicBool;
 use data_collector::DataCollector;
 
-use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleStat, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, Params};
+use tabled::{settings::Style, Table, Tabled};
+use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, Params};
 
 mod data_collector;
 
@@ -151,33 +152,54 @@ fn main() {
   let steps_time_avg = steps_time.clone()
     .map(|time| time / lifetime_cycle_count as f32);
   
-  println!("Cycle count     : {lifetime_cycle_count} cycles");
-  println!("Total cycle time: {cycle_time:>12.3} ms ({cycle_time_avg:>12.3} ms average)");
-  println!("Total STW time  : {stw_time:>12.3} ms ({stw_time_avg:>12.3} ms average)");
+  println!("History of {:} recent cycles:", history.len());
+  #[derive(Tabled)]
+  struct CycleEntry {
+    time          : String,
+    stw           : String,
+    satb          : String,
+    conc_mark     : String,
+    final_remark  : String,
+    conc_sweep    : String,
+    finalize      : String
+  }
+  
+  let table_content = history.as_unbounded()
+    .iter()
+    .rev()
+    .map(|cycle| CycleEntry {
+      time          : format!("{:>8.3} ms", cycle.cycle_time   .as_secs_f32() * 1000.0),
+      stw           : format!("{:>8.3} ms", cycle.stw_time     .as_secs_f32() * 1000.0),
+      satb          : format!("{:>8.3} ms", cycle.steps_time[0].as_secs_f32() * 1000.0),
+      conc_mark     : format!("{:>8.3} ms", cycle.steps_time[1].as_secs_f32() * 1000.0),
+      final_remark  : format!("{:>8.3} ms", cycle.steps_time[2].as_secs_f32() * 1000.0),
+      conc_sweep    : format!("{:>8.3} ms", cycle.steps_time[3].as_secs_f32() * 1000.0),
+      finalize      : format!("{:>8.3} ms", cycle.steps_time[4].as_secs_f32() * 1000.0),
+    });
+  
+  let mut table = Table::new(table_content);
+  table.with(Style::rounded());
+  let table = table.to_string();
+  
+  println!("{table}");
+  
+  println!("Cycle count            : {lifetime_cycle_count:>12} cycles");
+  println!("Total cycle        time: {cycle_time:>12.3} ms ({cycle_time_avg:>12.3} ms average)");
+  println!("Total STW          time: {stw_time:>12.3} ms ({stw_time_avg:>12.3} ms average)");
+  let step_names = [
+    "SATB",
+    "ConcMark",
+    "FinalRemark",
+    "ConcSweep",
+    "Finalize"
+  ];
   steps_time.iter()
     .zip(steps_time_avg.iter())
     .enumerate()
     .for_each(|(mut i, (total, avg))| {
       i += 1;
-      println!("Total S{i}  time  : {total:>12.3} ms ({avg:>12.3} ms average)");
+      println!("Total {:<12} time: {total:>12.3} ms ({avg:>12.3} ms average)", step_names[i - 1]);
     });
-  
-  println!("History of recent cycles:");
-  history.iter()
-    .rev()
-    .enumerate()
-    .for_each(|(mut cycle_num, &CycleStat { cycle_time, stw_time, steps_time })| {
-      cycle_num += 1;
-      let cycle_time = cycle_time.as_secs_f32() * 1000.0;
-      let stw_time = stw_time.as_secs_f32() * 1000.0;
-      let [s1, s2, s3, s4, s5] = steps_time
-        .map(|time| time.as_secs_f32() * 1000.0);
-      
-      println!("{cycle_num:2}: Time: {cycle_time:>8.3} ms  STW time: {stw_time:>8.3} ms");
-      println!("      S1: {s1:>8.3} ms        S2: {s2:>8.3} ms S3: {s3:>8.3} ms");
-      println!("      S4: {s4:>8.3} ms        S5: {s5:>8.3} ms");
-    });
-  
   println!("Quitting :3");
   drop(heap);
 }

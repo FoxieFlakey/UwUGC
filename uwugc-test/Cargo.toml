@@ -5,5 +5,6 @@ edition = "2021"
 
 [dependencies]
 mimalloc = "0.1.43"
+tabled = "0.17.0"
 uwugc = { path = "../uwugc" }
 
