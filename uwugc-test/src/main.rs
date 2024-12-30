@@ -146,16 +146,22 @@ fn main() {
   let stw_time = lifetime_sum.stw_time.as_secs_f32() * 1000.0;
   let steps_time = lifetime_sum.steps_time.clone()
     .map(|time| time.as_secs_f32() * 1000.0);
+  let scanned_bytes = (lifetime_sum.total_bytes as f32) / 1024.0 / 1024.0;
+  let fatality_rate = lifetime_sum.dead_bytes as f32 / lifetime_sum.total_bytes as f32 * 100.0;
   
   let cycle_time_avg = cycle_time / lifetime_cycle_count as f32;
   let stw_time_avg = stw_time / lifetime_cycle_count as f32;
   let steps_time_avg = steps_time.clone()
     .map(|time| time / lifetime_cycle_count as f32);
+  let scanned_bytes_avg = scanned_bytes / lifetime_cycle_count as f32;
+  let fatality_rate_avg = fatality_rate / lifetime_cycle_count as f32;
   
   println!("History of {:} recent cycles:", history.len());
   #[derive(Tabled)]
   struct CycleEntry {
     id            : String,
+    scanned       : String,
+    fatality      : String,
     time          : String,
     stw           : String,
     satb          : String,
@@ -178,6 +184,8 @@ fn main() {
       final_remark  : format!("{:>8.3} ms", cycle.steps_time[2].as_secs_f32() * 1000.0),
       conc_sweep    : format!("{:>8.3} ms", cycle.steps_time[3].as_secs_f32() * 1000.0),
       finalize      : format!("{:>8.3} ms", cycle.steps_time[4].as_secs_f32() * 1000.0),
+      scanned       : format!("{:>8.2} MiB", (cycle.total_bytes as f32) / 1024.0 / 1024.0),
+      fatality      : format!("{:>6.2}%", cycle.dead_bytes as f32 / cycle.total_bytes as f32 * 100.0)
     });
   
   let mut table = Table::new(table_content);
@@ -186,9 +194,12 @@ fn main() {
   
   println!("{table}");
   
-  println!("Cycle count            : {lifetime_cycle_count:>12} cycles");
-  println!("Total cycle        time: {cycle_time:>12.3} ms ({cycle_time_avg:>12.3} ms average)");
-  println!("Total STW          time: {stw_time:>12.3} ms ({stw_time_avg:>12.3} ms average)");
+  println!("Total cycles      count: {lifetime_cycle_count:>12} cycles");
+  println!("Total cycle        time: {cycle_time:>12.3} ms  ({cycle_time_avg:>12.3} ms  average per cycle contribution)");
+  println!("Total STW          time: {stw_time:>12.3} ms  ({stw_time_avg:>12.3} ms  average per cycle contribution)");
+  println!("Total scanned     bytes: {scanned_bytes:>11.2}  MiB ({scanned_bytes_avg:>11.2}  MiB average per cycle contribution)");
+  println!("Total dead   percentage: {fatality_rate:>11.2}  %   ({fatality_rate_avg:>11.2}  %   average per cycle contribution)");
+  
   let step_names = [
     "SATB",
     "ConcMark",
@@ -201,7 +212,7 @@ fn main() {
     .enumerate()
     .for_each(|(mut i, (total, avg))| {
       i += 1;
-      println!("Total {:<12} time: {total:>12.3} ms ({avg:>12.3} ms average)", step_names[i - 1]);
+      println!("Total {:<12} time: {total:>12.3} ms  ({avg:>12.3} ms  average per cycle contribution)", step_names[i - 1]);
     });
   println!("Quitting :3");
   drop(heap);

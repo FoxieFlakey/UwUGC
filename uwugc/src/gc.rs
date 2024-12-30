@@ -21,7 +21,11 @@ pub struct GCParams {
 pub struct CycleStat {
   pub cycle_time: Duration,
   pub stw_time: Duration,
-  pub steps_time: [Duration; 5]
+  pub steps_time: [Duration; 5],
+  
+  pub total_bytes: usize,
+  pub dead_bytes: usize,
+  pub live_bytes: usize
 }
 
 impl Add for CycleStat {
@@ -31,7 +35,10 @@ impl Add for CycleStat {
     let mut tmp = Self {
       cycle_time: self.cycle_time + rhs.cycle_time,
       stw_time: self.stw_time + rhs.stw_time,
-      steps_time: self.steps_time
+      steps_time: self.steps_time,
+      dead_bytes: self.dead_bytes + rhs.dead_bytes,
+      total_bytes: self.total_bytes + rhs.total_bytes,
+      live_bytes: self.live_bytes + rhs.live_bytes
     };
     tmp.steps_time.iter_mut()
       .zip(rhs.steps_time.iter())
@@ -493,7 +500,7 @@ impl<A: HeapAlloc> GCState<A> {
     // Step 4 (Concurrent): Sweep dead objects and reset mark flags 
     // SAFETY: just marked live objects and dead objects
     // is well dead
-    unsafe { sweeper.sweep_and_reset_mark_flag() };
+    let sweep_stats = unsafe { sweeper.sweep_and_reset_mark_flag() };
     let step4_time = step4_start.elapsed();
     
     let step5_start = Instant::now();
@@ -518,7 +525,10 @@ impl<A: HeapAlloc> GCState<A> {
         step3_time,
         step4_time,
         step5_time
-      ]
+      ],
+      total_bytes: sweep_stats.total_bytes,
+      dead_bytes: sweep_stats.dead_bytes,
+      live_bytes: sweep_stats.live_bytes
     };
     
     let mut stats = self.inner_state.stats.lock();

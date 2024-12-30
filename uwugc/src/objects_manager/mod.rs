@@ -377,11 +377,23 @@ impl<A: HeapAlloc> Drop for ObjectManager<A> {
   }
 }
 
+pub struct SweeperStatistic {
+  pub total_bytes: usize,
+  pub live_bytes: usize,
+  pub dead_bytes: usize
+}
+
 impl<A: HeapAlloc> Sweeper<'_, A> {
   // Sweeps dead objects and consume this sweeper
   // SAFETY: Caller must ensure live objects actually
   // marked!
-  pub unsafe fn sweep_and_reset_mark_flag(mut self) {
+  pub unsafe fn sweep_and_reset_mark_flag(mut self) -> SweeperStatistic {
+    let mut stats = SweeperStatistic {
+      dead_bytes: 0,
+      live_bytes: 0,
+      total_bytes: 0
+    };
+    
     let mut live_objects: *mut Object = ptr::null_mut();
     let mut last_live_objects: *mut Object = ptr::null_mut();
     let mut next_ptr = self.saved_chain.take().unwrap();
@@ -406,7 +418,12 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
         *current.next.get() = ptr::null_mut();
       }
       
+      let cur_size = current.get_object_and_data_layout().0.size();
+      stats.total_bytes += cur_size;
+      
       if !current.is_marked(self.owner) {
+        stats.dead_bytes += cur_size;
+        
         // It is descriptor object, defer it to deallocate later
         if let ObjectMetadata::Ordinary(meta) = current.meta_word.get_object_metadata() {
           if meta.is_descriptor() {
@@ -430,6 +447,8 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
         unsafe { self.owner.dealloc(current_ptr.cast()) };
         continue;
       }
+      
+      stats.live_bytes += cur_size;
       
       // First live object, init the chain
       if live_objects.is_null() {
@@ -462,7 +481,7 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
     if live_objects.is_null() {
       // If there no live objects, the last can't exist
       assert!(last_live_objects.is_null());
-      return;
+      return stats;
     }
     
     // If there are live objects, 'last_live_objects' can't be null
@@ -472,6 +491,8 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
     unsafe {
       self.owner.add_chain_to_list(live_objects, last_live_objects);
     }
+    
+    stats
   }
 }
 
