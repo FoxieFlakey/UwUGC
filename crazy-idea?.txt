@@ -1,0 +1,111 @@
+Crazy idea? Allowing up to 3 cycles to run concurrent depends on
+available resources
+
+// GC schedules SATB to be start at previous cycle's FRM if there enough
+// threads to do so and have SATB to block until cycle which uses same mark bit
+// as currently running cycle to be completed.
+//
+// Next cycle can be delayed as necessary while other cycle is in progress
+// if GC determine there no benefit to pipelining (e.g. too little allocated
+// object which results in wasted processor time for little memory reclaimed
+// which could be better used to progress currently running cycle faster)
+
+// Earliest GC can schedule next cycle while other concurrent cycle is running
+// which is right after other cycle's SATB
+//
+// No benefit to schedule this early as there barely any object allocated
+// and wasted CPU for cycle which results minimal memory reclaimed
+Cycle N   | SATB0 | CM0   | FRM0  | CSW0  | FN0   |
+Cycle N+1 |       | SATB1 | CM1   | FRM1  | CSW1  | FN1   |
+Cycle N+2 |               | SATB2 | CM2   | FRM2  | CSW2  | FN2   |
+Cycle N+3 |                                       | SATB0 | CM0   | FRM0  | CSW0  | FN0   |
+Cycle N+4 |                                               | SATB1 | CM1   | FRM1  | CSW1  | FN1   |
+Cycle N+5 |                                                       | SATB2 | CM2   | FRM2  | CSW2  | FN2   |
+...
+
+// Or somewhere in between
+// GC determined that potential dead object in a newly objects
+// is larger than live object set which mean decreased gaps which
+// resulted from GC still in CM step thus resulting overall smaller
+// growth because during CM step there is other cycle in CSW step
+//
+// Best if there are atleast 2 or more cores available
+// for 2 or more concurrent cycles
+Cycle N   | SATB0 | CM0   | FRM0  | CSW0  | FN0   |
+Cycle N+1 |               | SATB1 | CM1   | FRM1  | CSW1  | FN1   |
+Cycle N+2 |                               | SATB2 | CM2   | FRM2  | CSW2  | FN2   |
+Cycle N+3 |                                               | SATB0 | CM0   | FRM0  | CSW0  | FN0   |
+Cycle N+4 |                                                               | SATB1 | CM1   | FRM1  | CSW1  | FN1   |
+Cycle N+5 |                                                                               | SATB2 | CM2   | FRM2  | CSW2  | FN2   |
+...
+
+// Or latest GC can schedule next cycle while other concurrently running
+Cycle N   | SATB0 | CM0   | FRM0  | CSW0  | FN0   |
+Cycle N+1 |                               | SATB1 | CM1   | FRM1  | CSW1  | FN1   |
+Cycle N+2 |                                                               | SATB2 | CM2   | FRM2  | CSW2  | FN2   |
+Cycle N+3 |                                                                                               | SATB0 | CM0   | FRM0  | CSW0  | FN0   |
+Cycle N+4 |                                                                                                                               | SATB1 | CM1   | FRM1  | CSW1  | FN1   |
+Cycle N+5 |                                                                                                                                                               | SATB2 | CM2   | FRM2  | CSW2  | FN2   |
+...
+
+// An equivalent if GC waits for current to be done (almost the
+// same as above which waits as late as possible because FN step
+// usually takes little time)
+//
+// Best at when growth spike while executing concurrent
+// marking is in acceptable range (e.g. lots of heap headroom)
+// or proportion of live object set is larger than memory reclaimed
+// (which mean a cycle only successfully reclaimed small amount of
+// memory in relative to work has to be done finding all live objects)
+// 
+// Results in longer delays from starting cycle to start free'ing
+// memory which might be unacceptable for heap which might not have
+// enough headroom to buffer the allocation occured while mutator
+// is running
+//
+// Most efficient in term of CPU usage as this has least amount
+// of duplicated work in CM step and fastest per cycle progress
+//
+// and only option if there only 1 thread allocated for GC
+// which is essentially pipelining disabled
+Cycle N   | SATB0 | CM0   | FRM0  | CSW0  | FN0   |
+Cycle N+1 |                                       | SATB1 | CM1   | FRM1  | CSW1  | FN1   |
+Cycle N+2 |                                                                               | SATB2 | CM2   | FRM2  | CSW2  | FN2   |
+Cycle N+3 |                                                                                                                       | SATB0 | CM0   | FRM0  | CSW0  | FN0   |
+Cycle N+4 |                                                                                                                                                               | SATB1 | CM1   | FRM1  | CSW1  | FN1   |
+Cycle N+5 |                                                                                                                                                                                                       | SATB2 | CM2   | FRM2  | CSW2  | FN2   |
+...
+
+Notes:
+// Same as current mark process but uses distinct mark bit
+SATB<n>  = Snapshot At The Beginning (a.k.a take data necesary for concurrent)
+CM<n>   = Concurrent Mark
+FRM<n>  = Final Remark
+CSW<n>  = Concurrent Sweep
+FN<n>  = Finalize
+
+Assume 4 cores for GC and 4 total threads allocated to GC
+FRM and CM can be concurrent if there is core available
+in that case CM would just done and FRM continues the rest
+of cycle
+# | Core 0 | Core 1 | Core 2 | Core 3 | In flight cycles                               | Queue                                                |
+-----------------------------------------------------------------------------------------------------------------------------------------------
+0 | Idle   | Idle   | Idle   | Idle   | None          , None          , None           | Cycle-1, Cycle-2, Cycle-3, Cycle-4, Cycle-5, Cycle-6 |
+1 | SATB1  | Idle   | Idle   | Idle   | Cycle-1 (SATB), None          , None           | Cycle-2, Cycle-3, Cycle-4, Cycle-5, Cycle-6          |
+2 | CM1-0  | SATB2  | CM1-1  | FRM1   | Cycle-1 (CM  ), Cycle-2 (SATB), None           | Cycle-3, Cycle-4, Cycle-5, Cycle-6                   |
+3 | FRM2   | CM2-0  | SATB3  | CSW1   | Cycle-1 (CSW ), Cycle-2 (CM  ), Cycle-3 (SATB) | Cycle-4, Cycle-5, Cycle-6                            |
+4 | CSW2   | FRM3   | CM3-0  | SATB4  | Cycle-4 (SATB), Cycle-2 (CSW ), Cycle-3 (CM  ) | Cycle-5, Cycle-6                                     |
+5 | FRM4   | CSW3   | SATB5  | CM4-0  | Cycle-4 (CM  ), Cycle-5 (SATB), Cycle-3 (CSW ) | Cycle-6                                              |
+6 | CSW4   | SATB6  | CM5-0  | FRM5   | Cycle-4 (CSW ), Cycle-5 (CM  ), Cycle-6 (SATB) |                                                      |
+7 | CM6-0  | CM6-1  | FRM6   | CWS5   | None          , Cycle-5 (CSW ), Cycle-6 (CM  ) |                                                      |
+8 | Idle   | Idle   | CSW6   | Idle   | None          , None          , Cycle-6 (CSW ) |                                                      |
+9 | Idle   | Idle   | Idle   | Idle   | None          , None          , None           |                                                      |
+
+* FN step is not listed because it small and takes little time
+  and unaffected by mutator in anyway
+
+CM1-0 indicate CM thread number 0 for Cycle1 and so on
+
+Which mark bit uses correspond to CycleID % 3
+so Cycle-0 use mark bit 0 and Cycle-1 mark bit 1
+Cycle-2 uses mark bit 2 and Cycle-3 uses mark bit 0 and so on
