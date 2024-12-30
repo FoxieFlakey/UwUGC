@@ -84,7 +84,7 @@ fn main() {
     // Ported from Java version of gc-latency-experiment
     // https://github.com/WillSewell/gc-latency-experiment/blob/f67121ec8a741201414c76d5ba85f9304c774acc/java/Main.java
     const WINDOW_SIZE: usize  =     200_000;
-    const MSG_COUNT: usize    =   1_000_000;
+    const MSG_COUNT: usize    =  10_000_000;
     const MSG_SIZE: usize     =       1_024;
     let mut store = unsafe { ctx.alloc_array2(|_, uninit: &mut MaybeUninit<[GCNullableBox<[u8; 1024]>; WINDOW_SIZE]>| {
       // Is okay because AtomicPtr can be inited to zero and GCNullableBox
@@ -155,6 +155,7 @@ fn main() {
   println!("History of {:} recent cycles:", history.len());
   #[derive(Tabled)]
   struct CycleEntry {
+    id            : String,
     time          : String,
     stw           : String,
     satb          : String,
@@ -167,7 +168,9 @@ fn main() {
   let table_content = history.as_unbounded()
     .iter()
     .rev()
-    .map(|cycle| CycleEntry {
+    .enumerate()
+    .map(|(id, cycle)| CycleEntry {
+      id            : format!("{:>2}", id + 1),
       time          : format!("{:>8.3} ms", cycle.cycle_time   .as_secs_f32() * 1000.0),
       stw           : format!("{:>8.3} ms", cycle.stw_time     .as_secs_f32() * 1000.0),
       satb          : format!("{:>8.3} ms", cycle.steps_time[0].as_secs_f32() * 1000.0),
