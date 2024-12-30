@@ -1,10 +1,11 @@
+#![feature(file_buffered)]
+
 #![allow(clippy::needless_return)]
 #![deny(unsafe_op_in_unsafe_fn)]
 
-use std::{hint::black_box, io::{self, Write}, mem::MaybeUninit, sync::{atomic::Ordering, Arc}, thread::{self, JoinHandle}, time::{Duration, Instant}};
+use std::{fs::File, hint::black_box, io::{self, Write}, mem::MaybeUninit, sync::atomic::Ordering, thread, time::{Duration, Instant}};
 
 use std::sync::atomic::AtomicBool;
-use data_collector::DataCollector;
 
 use tabled::{settings::Style, Table, Tabled};
 use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, Params};
@@ -18,20 +19,6 @@ const TRIGGER_SIZE: usize = 250 * 1024 * 1024;
 
 // #[cfg(not(miri))]
 // mod non_miri;
-
-fn start_stat_thread(heap: HeapArc, stat_collector: Arc<DataCollector<HeapStatRecord>>) -> JoinHandle<()> {
-  return thread::spawn(move || {
-    while !QUIT_THREADS.load(Ordering::Relaxed) {
-      let usage = heap.get_usage();
-      stat_collector.put_data(HeapStatRecord {
-        max_size: MAX_SIZE,
-        usage,
-        trigger_size: TRIGGER_SIZE
-      });
-      thread::sleep(Duration::from_millis(10));
-    }
-  });
-}
 
 // Information of heap at a point
 #[derive(Clone)]
@@ -55,22 +42,30 @@ fn main() {
     },
     max_size: MAX_SIZE
   });
-  let stat_collector = Arc::new(DataCollector::new(4096));
   
-  stat_collector.add_consumer_fn(|data: &HeapStatRecord| {
-    let HeapStatRecord { max_size, usage, trigger_size } = data.clone();
-    let usage = (usage as f32) / 1024.0 / 1024.0;
-    let max_size = (max_size as f32) / 1024.0 / 1024.0;
-    let trigger_size = (trigger_size as f32) / 1024.0 / 1024.0;
-    if !QUIT_THREADS.load(Ordering::Relaxed) {
-      print!("Usage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  Trigger: {trigger_size: >8.2} MiB\r");
-      io::stdout().flush().unwrap();
-    }
-  });
-  
+  let start = Instant::now();
   let stat_thread = {
     if true {
-      Some(start_stat_thread(heap.clone(), stat_collector.clone()))
+      let heap = heap.clone();
+      let mut stats_file = File::create_buffered("data.csv").unwrap();
+      writeln!(&mut stats_file, "Time,Usage,Trigger Threshold,Heap Size").unwrap();
+      Some(
+        thread::spawn(move || {
+          while !QUIT_THREADS.load(Ordering::Relaxed) {
+            let usage = heap.get_usage();
+            let usage = (usage as f32) / 1024.0 / 1024.0;
+            let max_size = (MAX_SIZE as f32) / 1024.0 / 1024.0;
+            let trigger_size = (TRIGGER_SIZE as f32) / 1024.0 / 1024.0;
+            let timestamp = start.elapsed().as_secs_f32();
+            writeln!(&mut stats_file, "{timestamp},{usage},{trigger_size},{max_size}").unwrap();
+            print!("Usage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  Trigger: {trigger_size: >8.2} MiB\r");
+            io::stdout().flush().unwrap();
+            thread::sleep(Duration::from_millis(10));
+          }
+          
+          stats_file.flush().unwrap();
+        })
+      )
     } else {
       None
     }
@@ -131,7 +126,6 @@ fn main() {
   if let Some(thrd) = stat_thread {
     thrd.join().unwrap();
   }
-  drop(stat_collector);
   
   println!("Test time was {complete_time:.2} secs");
   println!("GC statistics:");
