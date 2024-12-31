@@ -10,8 +10,6 @@ use std::sync::atomic::AtomicBool;
 use tabled::{settings::Style, Table, Tabled};
 use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, Params};
 
-mod data_collector;
-
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 768 * 1024 * 1024;
 const POLL_RATE: u64 = 20;
