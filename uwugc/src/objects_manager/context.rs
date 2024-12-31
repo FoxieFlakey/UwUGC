@@ -94,6 +94,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         None
       }
     }).map_err(|_| AllocError)?;
+    manager.lifetime_alloc_attempt_bytes.fetch_add(object_size, Ordering::Relaxed);
     
     // Allocate the object
     let Ok(obj) = func() else {
@@ -102,6 +103,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         return Err(AllocError);
       };
     let obj_ptr = obj.as_ptr();
+    manager.lifetime_alloc_success_bytes.fetch_add(object_size, Ordering::Relaxed);
     
     // SAFETY: Just allocated it before
     let obj_header = unsafe { obj_ptr.as_ref().unwrap_unchecked() };

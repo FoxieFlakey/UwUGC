@@ -1,4 +1,4 @@
-use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::HashMap, mem::MaybeUninit, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
+use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::HashMap, mem::MaybeUninit, ops::{Add, AddAssign, Sub, SubAssign}, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use crate::{allocator::HeapAlloc, ReferenceType};
 use meta_word::{MetaWord, ObjectMetadata};
 use parking_lot::{Mutex, RwLock};
@@ -196,9 +196,63 @@ impl Object {
   }
 }
 
+// NOTE: This is part of public API
+#[derive(Clone, Copy, PartialEq, Eq, Default)]
+pub struct Stats {
+  pub alloc_attempt_bytes: usize,
+  pub alloc_success_bytes: usize,
+  pub dealloc_bytes: usize
+}
+
+impl SubAssign for Stats {
+  fn sub_assign(&mut self, rhs: Self) {
+    *self = *self + rhs;
+  }
+}
+
+impl AddAssign for Stats {
+  fn add_assign(&mut self, rhs: Self) {
+    *self = *self + rhs;
+  }
+}
+
+impl Sub for Stats {
+  type Output = Self;
+  
+  fn sub(self, rhs: Self) -> Self::Output {
+    Self {
+      alloc_attempt_bytes: self.alloc_attempt_bytes - rhs.alloc_attempt_bytes,
+      alloc_success_bytes: self.alloc_success_bytes - rhs.alloc_success_bytes,
+      dealloc_bytes: self.dealloc_bytes - rhs.dealloc_bytes
+    }
+  }
+}
+
+impl Add for Stats {
+  type Output = Self;
+  
+  fn add(self, rhs: Self) -> Self::Output {
+    Self {
+      alloc_attempt_bytes: self.alloc_attempt_bytes + rhs.alloc_attempt_bytes,
+      alloc_success_bytes: self.alloc_success_bytes + rhs.alloc_success_bytes,
+      dealloc_bytes: self.dealloc_bytes + rhs.dealloc_bytes
+    }
+  }
+}
+
 pub struct ObjectManager<A: HeapAlloc> {
   head: AtomicPtr<Object>,
   used_size: AtomicUsize,
+  
+  // Bytes that object manager tried to allocates
+  // which may or may not failed
+  lifetime_alloc_attempt_bytes: AtomicUsize,
+  // Bytes which object manager successfully
+  // allocated
+  lifetime_alloc_success_bytes: AtomicUsize,
+  // Bytes which is deallocated
+  lifetime_dealloc_bytes: AtomicUsize,
+  
   contexts: Mutex<HashMap<ThreadId, Arc<LocalObjectsChain>>>,
   max_size: usize,
   alloc: Arc<A>,
@@ -233,6 +287,9 @@ impl<A: HeapAlloc> ObjectManager<A> {
     Self {
       head: AtomicPtr::new(ptr::null_mut()),
       used_size: AtomicUsize::new(0),
+      lifetime_alloc_attempt_bytes: AtomicUsize::new(0),
+      lifetime_alloc_success_bytes: AtomicUsize::new(0),
+      lifetime_dealloc_bytes: AtomicUsize::new(0),
       contexts: Mutex::new(HashMap::new()),
       sweeper_protect_mutex: Mutex::new(()),
       marked_bit_value: AtomicBool::new(true),
@@ -240,6 +297,14 @@ impl<A: HeapAlloc> ObjectManager<A> {
       descriptor_cache: RwLock::new(HashMap::new()),
       alloc: Arc::new(allocator),
       max_size
+    }
+  }
+  
+  pub fn get_lifetime_stats(&self) -> Stats {
+    Stats {
+      alloc_attempt_bytes: self.lifetime_alloc_attempt_bytes.load(Ordering::Relaxed),
+      alloc_success_bytes: self.lifetime_alloc_success_bytes.load(Ordering::Relaxed),
+      dealloc_bytes: self.lifetime_dealloc_bytes.load(Ordering::Relaxed)
     }
   }
   
@@ -312,6 +377,7 @@ impl<A: HeapAlloc> ObjectManager<A> {
     // and safe to be deallocated
     unsafe { self.alloc.deallocate(obj.cast(), layout); };
     self.used_size.fetch_sub(layout.size(), Ordering::Relaxed);
+    self.lifetime_dealloc_bytes.fetch_add(layout.size(), Ordering::Relaxed);
   }
   
   pub fn create_context(&self) -> Handle<A> {

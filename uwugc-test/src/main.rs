@@ -8,12 +8,12 @@ use std::{fs::File, hint::black_box, io::{self, Write}, mem::MaybeUninit, sync::
 use std::sync::atomic::AtomicBool;
 
 use tabled::{settings::Style, Table, Tabled};
-use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, CycleStep, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, Params};
+use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, CycleStep, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, HeapStats, Params};
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
-const MAX_SIZE: usize = 768 * 1024 * 1024;
+const MAX_SIZE: usize = 1024 * 1024 * 1024;
 const POLL_RATE: u64 = 20;
-const TRIGGER_SIZE: usize = 250 * 1024 * 1024;
+const TRIGGER_SIZE: usize = 700 * 1024 * 1024;
 
 #[cfg(not(miri))]
 mod non_miri;
@@ -49,6 +49,19 @@ fn main() {
       writeln!(&mut stats_file, "Time,Usage,Trigger Threshold,Heap Size, GC Activity").unwrap();
       Some(
         thread::spawn(move || {
+          let mut prev_heap_stats = HeapStats::default();
+          let mut prev_usage = 0 as f32;
+          
+          let rate_update_speed = 1 as f32;
+          let rate_conversion_factor = rate_update_speed;
+          
+          let poll_rate = 10 as f32;
+          
+          let mut deadline_for_rate_update = Instant::now() + Duration::from_secs_f32(1.0 / rate_update_speed);
+          let mut gc_rate = 0.0;
+          let mut alloc_rate = 0.0;
+          let mut growth = 0.0;
+          
           while !QUIT_THREADS.load(Ordering::Relaxed) {
             let usage = heap.get_usage();
             let usage = (usage as f32) / 1024.0 / 1024.0;
@@ -63,12 +76,37 @@ fn main() {
               CycleState::Running(CycleStep::Finalize)    => ("Active (Finalize   )", 5)
             };
             let timestamp = start.elapsed().as_secs_f32();
+            
+            if deadline_for_rate_update < Instant::now() {
+              let current_heap_stats = heap.get_lifetime_heap_stats();
+              let alloc_rate_bytes = current_heap_stats.alloc_success_bytes as f32 - prev_heap_stats.alloc_success_bytes as f32;
+              let gc_rate_bytes = current_heap_stats.dealloc_bytes as f32 - prev_heap_stats.dealloc_bytes as f32;
+              gc_rate = (gc_rate_bytes / 1024.0 / 1024.0) * rate_conversion_factor;
+              alloc_rate = (alloc_rate_bytes / 1024.0 / 1024.0) * rate_conversion_factor;
+              growth = usage - prev_usage;
+              
+              prev_heap_stats = current_heap_stats;
+              prev_usage = usage;
+              
+              deadline_for_rate_update += Duration::from_secs_f32(1.0 / rate_update_speed);
+            }
+            
+            let growth_direction = if growth.is_sign_positive() { "+" } else { "-" };
+            let growth_abs = growth.abs();
+            
             writeln!(&mut stats_file, "{timestamp},{usage},{trigger_size},{max_size},{state_id}").unwrap();
-            print!("\x1b[2K\rUsage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  GC: {cycle_activity}");
+            
+            print!("\x1b[2K\r\x1b[1A");
+            print!("\x1b[2K\r");
+            print!("Usage  : {usage: >8.2} MiB   Max: {max_size: >8.2} MiB   GC: {cycle_activity}\n");
+            print!("GC Rate: {gc_rate: >8.2} MiB/s Alloc Rate: {alloc_rate: >8.2} MiB/s Growth: {growth_direction}{growth_abs: >7.2} MiB/s");
+            
             io::stdout().flush().unwrap();
-            thread::sleep(Duration::from_millis(10));
+            thread::sleep(Duration::from_secs_f32(1.0 / poll_rate));
           }
           
+          println!();
+          io::stdout().flush().unwrap();
           stats_file.flush().unwrap();
         })
       )

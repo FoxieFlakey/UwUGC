@@ -13,6 +13,7 @@ pub use crate::gc::{GCParams, CycleStat, GCStats, CycleState, CycleStep};
 pub use crate::descriptor::{Describeable, DescriptorAPI as Descriptor, Field};
 pub use crate::heap::ConstructorScope;
 pub use crate::allocator::GlobalHeap;
+pub use crate::objects_manager::Stats as HeapStats ;
 
 pub mod root_refs;
 
