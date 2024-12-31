@@ -8,7 +8,7 @@ use std::{fs::File, hint::black_box, io::{self, Write}, mem::MaybeUninit, sync::
 use std::sync::atomic::AtomicBool;
 
 use tabled::{settings::Style, Table, Tabled};
-use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, Params};
+use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, Params};
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 768 * 1024 * 1024;
@@ -54,9 +54,13 @@ fn main() {
             let usage = (usage as f32) / 1024.0 / 1024.0;
             let max_size = (MAX_SIZE as f32) / 1024.0 / 1024.0;
             let trigger_size = (TRIGGER_SIZE as f32) / 1024.0 / 1024.0;
+            let cycle_activity = match heap.get_cycle_state() {
+              CycleState::Idle => "Idle",
+              CycleState::Running => "Active"
+            };
             let timestamp = start.elapsed().as_secs_f32();
             writeln!(&mut stats_file, "{timestamp},{usage},{trigger_size},{max_size}").unwrap();
-            print!("Usage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  Trigger: {trigger_size: >8.2} MiB\r");
+            print!("\x1b[2K\rUsage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  GC: {cycle_activity}");
             io::stdout().flush().unwrap();
             thread::sleep(Duration::from_millis(10));
           }

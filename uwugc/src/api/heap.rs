@@ -1,5 +1,5 @@
 use crate::{allocator::GlobalHeap, heap::Heap as HeapInternal};
-use super::{Context, GCStats, HeapArc, Params};
+use super::{Context, CycleState, GCStats, HeapArc, Params};
 
 impl Clone for HeapArc {
   fn clone(&self) -> Self {
@@ -21,6 +21,11 @@ impl HeapArc {
   #[must_use = "There is no side effect of this"]
   pub fn get_usage(&self) -> usize {
     self.inner.get_usage()
+  }
+  
+  #[must_use = "This does not have side effect"]
+  pub fn get_cycle_state(&self) -> CycleState {
+    self.inner.get_cycle_state()
   }
   
   #[must_use = "This does not have side effect"]

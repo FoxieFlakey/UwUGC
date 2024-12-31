@@ -87,6 +87,14 @@ enum GCRunState {
   Stopped
 }
 
+// NOTE: This is considered public API
+// therefore be careful with breaking changes
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CycleState {
+  Running,
+  Idle
+}
+
 #[derive(Clone)]
 struct GCCommandStruct {
   command: Option<GCCommand>,
@@ -127,7 +135,10 @@ struct GCInnerState<A: HeapAlloc> {
   
   // GC statistics
   stats: Mutex<GCStats>,
-  stats_updated_event: Condvar
+  stats_updated_event: Condvar,
+  
+  // State of the cycle
+  cycle_state: Mutex<CycleState>
 }
 
 pub struct GCState<A: HeapAlloc> {
@@ -341,7 +352,8 @@ impl<A: HeapAlloc> GCState<A> {
         command: None,
         execute_count: 0,
         submit_count: 0
-      })
+      }),
+      cycle_state: Mutex::new(CycleState::Idle)
     });
     
     let private_data = GCThreadPrivate {
@@ -431,7 +443,17 @@ impl<A: HeapAlloc> GCState<A> {
     }
   }
   
+  pub fn get_cycle_state(&self) -> CycleState {
+    *self.inner_state.cycle_state.lock()
+  }
+  
+  fn set_cycle_state(&self, new_state: CycleState) {
+    *self.inner_state.cycle_state.lock() = new_state;
+  }
+  
   fn run_gc_internal(&self, heap: &HeapState<A>, is_shutting_down: bool, private: &GCThreadPrivate) {
+    self.set_cycle_state(CycleState::Running);
+    
     let cycle_start_time = Instant::now();
     
     // Step 1 (STW): Take root snapshot and take objects in heap snapshot
@@ -520,6 +542,8 @@ impl<A: HeapAlloc> GCState<A> {
     let step5_time = step5_start.elapsed();
     
     let cycle_duration = cycle_start_time.elapsed();
+    self.set_cycle_state(CycleState::Idle);
+    
     let pause_time = step1_time + step3_time + step5_time;
     let stat = CycleStat {
       cycle_time: cycle_duration,
