@@ -25,7 +25,11 @@ pub struct CycleStat {
   
   pub total_bytes: usize,
   pub dead_bytes: usize,
-  pub live_bytes: usize
+  pub live_bytes: usize,
+  
+  pub total_objects: usize,
+  pub dead_objects: usize,
+  pub live_objects: usize
 }
 
 impl Add for CycleStat {
@@ -38,7 +42,10 @@ impl Add for CycleStat {
       steps_time: self.steps_time,
       dead_bytes: self.dead_bytes + rhs.dead_bytes,
       total_bytes: self.total_bytes + rhs.total_bytes,
-      live_bytes: self.live_bytes + rhs.live_bytes
+      live_bytes: self.live_bytes + rhs.live_bytes,
+      dead_objects: self.dead_objects + rhs.dead_objects,
+      total_objects: self.total_objects + rhs.total_objects,
+      live_objects: self.live_objects + rhs.live_objects
     };
     tmp.steps_time.iter_mut()
       .zip(rhs.steps_time.iter())
@@ -526,7 +533,11 @@ impl<A: HeapAlloc> GCState<A> {
       ],
       total_bytes: sweep_stats.total_bytes,
       dead_bytes: sweep_stats.dead_bytes,
-      live_bytes: sweep_stats.live_bytes
+      live_bytes: sweep_stats.live_bytes,
+      
+      total_objects: sweep_stats.total_objects,
+      dead_objects: sweep_stats.dead_objects,
+      live_objects: sweep_stats.live_objects
     };
     
     let mut stats = self.inner_state.stats.lock();
