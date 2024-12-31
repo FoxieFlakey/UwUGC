@@ -381,7 +381,11 @@ impl<A: HeapAlloc> Drop for ObjectManager<A> {
 pub struct SweeperStatistic {
   pub total_bytes: usize,
   pub live_bytes: usize,
-  pub dead_bytes: usize
+  pub dead_bytes: usize,
+  
+  pub total_objects: usize,
+  pub live_objects: usize,
+  pub dead_objects: usize
 }
 
 impl<A: HeapAlloc> Sweeper<'_, A> {
@@ -392,7 +396,11 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
     let mut stats = SweeperStatistic {
       dead_bytes: 0,
       live_bytes: 0,
-      total_bytes: 0
+      total_bytes: 0,
+      
+      dead_objects: 0,
+      live_objects: 0,
+      total_objects: 0
     };
     
     let mut live_objects: *mut Object = ptr::null_mut();
@@ -421,9 +429,11 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       
       let cur_size = current.get_object_and_data_layout().0.size();
       stats.total_bytes += cur_size;
+      stats.total_objects += 1;
       
       if !current.is_marked(self.owner) {
         stats.dead_bytes += cur_size;
+        stats.dead_objects += 1;
         
         // It is descriptor object, defer it to deallocate later
         if let ObjectMetadata::Ordinary(meta) = current.meta_word.get_object_metadata() {
@@ -450,6 +460,7 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       }
       
       stats.live_bytes += cur_size;
+      stats.live_objects += 1;
       
       // First live object, init the chain
       if live_objects.is_null() {
