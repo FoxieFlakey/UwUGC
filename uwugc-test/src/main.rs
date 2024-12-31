@@ -8,7 +8,7 @@ use std::{fs::File, hint::black_box, io::{self, Write}, mem::MaybeUninit, sync::
 use std::sync::atomic::AtomicBool;
 
 use tabled::{settings::Style, Table, Tabled};
-use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, Params};
+use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, CycleStep, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, Params};
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 768 * 1024 * 1024;
@@ -46,7 +46,7 @@ fn main() {
     if true {
       let heap = heap.clone();
       let mut stats_file = File::create_buffered("data.csv").unwrap();
-      writeln!(&mut stats_file, "Time,Usage,Trigger Threshold,Heap Size").unwrap();
+      writeln!(&mut stats_file, "Time,Usage,Trigger Threshold,Heap Size, GC Activity").unwrap();
       Some(
         thread::spawn(move || {
           while !QUIT_THREADS.load(Ordering::Relaxed) {
@@ -54,12 +54,16 @@ fn main() {
             let usage = (usage as f32) / 1024.0 / 1024.0;
             let max_size = (MAX_SIZE as f32) / 1024.0 / 1024.0;
             let trigger_size = (TRIGGER_SIZE as f32) / 1024.0 / 1024.0;
-            let cycle_activity = match heap.get_cycle_state() {
-              CycleState::Idle => "Idle",
-              CycleState::Running => "Active"
+            let (cycle_activity, state_id) = match heap.get_cycle_state() {
+              CycleState::Idle                            => ("Idle   (           )", 0),
+              CycleState::Running(CycleStep::SATB)        => ("Active (SATB       )", 1),
+              CycleState::Running(CycleStep::ConcMark)    => ("Active (ConcMark   )", 2),
+              CycleState::Running(CycleStep::FinalRemark) => ("Active (FinalRemark)", 3),
+              CycleState::Running(CycleStep::ConcSweep)   => ("Active (ConcSweep  )", 4),
+              CycleState::Running(CycleStep::Finalize)    => ("Active (Finalize   )", 5)
             };
             let timestamp = start.elapsed().as_secs_f32();
-            writeln!(&mut stats_file, "{timestamp},{usage},{trigger_size},{max_size}").unwrap();
+            writeln!(&mut stats_file, "{timestamp},{usage},{trigger_size},{max_size},{state_id}").unwrap();
             print!("\x1b[2K\rUsage: {usage: >8.2} MiB  Max: {max_size: >8.2} MiB  GC: {cycle_activity}");
             io::stdout().flush().unwrap();
             thread::sleep(Duration::from_millis(10));

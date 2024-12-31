@@ -90,8 +90,19 @@ enum GCRunState {
 // NOTE: This is considered public API
 // therefore be careful with breaking changes
 #[derive(Clone, Copy, PartialEq, Eq)]
+pub enum CycleStep {
+  SATB,
+  ConcMark,
+  FinalRemark,
+  ConcSweep,
+  Finalize
+}
+
+// NOTE: This is considered public API
+// therefore be careful with breaking changes
+#[derive(Clone, Copy, PartialEq, Eq)]
 pub enum CycleState {
-  Running,
+  Running(CycleStep),
   Idle
 }
 
@@ -452,9 +463,8 @@ impl<A: HeapAlloc> GCState<A> {
   }
   
   fn run_gc_internal(&self, heap: &HeapState<A>, is_shutting_down: bool, private: &GCThreadPrivate) {
-    self.set_cycle_state(CycleState::Running);
-    
     let cycle_start_time = Instant::now();
+    self.set_cycle_state(CycleState::Running(CycleStep::SATB));
     
     // Step 1 (STW): Take root snapshot and take objects in heap snapshot
     let step1_start = Instant::now();
@@ -480,6 +490,7 @@ impl<A: HeapAlloc> GCState<A> {
     
     // Step 2 (Concurrent): Mark objects
     let step2_start = Instant::now();
+    self.set_cycle_state(CycleState::Running(CycleStep::ConcMark));
     for obj in root_snapshot {
       // Mark it
       // SAFETY: Object is reference from root that mean
@@ -489,6 +500,7 @@ impl<A: HeapAlloc> GCState<A> {
     let step2_time = step2_start.elapsed();
     
     let step3_start = Instant::now();
+    self.set_cycle_state(CycleState::Running(CycleStep::FinalRemark));
     // Step 3 (STW): Final remark (to catchup with potentially missed objects)
     // TODO: Move this into independent thread executing along with normal mark
     // so to keep this final remark time to be as low as just signaling that thread
@@ -524,6 +536,8 @@ impl<A: HeapAlloc> GCState<A> {
     let step3_time = step3_start.elapsed();
     
     let step4_start = Instant::now();
+    self.set_cycle_state(CycleState::Running(CycleStep::ConcSweep));
+    
     // Step 4 (Concurrent): Sweep dead objects and reset mark flags 
     // SAFETY: just marked live objects and dead objects
     // is well dead
@@ -531,6 +545,8 @@ impl<A: HeapAlloc> GCState<A> {
     let step4_time = step4_start.elapsed();
     
     let step5_start = Instant::now();
+    self.set_cycle_state(CycleState::Running(CycleStep::Finalize));
+    
     // Step 5 (STW): Finalizations of various stuffs
     let block_mutator_cookie = self.block_mutators();
     
@@ -541,8 +557,8 @@ impl<A: HeapAlloc> GCState<A> {
     drop(block_mutator_cookie);
     let step5_time = step5_start.elapsed();
     
-    let cycle_duration = cycle_start_time.elapsed();
     self.set_cycle_state(CycleState::Idle);
+    let cycle_duration = cycle_start_time.elapsed();
     
     let pause_time = step1_time + step3_time + step5_time;
     let stat = CycleStat {
