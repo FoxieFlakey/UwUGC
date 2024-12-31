@@ -138,14 +138,14 @@ fn main() {
   
   let cycle_time = lifetime_sum.cycle_time.as_secs_f32() * 1000.0;
   let stw_time = lifetime_sum.stw_time.as_secs_f32() * 1000.0;
-  let steps_time = lifetime_sum.steps_time.clone()
+  let steps_time = lifetime_sum.steps_time
     .map(|time| time.as_secs_f32() * 1000.0);
   let scanned_bytes = (lifetime_sum.total_bytes as f32) / 1024.0 / 1024.0;
   let fatality_rate = lifetime_sum.dead_bytes as f32 / lifetime_sum.total_bytes as f32 * 100.0;
   
   let cycle_time_avg = cycle_time / lifetime_cycle_count as f32;
   let stw_time_avg = stw_time / lifetime_cycle_count as f32;
-  let steps_time_avg = steps_time.clone()
+  let steps_time_avg = steps_time
     .map(|time| time / lifetime_cycle_count as f32);
   let scanned_bytes_avg = scanned_bytes / lifetime_cycle_count as f32;
   let fatality_rate_avg = fatality_rate / lifetime_cycle_count as f32;
