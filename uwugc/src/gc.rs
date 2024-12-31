@@ -210,14 +210,12 @@ impl<A: HeapAlloc> GCState<A> {
   fn call_gc(&self, cmd: GCCommand) {
     let mut cmd_control = self.inner_state.command.lock();
     if let Some(current_cmd) = cmd_control.command {
-      let combine_command =  match cmd {
-        // GCCommand::RunGC can be combined with potentially
-        // in progress RunGC command because there no need
-        // to fire multiple GCs in a row because multiple
-        // thread coincidentally attempt to do that when one
-        // is really enough until next time
-        GCCommand::RunGC => true
-      };
+      // GCCommand::RunGC can be combined with potentially
+      // in progress RunGC command because there no need
+      // to fire multiple GCs in a row because multiple
+      // thread coincidentally attempt to do that when one
+      // is really enough until next time
+      let combine_command =  matches!(cmd, GCCommand::RunGC);
       
       if combine_command && current_cmd == cmd {
         drop(self.wait_for_gc(None, Some(cmd_control)));
