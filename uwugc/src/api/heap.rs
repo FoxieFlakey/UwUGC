@@ -23,6 +23,7 @@ impl HeapArc {
     self.inner.get_usage()
   }
   
+  #[must_use = "This does not have side effect"]
   pub fn get_gc_stats(&self) -> GCStats {
     self.inner.get_gc_stats()
   }

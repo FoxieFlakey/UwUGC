@@ -270,37 +270,37 @@ impl MetaWord {
         descriptor: NonNull::new(self.word.load(Ordering::Relaxed).map_addr(|x| x & DATA_MASK)),
         _phantom: PhantomData
       });
-    } else {
-      let word = word.addr();
-      
-      if word & NON_ORDINARY_REF_ARRAY_BIT != 0 {
-        // Its a reference array
-        return ObjectMetadata::ReferenceArray(ReferenceArrayMetadata {
-          // This is able to represent all possible array length because each
-          // pointer on 64-bit systems is 8 bytes which means arrays are always
-          // multiple of 8 bytes in size which leaves with bottom 3 bits unused
-          // and can be used for metadata and can be shifted to right effectively
-          // (SIZE_IN_BYTES / 8) with SIZE_IN_BYTES always multiples of 8 and still
-          // able to represent all possible array sizes (2^61 entries and 2^64
-          // bytes of array)
-          //
-          // For 32-bit systems, sacrifice HAS TO BE MADE to maximum length of array
-          // as 32-bit length can be represented by 30 bit value but needed 3 bits
-          // instead 2 bits for metadata, so upper bit is required to be shaved away
-          // and limits 32-bit systems to only have maximum 2^31 bytes of array or
-          // simply 2 GiB maximum with ~537 millions entries (or 2^29 entries)
-          array_length: (word & NON_ORDINARY_DATA_MASK) >> NON_ORDINARY_DATA_SHIFT
-        });
-      } else {
-        let align_shift = (word & NON_ORDINARY_POD_ALIGNMENT_MASK) >> NON_ORDINARY_POD_ALIGNMENT_SHIFT;
-        return ObjectMetadata::PodData(PodDataMetadata {
-          data_layout: Layout::from_size_align(
-            (word & NON_ORDINARY_POD_SIZE_MASK) >> NON_ORDINARY_POD_SIZE_SHIFT,
-            1 << align_shift
-          ).unwrap()
-        });
-      }
     }
+    
+    let word = word.addr();
+      
+    if word & NON_ORDINARY_REF_ARRAY_BIT != 0 {
+      // Its a reference array
+      return ObjectMetadata::ReferenceArray(ReferenceArrayMetadata {
+        // This is able to represent all possible array length because each
+        // pointer on 64-bit systems is 8 bytes which means arrays are always
+        // multiple of 8 bytes in size which leaves with bottom 3 bits unused
+        // and can be used for metadata and can be shifted to right effectively
+        // (SIZE_IN_BYTES / 8) with SIZE_IN_BYTES always multiples of 8 and still
+        // able to represent all possible array sizes (2^61 entries and 2^64
+        // bytes of array)
+        //
+        // For 32-bit systems, sacrifice HAS TO BE MADE to maximum length of array
+        // as 32-bit length can be represented by 30 bit value but needed 3 bits
+        // instead 2 bits for metadata, so upper bit is required to be shaved away
+        // and limits 32-bit systems to only have maximum 2^31 bytes of array or
+        // simply 2 GiB maximum with ~537 millions entries (or 2^29 entries)
+        array_length: (word & NON_ORDINARY_DATA_MASK) >> NON_ORDINARY_DATA_SHIFT
+      });
+    }
+    
+    let align_shift = (word & NON_ORDINARY_POD_ALIGNMENT_MASK) >> NON_ORDINARY_POD_ALIGNMENT_SHIFT;
+    ObjectMetadata::PodData(PodDataMetadata {
+      data_layout: Layout::from_size_align(
+        (word & NON_ORDINARY_POD_SIZE_MASK) >> NON_ORDINARY_POD_SIZE_SHIFT,
+        1 << align_shift
+      ).unwrap()
+    })
   }
 }
 

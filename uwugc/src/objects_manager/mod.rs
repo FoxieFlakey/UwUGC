@@ -73,7 +73,7 @@ impl Object {
       .map_err(|_| NewPodError::UnsuitableObject)?;
     
     Self::new_common(owner, initializer, meta_word)
-      .map_err(|x| NewPodError::AllocError(x))
+      .map_err(NewPodError::AllocError)
   }
   
   fn new_common<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce(&mut MaybeUninit<T>)>(owner: &ObjectManager<A>, initializer: F, meta_word: MetaWord) -> Result<NonNull<Object>, AllocError> {
@@ -286,13 +286,12 @@ impl<A: HeapAlloc> ObjectManager<A> {
       ObjectMetadata::Ordinary(meta) => Some(meta.get_descriptor().drop_helper),
       
       // Reference array, does not need to call its drop function
-      ObjectMetadata::ReferenceArray(_) => None,
-      
+      // and
       // POD data does not have destructor (or drop)
       // because type which does not do anything in drop code is no-op
       // and POD is specifically exist for those types which has nothing
       // to run in its drop code recursively too following its fields
-      ObjectMetadata::PodData(_) => None
+      ObjectMetadata::ReferenceArray(_) | ObjectMetadata::PodData(_) => None,
     };
     let (layout, data_offset) = obj_ref.get_object_and_data_layout();
     
@@ -304,7 +303,9 @@ impl<A: HeapAlloc> ObjectManager<A> {
       
       // Drop the data itself with helper, because cannot
       // know the type at this point so ask helper to do it
-      drop_helper.map(|func| func(obj.cast::<()>().byte_add(data_offset).as_ptr()));
+      if let Some(func) = drop_helper {
+        func(obj.cast::<()>().byte_add(data_offset).as_ptr());
+      }
     }
     
     // SAFETY: Caller ensured that 'obj' pointer is only user left

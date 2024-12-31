@@ -11,7 +11,9 @@ impl<'a> Context<'a> {
     unsafe { self.inner.alloc(|ctx, uninit| { uninit.write(initer(ctx)); }) }
   }
   
-  // SAFETY: Caller must make sure that initializer completely initalize T
+  /// # Safety
+  ///
+  /// Caller must make sure that initializer completely initalize T
   #[must_use = "If not used, this would create unnecessary GC pressure"]
   pub unsafe fn alloc2<T: Describeable + ObjectLikeTrait>(&self, initer: impl FnOnce(&mut ConstructorScope, &mut MaybeUninit<T>)) -> RootRef<'a, Sendable, Exclusive, GlobalHeap, T> {
     // SAFETY: Caller already make sure to initialize T
@@ -24,7 +26,9 @@ impl<'a> Context<'a> {
     unsafe { self.inner.alloc_array(|ctx, uninit| { uninit.write(initer(ctx)); }) }
   }
   
-  // SAFETY: Initializer must properly initialize the array
+  /// # Safety
+  ///
+  /// Initializer must properly initialize the array
   #[must_use = "If not used, this would create unnecessary GC pressure"]
   pub unsafe fn alloc_array2<Ref: ReferenceType, const LEN: usize>(&self, initer: impl FnOnce(&mut ConstructorScope, &mut MaybeUninit<[Ref; LEN]>)) -> RootRef<'a, Sendable, Exclusive, GlobalHeap, [Ref; LEN]> {
     // SAFETY: Caller already make sure to initialize the array

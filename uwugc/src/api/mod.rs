@@ -49,11 +49,13 @@ impl<T: ObjectLikeTrait + 'static> ObjectLikeTraitInternal for T {
   }
 }
 
-// Used to mark types which can be safely transmuted/reinterpreted
-// as AtomicPtr<Object>
-//
-// SAFETY: The types implement this must be #[repr(transparent)]
-// and must be safe to have same bit validity as AtomicPtr<Object>
+/// Used to mark types which can be safely transmuted/reinterpreted
+/// as AtomicPtr<Object>
+///
+/// # Safety
+///
+/// The types implement this must be #[repr(transparent)]
+/// and must be safe to have same bit validity as AtomicPtr<Object>
 #[sealed]
 pub unsafe trait ReferenceType: 'static {
 }
