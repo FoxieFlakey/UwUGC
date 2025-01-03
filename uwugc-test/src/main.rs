@@ -11,7 +11,7 @@ use tabled::{settings::Style, Table, Tabled};
 use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, CycleStep, GCNullableBox, GCParams, GCRunReason, GCStats, GlobalHeap, HeapArc, HeapStats, Params};
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
-const MAX_SIZE: usize = 1024 * 1024 * 1024;
+const MAX_SIZE: usize = 1900 * 1024 * 1024;
 const POLL_RATE: u32 = 20;
 
 #[cfg(not(miri))]
@@ -38,6 +38,51 @@ fn main() {
     },
     max_size: MAX_SIZE
   });
+  
+  // A closure for a test
+  let ctx = heap.create_context();
+  let test = || {
+    // Ported from Java version of gc-latency-experiment
+    // https://github.com/WillSewell/gc-latency-experiment/blob/f67121ec8a741201414c76d5ba85f9304c774acc/java/Main.java
+    const WINDOW_SIZE: usize  =     200_000;
+    const MSG_COUNT: usize    =  10_000_000;
+    const MSG_SIZE: usize     =       1_024;
+    let mut store = unsafe { ctx.alloc_array2(|_, uninit: &mut MaybeUninit<[GCNullableBox<[u8; MSG_SIZE]>; WINDOW_SIZE]>| {
+      // Is okay because AtomicPtr can be inited to zero and GCNullableBox
+      // boiled down to that
+      uninit.as_mut_ptr().write_bytes(0, 1);
+    }) };
+    
+    let create_message = |n| -> RootRef<'_, Sendable, Exclusive, GlobalHeap, [u8; MSG_SIZE]> {
+      ctx.alloc(|_| [(n & 0xFF) as u8; MSG_SIZE])
+    };
+    
+    let mut worst: Option<Duration> = None;
+    let mut push_message = |store: &mut RootRef<'_, Sendable, Exclusive, GlobalHeap, [GCNullableBox<[u8; MSG_SIZE]>; WINDOW_SIZE]>, id: usize| {
+      let start = Instant::now();
+      store[id % WINDOW_SIZE].store(&ctx, Some(create_message(id)));
+      let time = start.elapsed();
+      
+      let current_worst = *worst.get_or_insert(time);
+      if time > current_worst {
+        worst = Some(time);
+      }
+    };
+    
+    for id in 0..=MSG_COUNT {
+      push_message(&mut store, id);
+    }
+    
+    if let Some(worst) = worst {
+      let time = (worst.as_micros() as f64) / 1000.0;
+      println!("Worst push time: {time} ms");
+    } else {
+      println!("Strange? there was no worst time collected");
+    }
+    black_box(store);
+  };
+  test();
+  println!("Warmup completed!");
   
   let start = Instant::now();
   let stat_thread = {
@@ -103,7 +148,7 @@ fn main() {
             let growth_abs = growth.abs();
             
             writeln!(&mut stats_file, "{timestamp},{usage},{max_size},{state_id}").unwrap();
-            
+            /*
             print!("\r\x1b[3A");
             
             print!("\x1b[2K");
@@ -116,6 +161,7 @@ fn main() {
             println!("GC Rate: {gc_rate: >8.2} MiB/s Alloc Rate: {alloc_rate: >8.2} MiB/s Growth: {growth_direction}{growth_abs: >7.2} MiB/s");
             
             io::stdout().flush().unwrap();
+            */
             thread::sleep(Duration::from_secs_f32(1.0 / poll_rate));
           }
           
@@ -129,50 +175,9 @@ fn main() {
     }
   };
   
-  let ctx = heap.create_context();
-  
   // Raw is 1.5x faster than GC
   let start_time = Instant::now();
-  {
-    // Ported from Java version of gc-latency-experiment
-    // https://github.com/WillSewell/gc-latency-experiment/blob/f67121ec8a741201414c76d5ba85f9304c774acc/java/Main.java
-    const WINDOW_SIZE: usize  =     200_000;
-    const MSG_COUNT: usize    =  10_000_000;
-    const MSG_SIZE: usize     =       1_024;
-    let mut store = unsafe { ctx.alloc_array2(|_, uninit: &mut MaybeUninit<[GCNullableBox<[u8; MSG_SIZE]>; WINDOW_SIZE]>| {
-      // Is okay because AtomicPtr can be inited to zero and GCNullableBox
-      // boiled down to that
-      uninit.as_mut_ptr().write_bytes(0, 1);
-    }) };
-    
-    let create_message = |n| -> RootRef<'_, Sendable, Exclusive, GlobalHeap, [u8; MSG_SIZE]> {
-      ctx.alloc(|_| [(n & 0xFF) as u8; MSG_SIZE])
-    };
-    
-    let mut worst: Option<Duration> = None;
-    let mut push_message = |store: &mut RootRef<'_, Sendable, Exclusive, GlobalHeap, [GCNullableBox<[u8; MSG_SIZE]>; WINDOW_SIZE]>, id: usize| {
-      let start = Instant::now();
-      store[id % WINDOW_SIZE].store(&ctx, Some(create_message(id)));
-      let time = start.elapsed();
-      
-      let current_worst = *worst.get_or_insert(time);
-      if time > current_worst {
-        worst = Some(time);
-      }
-    };
-    
-    for id in 0..=MSG_COUNT {
-      push_message(&mut store, id);
-    }
-    
-    if let Some(worst) = worst {
-      let time = (worst.as_micros() as f64) / 1000.0;
-      println!("Worst push time: {time} ms");
-    } else {
-      println!("Strange? there was no worst time collected");
-    }
-    black_box(store);
-  }
+  test();
   let complete_time = (start_time.elapsed().as_millis() as f32) / 1024.0;
   let gc_stats = heap.get_gc_stats();
   drop(ctx);
