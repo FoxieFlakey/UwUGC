@@ -67,13 +67,17 @@ fn main() {
             let usage = (usage as f32) / 1024.0 / 1024.0;
             let max_size = (MAX_SIZE as f32) / 1024.0 / 1024.0;
             let trigger_size = (TRIGGER_SIZE as f32) / 1024.0 / 1024.0;
-            let (cycle_activity, state_id) = match heap.get_cycle_state() {
-              CycleState::Idle                            => ("Idle   (           )", 0),
-              CycleState::Running(CycleStep::SATB)        => ("Active (SATB       )", 1),
-              CycleState::Running(CycleStep::ConcMark)    => ("Active (ConcMark   )", 2),
-              CycleState::Running(CycleStep::FinalRemark) => ("Active (FinalRemark)", 3),
-              CycleState::Running(CycleStep::ConcSweep)   => ("Active (ConcSweep  )", 4),
-              CycleState::Running(CycleStep::Finalize)    => ("Active (Finalize   )", 5)
+            let info = match heap.get_cycle_state() {
+              CycleState::Idle => None,
+              CycleState::Running(info) => Some(info)
+            };
+            let (cycle_activity, state_id) = match info.map(|x| x.step) {
+              None                         => ("Idle   (           )", 0),
+              Some(CycleStep::SATB)        => ("Active (SATB       )", 1),
+              Some(CycleStep::ConcMark)    => ("Active (ConcMark   )", 2),
+              Some(CycleStep::FinalRemark) => ("Active (FinalRemark)", 3),
+              Some(CycleStep::ConcSweep)   => ("Active (ConcSweep  )", 4),
+              Some(CycleStep::Finalize)    => ("Active (Finalize   )", 5)
             };
             let timestamp = start.elapsed().as_secs_f32();
             
