@@ -1,7 +1,7 @@
 // This collect various statistics for driver to
 // better aid in its decision
 
-use std::{cell::LazyCell, sync::{Arc, Weak}, thread::{self, JoinHandle}, time::Duration};
+use std::{cell::LazyCell, sync::{Arc, Weak}, thread::{self, JoinHandle}, time::{Duration, Instant}};
 
 use bounded_vec_deque::BoundedVecDeque;
 use parking_lot::{Condvar, Mutex};
@@ -118,17 +118,24 @@ impl StatCollector {
           stat
         };
         
+        let mut deadline = Instant::now() + state.param.update_period;
         'poll_loop: loop {
           // Wait until something wakes up stat collector
           let mut wakeup_count = state.wakeup_count.lock();
           let current_count = *wakeup_count;
           while current_count == *wakeup_count {
             // Timeout reached do other stuffs
-            if wakeup.wait_for(&mut wakeup_count, state.param.update_period).timed_out() {
+            if wakeup.wait_until(&mut wakeup_count, deadline).timed_out() {
               break;
             }
           }
           drop(wakeup_count);
+          
+          let current = Instant::now();
+          // Skip forward deadline until its future
+          while deadline < current {
+            deadline += state.param.update_period;
+          }
           
           // Check for run state update
           let run_state = state.run_state.lock();

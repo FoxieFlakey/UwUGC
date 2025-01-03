@@ -491,17 +491,25 @@ impl<A: HeapAlloc> GCState<A> {
         let update_period = Duration::from_secs_f64(1.0 / f64::from(inner.params.poll_rate));
         let heap = LazyCell::new(|| inner.owner.upgrade().unwrap());
         
+        let mut deadline = Instant::now() + update_period;
+        
         'poll_loop: loop {
           // Wait until something wakes up GC
           let mut wakeup_count = inner.wakeup_count.lock();
           let current_count = *wakeup_count;
           while current_count == *wakeup_count {
             // Timeout reached do other stuffs
-            if inner.wakeup.wait_for(&mut wakeup_count, update_period).timed_out() {
+            if inner.wakeup.wait_until(&mut wakeup_count, deadline).timed_out() {
               break;
             }
           }
           drop(wakeup_count);
+          
+          // Skip forward deadline until its future
+          let current_time = Instant::now();
+          while deadline < current_time {
+            deadline += update_period;
+          }
           
           // Check GC run state
           let run_state = inner.run_state.lock();
