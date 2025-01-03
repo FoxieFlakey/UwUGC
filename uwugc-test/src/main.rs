@@ -44,7 +44,7 @@ fn main() {
     if true {
       let heap = heap.clone();
       let mut stats_file = File::create_buffered("data.csv").unwrap();
-      writeln!(&mut stats_file, "Time,Usage,Trigger Threshold,Heap Size, GC Activity").unwrap();
+      writeln!(&mut stats_file, "Time,Usage,Heap Size, GC Activity").unwrap();
       Some(
         thread::spawn(move || {
           let mut prev_heap_stats = HeapStats::default();
@@ -64,7 +64,6 @@ fn main() {
             let usage = heap.get_usage();
             let usage = (usage as f32) / 1024.0 / 1024.0;
             let max_size = (MAX_SIZE as f32) / 1024.0 / 1024.0;
-            let trigger_size = 0.0;
             let info = match heap.get_cycle_state() {
               CycleState::Idle => None,
               CycleState::Running(info) => Some(info)
@@ -103,7 +102,7 @@ fn main() {
             let growth_direction = if growth.is_sign_positive() { "+" } else { "-" };
             let growth_abs = growth.abs();
             
-            writeln!(&mut stats_file, "{timestamp},{usage},{trigger_size},{max_size},{state_id}").unwrap();
+            writeln!(&mut stats_file, "{timestamp},{usage},{max_size},{state_id}").unwrap();
             
             print!("\r\x1b[3A");
             
