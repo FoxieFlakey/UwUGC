@@ -226,7 +226,6 @@ struct GCInnerState<A: HeapAlloc> {
   
   // GC statistics
   stats: Mutex<GCStats>,
-  stats_updated_event: Condvar,
   
   // State of the cycle
   cycle_state: Mutex<CycleState>
@@ -437,7 +436,6 @@ impl<A: HeapAlloc> GCState<A> {
         lifetime_sum: CycleStatSum::default(),
         lifetime_cycle_count: 0
       }),
-      stats_updated_event: Condvar::new(),
       
       gc_lock: RwLock::new(()),
       owner,
@@ -686,7 +684,6 @@ impl<A: HeapAlloc> GCState<A> {
     stats.lifetime_cycle_count += 1;
     stats.lifetime_sum += stat;
     stats.history.push_back(stat);
-    self.inner_state.stats_updated_event.notify_all();
   }
 }
 
