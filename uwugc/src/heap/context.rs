@@ -256,7 +256,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     if obj.is_err() {
       drop(gc_lock_cookie);
       println!("Out of memory, triggering GC!");
-      self.owner.run_gc();
+      self.owner.run_gc(true);
       gc_lock_cookie = self.owner.gc.block_gc();
       
       
@@ -288,7 +288,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     if obj.is_err() {
       drop(gc_lock_cookie);
       println!("Out of memory, triggering GC!");
-      self.owner.run_gc();
+      self.owner.run_gc(true);
       gc_lock_cookie = self.owner.gc.block_gc();
       
       // SAFETY: Caller already make sure that initializer properly initialize the array

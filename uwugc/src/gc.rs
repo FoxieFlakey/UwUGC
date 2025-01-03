@@ -82,7 +82,6 @@ pub struct GCStats {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum GCRunReason {
   // Memory has ran out!
-  #[expect(dead_code)]
   OutOfMemory,
   
   // User has called the GC perhaps the user know that it
@@ -450,8 +449,12 @@ impl<A: HeapAlloc> GCState<A> {
     }
   }
   
-  pub fn run_gc(&self) {
-    self.call_gc(GCCommand::RunGC(GCRunReason::Explicit));
+  pub fn run_gc(&self, is_for_oom: bool) {
+    if is_for_oom {
+      self.call_gc(GCCommand::RunGC(GCRunReason::Explicit));
+    } else {
+      self.call_gc(GCCommand::RunGC(GCRunReason::OutOfMemory));
+    }
   }
   
   // SAFETY: Caller has to make 'obj' is valid

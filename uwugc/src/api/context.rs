@@ -36,7 +36,7 @@ impl<'a> Context<'a> {
   }
   
   pub fn trigger_gc(&mut self) {
-    self.inner.get_heap().run_gc();
+    self.inner.get_heap().run_gc(false);
   }
 }
 

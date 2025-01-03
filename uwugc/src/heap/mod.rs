@@ -136,8 +136,8 @@ impl<A: HeapAlloc> State<A> {
     }
   }
   
-  pub fn run_gc(&self) {
-    self.gc.run_gc();
+  pub fn run_gc(&self, is_for_oom: bool) {
+    self.gc.run_gc(is_for_oom);
   }
   
   pub fn get_usage(&self) -> usize {
