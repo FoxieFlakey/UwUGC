@@ -426,6 +426,10 @@ impl<A: HeapAlloc> ObjectManager<A> {
     self.used_size.load(Ordering::Relaxed)
   }
   
+  pub fn get_max_size(&self) -> usize {
+    self.max_size
+  }
+  
   // SAFETY: Caller ensures that descriptor which is in use
   // be marked and ensure the objects corresponding to descriptor
   // is not being GC'ed away and not being concurrently marked

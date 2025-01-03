@@ -18,6 +18,7 @@ mod gc;
 mod descriptor;
 mod refs;
 mod allocator;
+mod driver;
 
 // Publicize the API
 pub use api::*;

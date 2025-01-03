@@ -1,5 +1,5 @@
 use std::{cell::LazyCell, ops::{Add, AddAssign}, ptr::{self, NonNull}, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::{Duration, Instant}};
-use crate::allocator::HeapAlloc;
+use crate::{allocator::HeapAlloc, driver::stat_collector::{Parameter, StatCollector}};
 use bounded_vec_deque::BoundedVecDeque;
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use portable_atomic::AtomicBool;
@@ -228,7 +228,9 @@ struct GCInnerState<A: HeapAlloc> {
   stats: Mutex<GCStats>,
   
   // State of the cycle
-  cycle_state: Mutex<CycleState>
+  cycle_state: Mutex<CycleState>,
+  
+  stat_collector: StatCollector
 }
 
 pub struct GCState<A: HeapAlloc> {
@@ -268,6 +270,7 @@ impl<A: HeapAlloc> GCState<A> {
         join_handle.join().unwrap();
       }
     }
+    self.inner_state.stat_collector.shutdown_and_wait();
   }
   
   pub fn get_gc_stats(&self) -> GCStats {
@@ -394,6 +397,7 @@ impl<A: HeapAlloc> GCState<A> {
   
   pub fn unpause_gc(&self) {
     self.set_gc_run_state(GCRunState::Running);
+    self.inner_state.stat_collector.unpause();
   }
   
   pub fn load_barrier(&self, object: &Object, obj_manager: &ObjectManager<A>, _block_gc_cookie: &GCLockCookie<A>) -> bool {
@@ -429,6 +433,11 @@ impl<A: HeapAlloc> GCState<A> {
         history: BoundedVecDeque::new(params.cycle_stats_history_size),
         lifetime_sum: CycleStatSum::default(),
         lifetime_cycle_count: 0
+      }),
+      
+      stat_collector: StatCollector::new(owner.clone(), Parameter {
+        update_period: Duration::from_millis(1000 / (params.poll_rate * 2)),
+        window_size: params.poll_rate.try_into().unwrap()
       }),
       
       gc_lock: RwLock::new(()),

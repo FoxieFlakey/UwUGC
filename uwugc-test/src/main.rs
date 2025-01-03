@@ -140,7 +140,7 @@ fn main() {
     // Ported from Java version of gc-latency-experiment
     // https://github.com/WillSewell/gc-latency-experiment/blob/f67121ec8a741201414c76d5ba85f9304c774acc/java/Main.java
     const WINDOW_SIZE: usize  =     200_000;
-    const MSG_COUNT: usize    =  10_000_000;
+    const MSG_COUNT: usize    =   1_000_000;
     const MSG_SIZE: usize     =       1_024;
     let mut store = unsafe { ctx.alloc_array2(|_, uninit: &mut MaybeUninit<[GCNullableBox<[u8; MSG_SIZE]>; WINDOW_SIZE]>| {
       // Is okay because AtomicPtr can be inited to zero and GCNullableBox
