@@ -453,7 +453,7 @@ impl<A: HeapAlloc> GCState<A> {
       }),
       
       stat_collector: StatCollector::new(owner.clone(), Parameter {
-        update_period: Duration::from_millis(1000 / (params.poll_rate * 2)),
+        update_period: Duration::from_secs_f64(1.0 / (params.poll_rate as f64 * 2.0)),
         window_size: params.poll_rate.try_into().unwrap()
       }),
       
