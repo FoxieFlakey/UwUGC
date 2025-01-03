@@ -75,9 +75,32 @@ pub struct GCStats {
   pub lifetime_cycle_count: usize
 }
 
+// Reasons of why GC is started
+// application cannot directly pass
+// these reasons, they always treated as
+// Explicit GCs
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum GCRunReason {
+  // Memory has ran out!
+  #[expect(dead_code)]
+  OutOfMemory,
+  
+  // User has called the GC perhaps the user know that it
+  // in low period activity where GC wouldn't able to interfere
+  //
+  // GC is free to ignore this, its a suggestion
+  Explicit,
+  
+  // An algorithmn tried to trigger the GC
+  Proactive,
+  
+  // Shutdown trigger the final cycle clearing everything
+  Shutdown
+}
+
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum GCCommand {
-  RunGC
+  RunGC(GCRunReason)
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -239,14 +262,17 @@ impl<A: HeapAlloc> GCState<A> {
   fn call_gc(&self, cmd: GCCommand) {
     let mut cmd_control = self.inner_state.command.lock();
     if let Some(current_cmd) = cmd_control.command {
-      // GCCommand::RunGC can be combined with potentially
-      // in progress RunGC command because there no need
-      // to fire multiple GCs in a row because multiple
-      // thread coincidentally attempt to do that when one
-      // is really enough until next time
-      let combine_command =  matches!(cmd, GCCommand::RunGC);
+      let combine_command =  match (&current_cmd, &cmd) {
+        // GCCommand::RunGC can be combined with potentially
+        // in progress RunGC command because there no need
+        // to fire multiple GCs in a row because multiple
+        // thread coincidentally attempt to do that when one
+        // is really enough until next time
+        
+        (GCCommand::RunGC(..), GCCommand::RunGC(..)) => true,
+      };
       
-      if combine_command && current_cmd == cmd {
+      if combine_command {
         drop(self.wait_for_gc(None, Some(cmd_control)));
         return;
       }
@@ -267,8 +293,8 @@ impl<A: HeapAlloc> GCState<A> {
   
   fn process_command(gc_state: &Arc<GCInnerState<A>>, heap: &HeapState<A>, cmd_struct: &GCCommandStruct, private: &GCThreadPrivate) {
     match cmd_struct.command.unwrap() {
-      GCCommand::RunGC => {
-        heap.gc.run_gc_internal(heap, false, private);
+      GCCommand::RunGC(reason) => {
+        heap.gc.run_gc_internal(heap, reason, private);
       }
     }
     
@@ -283,7 +309,7 @@ impl<A: HeapAlloc> GCState<A> {
   fn do_gc_heuristics(gc_state: &Arc<GCInnerState<A>>, heap: &HeapState<A>, cmd_control: &mut GCCommandStruct) {
     if heap.get_usage() >= gc_state.params.trigger_size {
       cmd_control.submit_count += 1;
-      cmd_control.command = Some(GCCommand::RunGC);
+      cmd_control.command = Some(GCCommand::RunGC(GCRunReason::Proactive));
     }
   }
   
@@ -405,7 +431,7 @@ impl<A: HeapAlloc> GCState<A> {
         }
         
         println!("Shutting down GC");
-        heap.gc.run_gc_internal(&heap, true, &private_data);
+        heap.gc.run_gc_internal(&heap, GCRunReason::Shutdown, &private_data);
         println!("Quitting GC");
       })))
     }
@@ -425,7 +451,7 @@ impl<A: HeapAlloc> GCState<A> {
   }
   
   pub fn run_gc(&self) {
-    self.call_gc(GCCommand::RunGC);
+    self.call_gc(GCCommand::RunGC(GCRunReason::Explicit));
   }
   
   // SAFETY: Caller has to make 'obj' is valid
@@ -462,7 +488,7 @@ impl<A: HeapAlloc> GCState<A> {
     *self.inner_state.cycle_state.lock() = new_state;
   }
   
-  fn run_gc_internal(&self, heap: &HeapState<A>, is_shutting_down: bool, private: &GCThreadPrivate) {
+  fn run_gc_internal(&self, heap: &HeapState<A>, reason: GCRunReason, private: &GCThreadPrivate) {
     let cycle_start_time = Instant::now();
     self.set_cycle_state(CycleState::Running(CycleStep::SATB));
     
@@ -472,7 +498,7 @@ impl<A: HeapAlloc> GCState<A> {
     
     let mut root_snapshot = Vec::new();
     // During shutdown do not trace mutator's root so GC can free everything else
-    if !is_shutting_down {
+    if !matches!(reason, GCRunReason::Shutdown) {
       // SAFETY: Just blocked the mutators
       unsafe { heap.take_root_snapshot_unlocked(&mut root_snapshot) };
     }

@@ -1,4 +1,6 @@
 use std::ffi::{c_int, c_long};
+#[allow(unused_imports)]
+use std::hint::black_box;
 
 use mimalloc::MiMalloc;
 
