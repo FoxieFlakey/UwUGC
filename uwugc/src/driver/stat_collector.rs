@@ -70,6 +70,10 @@ impl StatCollector {
     self.set_run_state(RunState::Unpaused);
   }
   
+  pub fn get_stat(&self) -> Option<StatItem> {
+    *self.inner_state.latest_stat.lock()
+  }
+  
   pub fn new<A: HeapAlloc>(heap: Weak<HeapState<A>>, param: Parameter) -> Self {
     let state = Arc::new(InnerState {
       run_state: Mutex::new(RunState::Paused),

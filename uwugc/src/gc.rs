@@ -372,9 +372,11 @@ impl<A: HeapAlloc> GCState<A> {
   }
   
   fn do_gc_heuristics(gc_state: &Arc<GCInnerState<A>>, heap: &HeapState<A>, cmd_control: &mut GCCommandStruct) {
+    let stat = gc_state.stat_collector.get_stat();
+    
     let mut decision = DriverAction::Pass;
     for drv in gc_state.drivers.lock().iter_mut() {
-      decision = drv.poll(heap);
+      decision = drv.poll(heap, stat.as_ref());
       
       // RunGC action short circuits
       if let DriverAction::RunGC = decision {
