@@ -488,7 +488,7 @@ impl<A: HeapAlloc> GCState<A> {
       inner_state: inner_state.clone(),
       thread: Mutex::new(Some(thread::spawn(move || {
         let inner = inner_state;
-        let sleep_period = Duration::from_secs_f64(1.0 / f64::from(inner.params.poll_rate));
+        let update_period = Duration::from_secs_f64(1.0 / f64::from(inner.params.poll_rate));
         let heap = LazyCell::new(|| inner.owner.upgrade().unwrap());
         
         'poll_loop: loop {
@@ -497,7 +497,7 @@ impl<A: HeapAlloc> GCState<A> {
           let current_count = *wakeup_count;
           while current_count == *wakeup_count {
             // Timeout reached do other stuffs
-            if inner.wakeup.wait_for(&mut wakeup_count, sleep_period).timed_out() {
+            if inner.wakeup.wait_for(&mut wakeup_count, update_period).timed_out() {
               break;
             }
           }
@@ -520,7 +520,7 @@ impl<A: HeapAlloc> GCState<A> {
           // resumes there some part of heap state isn't initialized yet
           LazyCell::force(&heap);
           
-          Self::gc_poll(&inner, sleep_period, &heap, &private_data);
+          Self::gc_poll(&inner, update_period, &heap, &private_data);
         }
         
         println!("Shutting down GC");
