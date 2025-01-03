@@ -231,7 +231,7 @@ struct GCInnerState<A: HeapAlloc> {
   cycle_state: Mutex<CycleState>,
   
   stat_collector: StatCollector,
-  drivers: Vec<Box<dyn Driver<A>>>
+  drivers: Mutex<Vec<Box<dyn Driver<A>>>>
 }
 
 pub struct GCState<A: HeapAlloc> {
@@ -369,7 +369,7 @@ impl<A: HeapAlloc> GCState<A> {
   
   fn do_gc_heuristics(gc_state: &Arc<GCInnerState<A>>, heap: &HeapState<A>, cmd_control: &mut GCCommandStruct) {
     let mut decision = DriverAction::Pass;
-    for drv in &gc_state.drivers {
+    for drv in gc_state.drivers.lock().iter_mut() {
       decision = drv.poll(heap);
       
       // RunGC action short circuits
@@ -473,7 +473,7 @@ impl<A: HeapAlloc> GCState<A> {
         submit_count: 0
       }),
       cycle_state: Mutex::new(CycleState::Idle),
-      drivers: Vec::new()
+      drivers: Mutex::new(Vec::new())
     });
     
     let private_data = GCThreadPrivate {

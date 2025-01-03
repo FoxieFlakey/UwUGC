@@ -8,8 +8,8 @@ pub enum Action {
   Pass
 }
 
-pub trait Driver<A: HeapAlloc>: Sync + Send + 'static {
-  fn poll(&self, heap: &HeapState<A>) -> Action;
+pub trait Driver<A: HeapAlloc>: Send + 'static {
+  fn poll(&mut self, heap: &HeapState<A>) -> Action;
 }
 
 
