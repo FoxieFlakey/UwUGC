@@ -17,11 +17,12 @@ pub struct GCParams {
 
 // NOTE: This is considered public API
 // therefore be careful with breaking changes
-#[derive(Copy, Clone, Default)]
+#[derive(Copy, Clone)]
 pub struct CycleStat {
   pub cycle_time: Duration,
   pub stw_time: Duration,
   pub steps_time: [Duration; 5],
+  pub reason: GCRunReason,
   
   pub total_bytes: usize,
   pub dead_bytes: usize,
@@ -45,7 +46,9 @@ impl Add for CycleStat {
       live_bytes: self.live_bytes + rhs.live_bytes,
       dead_objects: self.dead_objects + rhs.dead_objects,
       total_objects: self.total_objects + rhs.total_objects,
-      live_objects: self.live_objects + rhs.live_objects
+      live_objects: self.live_objects + rhs.live_objects,
+      
+      reason: GCRunReason::Shutdown
     };
     tmp.steps_time.iter_mut()
       .zip(rhs.steps_time.iter())
@@ -377,7 +380,20 @@ impl<A: HeapAlloc> GCState<A> {
       stats: Mutex::new(GCStats {
         sequence_id: 0,
         history: BoundedVecDeque::new(params.cycle_stats_history_size),
-        lifetime_sum: CycleStat::default(),
+        lifetime_sum: CycleStat {
+          cycle_time: Duration::default(),
+          steps_time: [Duration::default(); 5],
+          stw_time: Duration::default(),
+          
+          dead_bytes: 0,
+          live_bytes: 0,
+          total_bytes: 0,
+          
+          dead_objects: 0,
+          live_objects: 0,
+          total_objects: 0,
+          reason: GCRunReason::Shutdown
+        },
         lifetime_cycle_count: 0
       }),
       stats_updated_event: Condvar::new(),
@@ -608,6 +624,7 @@ impl<A: HeapAlloc> GCState<A> {
     let stat = CycleStat {
       cycle_time: cycle_duration,
       stw_time: pause_time,
+      reason,
       steps_time: [
         step1_time,
         step2_time,
