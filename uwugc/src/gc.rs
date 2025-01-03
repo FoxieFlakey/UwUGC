@@ -258,12 +258,6 @@ struct GCThreadPrivate {
   remark_queue_receiver: mpsc::Receiver<ObjectPtrSend>
 }
 
-impl<A: HeapAlloc> Drop for GCState<A> {
-  fn drop(&mut self) {
-    self.shutdown_gc_and_wait();
-  }
-}
-
 impl<A: HeapAlloc> GCState<A> {
   pub fn shutdown_gc_and_wait(&self) {
     self.set_gc_run_state(GCRunState::Stopped);
