@@ -210,6 +210,7 @@ struct GCInnerState<A: HeapAlloc> {
   params: GCParams,
   
   run_state: Mutex<GCRunState>,
+  wakeup_count: Mutex<u64>,
   wakeup: Condvar,
   
   // GC will regularly checks this and execute command
@@ -317,6 +318,8 @@ impl<A: HeapAlloc> GCState<A> {
   }
   
   fn wakeup_gc(&self) {
+    *self.inner_state.wakeup_count.lock() += 1;
+    
     // there will be only one primary thread so notify_one is better choice
     self.inner_state.wakeup.notify_one();
   }
@@ -464,6 +467,7 @@ impl<A: HeapAlloc> GCState<A> {
       
       run_state: Mutex::new(GCRunState::Paused),
       wakeup: Condvar::new(),
+      wakeup_count: Mutex::new(0),
       
       activate_load_barrier: AtomicBool::new(false),
       
@@ -487,20 +491,26 @@ impl<A: HeapAlloc> GCState<A> {
         let heap = LazyCell::new(|| inner.owner.upgrade().unwrap());
         
         'poll_loop: loop {
-          // Check GC run state
-          let mut run_state = inner.run_state.lock();
-          'run_state_poll_loop: loop {
-            match *run_state {
-              // If GC paused, continue waiting for state changed event
-              // or GC got spurious wake up during paused
-              GCRunState::Paused => (),
-              // If GC running, break out of this loop to execute normally
-              GCRunState::Running => break 'run_state_poll_loop,
-              // If GC is stopped, break of of outer poll loop to quit
-              GCRunState::Stopped => break 'poll_loop
+          // Wait until something wakes up GC
+          let mut wakeup_count = inner.wakeup_count.lock();
+          let current_count = *wakeup_count;
+          while current_count == *wakeup_count {
+            // Timeout reached do other stuffs
+            if inner.wakeup.wait_for(&mut wakeup_count, Duration::from_millis(sleep_delay_milisec)).timed_out() {
+              break;
             }
-            
-            inner.wakeup.wait_for(&mut run_state, Duration::from_millis(sleep_delay_milisec));
+          }
+          drop(wakeup_count);
+          
+          // Check GC run state
+          let run_state = inner.run_state.lock();
+          match *run_state {
+            // If GC paused, continue waiting in the poll loop
+            GCRunState::Paused => continue 'poll_loop,
+            // If GC running, do nothing here and continue
+            GCRunState::Running => (),
+            // If GC is stopped, break of of outer poll loop to quit
+            GCRunState::Stopped => break 'poll_loop
           }
           drop(run_state);
           

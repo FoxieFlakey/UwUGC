@@ -34,6 +34,7 @@ enum RunState {
 
 struct InnerState {
   run_state: Mutex<RunState>,
+  wakeup_count: Mutex<u64>,
   wakeup: Condvar,
   param: Parameter,
   
@@ -63,6 +64,7 @@ impl StatCollector {
     drop(run_state);
     
     // There will be only one thread so its fine
+    *self.inner_state.wakeup_count.lock() += 1;
     self.inner_state.wakeup.notify_one();
   }
   
@@ -79,6 +81,7 @@ impl StatCollector {
       run_state: Mutex::new(RunState::Paused),
       latest_stat: Mutex::new(None),
       wakeup: Condvar::new(),
+      wakeup_count: Mutex::new(0),
       param
     });
     let wakeup = Arc::new(Condvar::new());
@@ -117,17 +120,23 @@ impl StatCollector {
         };
         
         'poll_loop: loop {
-          let mut run_state = state.run_state.lock();
-          loop {
-            match *run_state {
-              RunState::Paused => (),
-              RunState::Unpaused => break,
-              RunState::Stopped => break 'poll_loop,
+          // Wait until something wakes up stat collector
+          let mut wakeup_count = state.wakeup_count.lock();
+          let current_count = *wakeup_count;
+          while current_count == *wakeup_count {
+            // Timeout reached do other stuffs
+            if wakeup.wait_for(&mut wakeup_count, state.param.update_period).timed_out() {
+              break;
             }
-            // This does double duty, as long there no immediate need
-            // the stat collector will poll every update_period but
-            // still able to immediate responds
-            wakeup.wait_for(&mut run_state, state.param.update_period);
+          }
+          drop(wakeup_count);
+          
+          // Check for run state update
+          let run_state = state.run_state.lock();
+          match *run_state {
+            RunState::Paused => continue 'poll_loop,
+            RunState::Unpaused => (),
+            RunState::Stopped => break 'poll_loop,
           }
           drop(run_state);
           
