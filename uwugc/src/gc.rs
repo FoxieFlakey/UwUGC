@@ -1,5 +1,5 @@
 use std::{cell::LazyCell, ops::{Add, AddAssign}, ptr::{self, NonNull}, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::{Duration, Instant}};
-use crate::{allocator::HeapAlloc, driver::{Action as DriverAction, stat_collector::{Parameter, StatCollector}, Driver}};
+use crate::{allocator::HeapAlloc, driver::{self, stat_collector::{Parameter, StatCollector}, Action as DriverAction, Driver}};
 use bounded_vec_deque::BoundedVecDeque;
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use portable_atomic::AtomicBool;
@@ -274,6 +274,10 @@ impl<A: HeapAlloc> GCState<A> {
     self.inner_state.stat_collector.shutdown_and_wait();
   }
   
+  pub fn get_params(&self) -> GCParams {
+    self.inner_state.params.clone()
+  }
+  
   pub fn get_gc_stats(&self) -> GCStats {
     self.inner_state.stats.lock().clone()
   }
@@ -378,12 +382,6 @@ impl<A: HeapAlloc> GCState<A> {
       }
     }
     
-    if let DriverAction::Pass = decision {
-      if heap.get_usage() >= gc_state.params.trigger_size {
-        decision = DriverAction::RunGC;
-      }
-    }
-    
     if let DriverAction::RunGC = decision {
       cmd_control.submit_count += 1;
       cmd_control.command = Some(GCCommand::RunGC(GCRunReason::Proactive));
@@ -473,7 +471,7 @@ impl<A: HeapAlloc> GCState<A> {
         submit_count: 0
       }),
       cycle_state: Mutex::new(CycleState::Idle),
-      drivers: Mutex::new(Vec::new())
+      drivers: Mutex::new(driver::drivers_list())
     });
     
     let private_data = GCThreadPrivate {
