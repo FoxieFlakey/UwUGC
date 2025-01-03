@@ -24,13 +24,13 @@ pub struct CycleStat {
   pub steps_time: [Duration; 5],
   pub reason: GCRunReason,
   
-  pub total_bytes: usize,
-  pub dead_bytes: usize,
-  pub live_bytes: usize,
+  pub total_bytes: u64,
+  pub dead_bytes: u64,
+  pub live_bytes: u64,
   
-  pub total_objects: usize,
-  pub dead_objects: usize,
-  pub live_objects: usize
+  pub total_objects: u64,
+  pub dead_objects: u64,
+  pub live_objects: u64
 }
 
 impl Add for CycleStat {
@@ -49,13 +49,13 @@ pub struct CycleStatSum {
   pub stw_time: Duration,
   pub steps_time: [Duration; 5],
   
-  pub total_bytes: usize,
-  pub dead_bytes: usize,
-  pub live_bytes: usize,
+  pub total_bytes: u64,
+  pub dead_bytes: u64,
+  pub live_bytes: u64,
   
-  pub total_objects: usize,
-  pub dead_objects: usize,
-  pub live_objects: usize
+  pub total_objects: u64,
+  pub dead_objects: u64,
+  pub live_objects: u64
 }
 
 impl From<CycleStat> for CycleStatSum {
@@ -122,7 +122,7 @@ pub struct GCStats {
   // and lifetime_sum updated on every cycle
   pub history: BoundedVecDeque<CycleStat>,
   pub lifetime_sum: CycleStatSum,
-  pub lifetime_cycle_count: usize
+  pub lifetime_cycle_count: u64
 }
 
 // Reasons of why GC is started
@@ -670,13 +670,13 @@ impl<A: HeapAlloc> GCState<A> {
         step4_time,
         step5_time
       ],
-      total_bytes: sweep_stats.total_bytes,
-      dead_bytes: sweep_stats.dead_bytes,
-      live_bytes: sweep_stats.live_bytes,
+      total_bytes: sweep_stats.total_bytes.try_into().unwrap(),
+      dead_bytes: sweep_stats.dead_bytes.try_into().unwrap(),
+      live_bytes: sweep_stats.live_bytes.try_into().unwrap(),
       
-      total_objects: sweep_stats.total_objects,
-      dead_objects: sweep_stats.dead_objects,
-      live_objects: sweep_stats.live_objects
+      total_objects: sweep_stats.total_objects.try_into().unwrap(),
+      dead_objects: sweep_stats.dead_objects.try_into().unwrap(),
+      live_objects: sweep_stats.live_objects.try_into().unwrap()
     };
     
     let mut stats = self.inner_state.stats.lock();

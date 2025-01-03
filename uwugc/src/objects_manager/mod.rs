@@ -5,7 +5,7 @@ use parking_lot::{Mutex, RwLock};
 
 use context::LocalObjectsChain;
 pub use context::Handle;
-use portable_atomic::AtomicBool;
+use portable_atomic::{AtomicBool, AtomicU64};
 
 use crate::{gc::GCExclusiveLockCookie, ObjectLikeTraitInternal};
 
@@ -199,9 +199,9 @@ impl Object {
 // NOTE: This is part of public API
 #[derive(Clone, Copy, PartialEq, Eq, Default)]
 pub struct Stats {
-  pub alloc_attempt_bytes: usize,
-  pub alloc_success_bytes: usize,
-  pub dealloc_bytes: usize
+  pub alloc_attempt_bytes: u64,
+  pub alloc_success_bytes: u64,
+  pub dealloc_bytes: u64
 }
 
 impl SubAssign for Stats {
@@ -246,12 +246,12 @@ pub struct ObjectManager<A: HeapAlloc> {
   
   // Bytes that object manager tried to allocates
   // which may or may not failed
-  lifetime_alloc_attempt_bytes: AtomicUsize,
+  lifetime_alloc_attempt_bytes: AtomicU64,
   // Bytes which object manager successfully
   // allocated
-  lifetime_alloc_success_bytes: AtomicUsize,
+  lifetime_alloc_success_bytes: AtomicU64,
   // Bytes which is deallocated
-  lifetime_dealloc_bytes: AtomicUsize,
+  lifetime_dealloc_bytes: AtomicU64,
   
   contexts: Mutex<HashMap<ThreadId, Arc<LocalObjectsChain>>>,
   max_size: usize,
@@ -287,9 +287,9 @@ impl<A: HeapAlloc> ObjectManager<A> {
     Self {
       head: AtomicPtr::new(ptr::null_mut()),
       used_size: AtomicUsize::new(0),
-      lifetime_alloc_attempt_bytes: AtomicUsize::new(0),
-      lifetime_alloc_success_bytes: AtomicUsize::new(0),
-      lifetime_dealloc_bytes: AtomicUsize::new(0),
+      lifetime_alloc_attempt_bytes: AtomicU64::new(0),
+      lifetime_alloc_success_bytes: AtomicU64::new(0),
+      lifetime_dealloc_bytes: AtomicU64::new(0),
       contexts: Mutex::new(HashMap::new()),
       sweeper_protect_mutex: Mutex::new(()),
       marked_bit_value: AtomicBool::new(true),
@@ -377,7 +377,7 @@ impl<A: HeapAlloc> ObjectManager<A> {
     // and safe to be deallocated
     unsafe { self.alloc.deallocate(obj.cast(), layout); };
     self.used_size.fetch_sub(layout.size(), Ordering::Relaxed);
-    self.lifetime_dealloc_bytes.fetch_add(layout.size(), Ordering::Relaxed);
+    self.lifetime_dealloc_bytes.fetch_add(layout.size().try_into().unwrap(), Ordering::Relaxed);
   }
   
   pub fn create_context(&self) -> Handle<A> {
