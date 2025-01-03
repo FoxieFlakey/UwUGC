@@ -12,7 +12,7 @@ use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, CycleStep, GC
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 1024 * 1024 * 1024;
-const POLL_RATE: u64 = 20;
+const POLL_RATE: u32 = 20;
 const TRIGGER_SIZE: usize = 400 * 1024 * 1024;
 
 #[cfg(not(miri))]

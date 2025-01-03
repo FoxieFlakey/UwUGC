@@ -11,7 +11,7 @@ use crate::{heap::State as HeapState, objects_manager::{Object, ObjectManager}};
 #[derive(Clone)]
 pub struct GCParams {
   pub trigger_size: usize,
-  pub poll_rate: u64,
+  pub poll_rate: u32,
   pub cycle_stats_history_size: usize
 }
 
@@ -488,7 +488,7 @@ impl<A: HeapAlloc> GCState<A> {
       inner_state: inner_state.clone(),
       thread: Mutex::new(Some(thread::spawn(move || {
         let inner = inner_state;
-        let sleep_period = Duration::from_secs_f64(1.0 / inner.params.poll_rate as f64);
+        let sleep_period = Duration::from_secs_f64(1.0 / f64::from(inner.params.poll_rate));
         let heap = LazyCell::new(|| inner.owner.upgrade().unwrap());
         
         'poll_loop: loop {
