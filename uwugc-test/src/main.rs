@@ -89,7 +89,7 @@ fn main() {
     if true {
       let heap = heap.clone();
       let mut stats_file = File::create_buffered("data.csv").unwrap();
-      writeln!(&mut stats_file, "Time,Usage,Heap Size, GC Activity").unwrap();
+      writeln!(&mut stats_file, "Time,Usage,Heap Size,GC Activity").unwrap();
       Some(
         thread::spawn(move || {
           let mut prev_heap_stats = HeapStats::default();
