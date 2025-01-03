@@ -381,8 +381,8 @@ impl<A: HeapAlloc> GCState<A> {
     for drv in gc_state.drivers.lock().iter_mut() {
       decision = drv.poll(heap, stat.as_ref());
       
-      // RunGC action short circuits
-      if let DriverAction::RunGC = decision {
+      // RunGC and DoNothing action short circuits
+      if let DriverAction::RunGC | DriverAction::DoNothing = decision {
         break;
       }
     }
