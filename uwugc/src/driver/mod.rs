@@ -1,7 +1,7 @@
 
 pub mod stat_collector;
 
-use std::marker::PhantomData;
+use std::{marker::PhantomData, time::Duration};
 
 use stat_collector::StatItem;
 
@@ -9,7 +9,8 @@ use crate::{allocator::HeapAlloc, heap::State as HeapState};
 
 pub enum Action {
   RunGC,
-  Pass
+  Pass,
+  DoNothing
 }
 
 pub trait Driver<A: HeapAlloc>: Send + 'static {
@@ -38,9 +39,51 @@ impl<A: HeapAlloc, F: (FnMut(&HeapState<A>, Option<&StatItem>) -> Action) + Send
 
 // Create default list of drivers to be used
 pub fn drivers_list<A: HeapAlloc>() -> Vec<Box<dyn Driver<A>>> {
+  // Driver will trigger GC on every 10%
+  // up to 70% of heap occupancy for atleast
+  // 5 times
+  let warm_count = 5.0;
+  let warming_usage_steps = 0.1;
+  let max_warming_usage = 0.7;
+  
+  let mut current_warm_count = 0.0;
+  
   Vec::from([
-    SimpleDriver::new(|heap, _| {
-      if heap.get_usage() >= heap.gc.get_params().trigger_size {
+    // First executed
+    // Warmup driver make sure so there cycles data
+    SimpleDriver::new(move |_, stat| {
+      // If 'stat' not present do nothing and try again at next poll
+      let Some(stat) = stat else { return Action::DoNothing };
+      let not_enough_data = stat.average_cycle_stats.is_none();
+      
+      // Atleast trigger GC warm_count times
+      // and trigger more as necessary
+      if current_warm_count < warm_count || not_enough_data {
+        let threshold = f64::clamp((current_warm_count + 1.0) * warming_usage_steps, 0.0, max_warming_usage);
+        let usage_percent = stat.heap_usage / stat.heap_size;
+        
+        if usage_percent >= threshold {
+          current_warm_count += 1.0;
+          return Action::RunGC;
+        }
+        
+        // Tell GC to not trigger other driver yet
+        return Action::DoNothing;
+      }
+      
+      // Warm enough and have data
+      Action::Pass
+    }),
+    
+    // Last executed
+    SimpleDriver::new(|_, stat| {
+      let stat = stat.unwrap();
+      let cycle_stats = stat.average_cycle_stats.unwrap();
+      
+      let time_to_oom = (stat.heap_size - stat.heap_usage) / (stat.alloc_rate + 1.0);
+      let free_percent = 1.0 - (stat.heap_usage / stat.heap_size);
+      
+      if Duration::from_secs_f64(time_to_oom * free_percent) <= cycle_stats.cycle_time {
         return Action::RunGC;
       }
       

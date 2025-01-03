@@ -16,7 +16,6 @@ pub struct StatItem {
   pub heap_size: f64,
   pub heap_usage: f64,
   
-  #[expect(dead_code)]
   pub average_cycle_stats: Option<CycleStatSum>
 }
 

@@ -275,6 +275,7 @@ impl<A: HeapAlloc> GCState<A> {
     self.inner_state.stat_collector.shutdown_and_wait();
   }
   
+  #[expect(unused)]
   pub fn get_params(&self) -> GCParams {
     self.inner_state.params.clone()
   }
