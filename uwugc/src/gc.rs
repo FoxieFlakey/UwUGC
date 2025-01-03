@@ -474,7 +474,7 @@ impl<A: HeapAlloc> GCState<A> {
               GCRunState::Stopped => break 'poll_loop
             }
             
-            inner.run_state_changed_event.wait(&mut run_state);
+            inner.run_state_changed_event.wait_for(&mut run_state, Duration::from_millis(sleep_delay_milisec));
           }
           drop(run_state);
           
@@ -484,7 +484,6 @@ impl<A: HeapAlloc> GCState<A> {
           LazyCell::force(&heap);
           
           Self::gc_poll(&inner, &heap, &private_data);
-          thread::sleep(Duration::from_millis(sleep_delay_milisec));
         }
         
         println!("Shutting down GC");
