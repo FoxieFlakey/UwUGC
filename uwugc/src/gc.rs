@@ -210,7 +210,7 @@ struct GCInnerState<A: HeapAlloc> {
   params: GCParams,
   
   run_state: Mutex<GCRunState>,
-  run_state_changed_event: Condvar,
+  wakeup: Condvar,
   
   // GC will regularly checks this and execute command
   // then wake other
@@ -298,7 +298,7 @@ impl<A: HeapAlloc> GCState<A> {
     
     // Notify the GC of run state change, there will be
     // only one primary thread so notify_one is better choice
-    self.inner_state.run_state_changed_event.notify_one();
+    self.inner_state.wakeup.notify_one();
   }
   
   // Wait for any currently executing command to be completed
@@ -438,7 +438,7 @@ impl<A: HeapAlloc> GCState<A> {
       remark_queue_sender,
       
       run_state: Mutex::new(GCRunState::Paused),
-      run_state_changed_event: Condvar::new(),
+      wakeup: Condvar::new(),
       
       activate_load_barrier: AtomicBool::new(false),
       
@@ -474,7 +474,7 @@ impl<A: HeapAlloc> GCState<A> {
               GCRunState::Stopped => break 'poll_loop
             }
             
-            inner.run_state_changed_event.wait_for(&mut run_state, Duration::from_millis(sleep_delay_milisec));
+            inner.wakeup.wait_for(&mut run_state, Duration::from_millis(sleep_delay_milisec));
           }
           drop(run_state);
           
