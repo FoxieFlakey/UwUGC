@@ -8,12 +8,12 @@ use std::{fs::File, hint::black_box, io::{self, Write}, mem::MaybeUninit, sync::
 use std::sync::atomic::AtomicBool;
 
 use tabled::{settings::Style, Table, Tabled};
-use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, CycleStep, GCNullableBox, GCParams, GCStats, GlobalHeap, HeapArc, HeapStats, Params};
+use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, CycleStep, GCNullableBox, GCParams, GCRunReason, GCStats, GlobalHeap, HeapArc, HeapStats, Params};
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 1024 * 1024 * 1024;
 const POLL_RATE: u64 = 20;
-const TRIGGER_SIZE: usize = 700 * 1024 * 1024;
+const TRIGGER_SIZE: usize = 400 * 1024 * 1024;
 
 #[cfg(not(miri))]
 mod non_miri;
@@ -79,6 +79,13 @@ fn main() {
               Some(CycleStep::ConcSweep)   => ("Active (ConcSweep  )", 4),
               Some(CycleStep::Finalize)    => ("Active (Finalize   )", 5)
             };
+            let reason = match info.map(|x| x.reason) {
+              None                            => "None",
+              Some(GCRunReason::Explicit)     => "Explicit",
+              Some(GCRunReason::OutOfMemory)  => "Out of memory",
+              Some(GCRunReason::Proactive)    => "Proactive",
+              Some(GCRunReason::Shutdown)     => "Shutting down"
+            };
             let timestamp = start.elapsed().as_secs_f32();
             
             if deadline_for_rate_update < Instant::now() {
@@ -100,10 +107,16 @@ fn main() {
             
             writeln!(&mut stats_file, "{timestamp},{usage},{trigger_size},{max_size},{state_id}").unwrap();
             
-            print!("\x1b[2K\r\x1b[1A");
-            print!("\x1b[2K\r");
-            print!("Usage  : {usage: >8.2} MiB   Max: {max_size: >8.2} MiB   GC: {cycle_activity}\n");
-            print!("GC Rate: {gc_rate: >8.2} MiB/s Alloc Rate: {alloc_rate: >8.2} MiB/s Growth: {growth_direction}{growth_abs: >7.2} MiB/s");
+            print!("\r\x1b[3A");
+            
+            print!("\x1b[2K");
+            println!("Usage  : {usage: >8.2} MiB   Max: {max_size: >8.2} MiB   GC: {cycle_activity}");
+            
+            print!("\x1b[2K");
+            println!("GC Reason: {reason}");
+            
+            print!("\x1b[2K");
+            println!("GC Rate: {gc_rate: >8.2} MiB/s Alloc Rate: {alloc_rate: >8.2} MiB/s Growth: {growth_direction}{growth_abs: >7.2} MiB/s");
             
             io::stdout().flush().unwrap();
             thread::sleep(Duration::from_secs_f32(1.0 / poll_rate));
