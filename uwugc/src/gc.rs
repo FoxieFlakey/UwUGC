@@ -34,7 +34,48 @@ pub struct CycleStat {
 }
 
 impl Add for CycleStat {
-  type Output = CycleStat;
+  type Output = CycleStatSum;
+  
+  fn add(self, rhs: Self) -> Self::Output {
+    CycleStatSum::from(self) + CycleStatSum::from(rhs)
+  }
+}
+
+// NOTE: This is considered public API
+// therefore be careful with breaking changes
+#[derive(Copy, Clone, Default)]
+pub struct CycleStatSum {
+  pub cycle_time: Duration,
+  pub stw_time: Duration,
+  pub steps_time: [Duration; 5],
+  
+  pub total_bytes: usize,
+  pub dead_bytes: usize,
+  pub live_bytes: usize,
+  
+  pub total_objects: usize,
+  pub dead_objects: usize,
+  pub live_objects: usize
+}
+
+impl From<CycleStat> for CycleStatSum {
+  fn from(x: CycleStat) -> Self {
+    Self {
+      cycle_time: x.cycle_time,
+      stw_time: x.stw_time,
+      steps_time: x.steps_time,
+      dead_bytes: x.dead_bytes,
+      total_bytes: x.total_bytes,
+      live_bytes: x.live_bytes,
+      dead_objects: x.dead_objects,
+      total_objects: x.total_objects,
+      live_objects: x.live_objects
+    }
+  }
+}
+
+impl Add for CycleStatSum {
+  type Output = CycleStatSum;
   
   fn add(self, rhs: Self) -> Self::Output {
     let mut tmp = Self {
@@ -46,9 +87,7 @@ impl Add for CycleStat {
       live_bytes: self.live_bytes + rhs.live_bytes,
       dead_objects: self.dead_objects + rhs.dead_objects,
       total_objects: self.total_objects + rhs.total_objects,
-      live_objects: self.live_objects + rhs.live_objects,
-      
-      reason: GCRunReason::Shutdown
+      live_objects: self.live_objects + rhs.live_objects
     };
     tmp.steps_time.iter_mut()
       .zip(rhs.steps_time.iter())
@@ -57,8 +96,16 @@ impl Add for CycleStat {
   }
 }
 
-impl AddAssign for CycleStat {
-  fn add_assign(&mut self, rhs: Self) {
+impl Add<CycleStat> for CycleStatSum {
+  type Output = CycleStatSum;
+  
+  fn add(self, rhs: CycleStat) -> Self::Output {
+    self + Self::from(rhs)
+  }
+}
+
+impl AddAssign<CycleStat> for CycleStatSum {
+  fn add_assign(&mut self, rhs: CycleStat) {
     *self = *self + rhs;
   }
 }
@@ -74,7 +121,7 @@ pub struct GCStats {
   // New CycleStat inserted for every cycle executed by GC
   // and lifetime_sum updated on every cycle
   pub history: BoundedVecDeque<CycleStat>,
-  pub lifetime_sum: CycleStat,
+  pub lifetime_sum: CycleStatSum,
   pub lifetime_cycle_count: usize
 }
 
@@ -380,20 +427,7 @@ impl<A: HeapAlloc> GCState<A> {
       stats: Mutex::new(GCStats {
         sequence_id: 0,
         history: BoundedVecDeque::new(params.cycle_stats_history_size),
-        lifetime_sum: CycleStat {
-          cycle_time: Duration::default(),
-          steps_time: [Duration::default(); 5],
-          stw_time: Duration::default(),
-          
-          dead_bytes: 0,
-          live_bytes: 0,
-          total_bytes: 0,
-          
-          dead_objects: 0,
-          live_objects: 0,
-          total_objects: 0,
-          reason: GCRunReason::Shutdown
-        },
+        lifetime_sum: CycleStatSum::default(),
         lifetime_cycle_count: 0
       }),
       stats_updated_event: Condvar::new(),

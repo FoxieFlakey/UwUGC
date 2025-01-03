@@ -9,7 +9,7 @@ use crate::heap::Context as HeapContext;
 use crate::heap::Heap as HeapInternal;
 
 pub use crate::heap::Params;
-pub use crate::gc::{GCParams, CycleStat, GCStats, CycleState, CycleStep, CycleInfo, GCRunReason};
+pub use crate::gc::{GCParams, CycleStat, GCStats, CycleState, CycleStep, CycleInfo, GCRunReason, CycleStatSum};
 pub use crate::descriptor::{Describeable, DescriptorAPI as Descriptor, Field};
 pub use crate::heap::ConstructorScope;
 pub use crate::allocator::GlobalHeap;
