@@ -371,6 +371,11 @@ impl<A: HeapAlloc> GCState<A> {
     let mut decision = DriverAction::Pass;
     for drv in &gc_state.drivers {
       decision = drv.poll(heap);
+      
+      // RunGC action short circuits
+      if let DriverAction::RunGC = decision {
+        break;
+      }
     }
     
     if let DriverAction::Pass = decision {
