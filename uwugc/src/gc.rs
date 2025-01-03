@@ -296,9 +296,8 @@ impl<A: HeapAlloc> GCState<A> {
     
     *state_ref = state;
     
-    // Notify the GC of run state change, there will be
-    // only one primary thread so notify_one is better choice
-    self.inner_state.wakeup.notify_one();
+    // Notify the GC of run state change
+    self.wakeup_gc();
   }
   
   // Wait for any currently executing command to be completed
@@ -314,6 +313,11 @@ impl<A: HeapAlloc> GCState<A> {
       self.inner_state.cmd_executed_event.wait(&mut cmd_control);
     }
     cmd_control
+  }
+  
+  fn wakeup_gc(&self) {
+    // there will be only one primary thread so notify_one is better choice
+    self.inner_state.wakeup.notify_one();
   }
   
   fn call_gc(&self, cmd: GCCommand) {
@@ -334,6 +338,9 @@ impl<A: HeapAlloc> GCState<A> {
         return;
       }
     }
+    
+    // Wakeup GC to respond to changes
+    self.wakeup_gc();
     
     // Wait for any previous command to be executed
     cmd_control = self.wait_for_gc(None, Some(cmd_control));
