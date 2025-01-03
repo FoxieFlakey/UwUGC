@@ -375,12 +375,12 @@ impl<A: HeapAlloc> GCState<A> {
     gc_state.cmd_executed_event.notify_all();
   }
   
-  fn do_gc_heuristics(gc_state: &Arc<GCInnerState<A>>, heap: &HeapState<A>, cmd_control: &mut GCCommandStruct) {
+  fn do_gc_heuristics(gc_state: &Arc<GCInnerState<A>>, update_period: Duration, heap: &HeapState<A>, cmd_control: &mut GCCommandStruct) {
     let stat = gc_state.stat_collector.get_stat();
     
     let mut decision = DriverAction::Pass;
     for drv in gc_state.drivers.lock().iter_mut() {
-      decision = drv.poll(heap, stat.as_ref());
+      decision = drv.poll(heap, update_period, stat.as_ref());
       
       // RunGC and DoNothing action short circuits
       if let DriverAction::RunGC | DriverAction::DoNothing = decision {
@@ -394,7 +394,7 @@ impl<A: HeapAlloc> GCState<A> {
     }
   }
   
-  fn gc_poll(inner: &Arc<GCInnerState<A>>, heap: &HeapState<A>, private: &GCThreadPrivate) {
+  fn gc_poll(inner: &Arc<GCInnerState<A>>, update_period: Duration, heap: &HeapState<A>, private: &GCThreadPrivate) {
     let mut cmd_control = inner.command.lock();
     
     // If there no command to be executed
@@ -404,7 +404,7 @@ impl<A: HeapAlloc> GCState<A> {
     // to send command, instead relying other
     // if statement and special conditions
     if cmd_control.command.is_none() {
-      Self::do_gc_heuristics(inner, heap, &mut cmd_control);
+      Self::do_gc_heuristics(inner, update_period, heap, &mut cmd_control);
     }
     
     let cmd_struct = cmd_control.clone();
@@ -488,7 +488,7 @@ impl<A: HeapAlloc> GCState<A> {
       inner_state: inner_state.clone(),
       thread: Mutex::new(Some(thread::spawn(move || {
         let inner = inner_state;
-        let sleep_delay_milisec = 1000 / inner.params.poll_rate;
+        let sleep_period = Duration::from_secs_f64(1.0 / inner.params.poll_rate as f64);
         let heap = LazyCell::new(|| inner.owner.upgrade().unwrap());
         
         'poll_loop: loop {
@@ -497,7 +497,7 @@ impl<A: HeapAlloc> GCState<A> {
           let current_count = *wakeup_count;
           while current_count == *wakeup_count {
             // Timeout reached do other stuffs
-            if inner.wakeup.wait_for(&mut wakeup_count, Duration::from_millis(sleep_delay_milisec)).timed_out() {
+            if inner.wakeup.wait_for(&mut wakeup_count, sleep_period).timed_out() {
               break;
             }
           }
@@ -520,7 +520,7 @@ impl<A: HeapAlloc> GCState<A> {
           // resumes there some part of heap state isn't initialized yet
           LazyCell::force(&heap);
           
-          Self::gc_poll(&inner, &heap, &private_data);
+          Self::gc_poll(&inner, sleep_period, &heap, &private_data);
         }
         
         println!("Shutting down GC");

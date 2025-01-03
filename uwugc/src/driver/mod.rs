@@ -1,7 +1,7 @@
 
 pub mod stat_collector;
 
-use std::{marker::PhantomData, time::Duration};
+use std::{cmp, marker::PhantomData, time::Duration};
 
 use stat_collector::StatItem;
 
@@ -14,15 +14,15 @@ pub enum Action {
 }
 
 pub trait Driver<A: HeapAlloc>: Send + 'static {
-  fn poll(&mut self, heap: &HeapState<A>, stat: Option<&StatItem>) -> Action;
+  fn poll(&mut self, heap: &HeapState<A>, driver_tick_period: Duration, stat: Option<&StatItem>) -> Action;
 }
 
-pub struct SimpleDriver<A: HeapAlloc, F: (FnMut(&HeapState<A>, Option<&StatItem>) -> Action) + Send + 'static> {
+pub struct SimpleDriver<A: HeapAlloc, F: (FnMut(&HeapState<A>, Duration, Option<&StatItem>) -> Action) + Send + 'static> {
   func: F,
   _phantom: PhantomData<A>
 }
 
-impl<A: HeapAlloc + Sync, F: (FnMut(&HeapState<A>, Option<&StatItem>) -> Action) + Send + 'static> SimpleDriver<A, F> {
+impl<A: HeapAlloc + Sync, F: (FnMut(&HeapState<A>, Duration, Option<&StatItem>) -> Action) + Send + 'static> SimpleDriver<A, F> {
   pub fn new(func: F) -> Box<dyn Driver<A>> {
     Box::new(Self {
       _phantom: PhantomData {},
@@ -31,9 +31,9 @@ impl<A: HeapAlloc + Sync, F: (FnMut(&HeapState<A>, Option<&StatItem>) -> Action)
   }
 }
 
-impl<A: HeapAlloc, F: (FnMut(&HeapState<A>, Option<&StatItem>) -> Action) + Send + 'static> Driver<A> for SimpleDriver<A, F> {
-  fn poll(&mut self, heap: &HeapState<A>, stat_item: Option<&StatItem>) -> Action {
-    (self.func)(heap, stat_item)
+impl<A: HeapAlloc, F: (FnMut(&HeapState<A>, Duration, Option<&StatItem>) -> Action) + Send + 'static> Driver<A> for SimpleDriver<A, F> {
+  fn poll(&mut self, heap: &HeapState<A>, driver_tick_period: Duration, stat_item: Option<&StatItem>) -> Action {
+    (self.func)(heap, driver_tick_period, stat_item)
   }
 }
 
@@ -51,7 +51,7 @@ pub fn drivers_list<A: HeapAlloc>() -> Vec<Box<dyn Driver<A>>> {
   Vec::from([
     // First executed
     // Warmup driver make sure so there cycles data
-    SimpleDriver::new(move |_, stat| {
+    SimpleDriver::new(move |_, _, stat| {
       // If 'stat' not present do nothing and try again at next poll
       let Some(stat) = stat else { return Action::DoNothing };
       let not_enough_data = stat.average_cycle_stats.is_none();
@@ -76,14 +76,18 @@ pub fn drivers_list<A: HeapAlloc>() -> Vec<Box<dyn Driver<A>>> {
     }),
     
     // Last executed
-    SimpleDriver::new(|_, stat| {
+    SimpleDriver::new(|_, driver_tick_period, stat| {
       let stat = stat.unwrap();
       let cycle_stats = stat.average_cycle_stats.unwrap();
       
       let time_to_oom = (stat.heap_size - stat.heap_usage) / (stat.alloc_rate + 1.0);
       let free_percent = 1.0 - (stat.heap_usage / stat.heap_size);
       
-      if Duration::from_secs_f64(time_to_oom * free_percent) <= cycle_stats.cycle_time {
+      // Set lower bound on cycle time to be driver_tick_period
+      // because driver might not have enough time to react later
+      let cycle_time = cmp::max(driver_tick_period, cycle_stats.cycle_time);
+      
+      if Duration::from_secs_f64(time_to_oom * free_percent) <= cycle_time {
         return Action::RunGC;
       }
       
