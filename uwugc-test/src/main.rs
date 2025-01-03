@@ -13,7 +13,6 @@ use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, CycleStep, GC
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
 const MAX_SIZE: usize = 1024 * 1024 * 1024;
 const POLL_RATE: u32 = 20;
-const TRIGGER_SIZE: usize = 400 * 1024 * 1024;
 
 #[cfg(not(miri))]
 mod non_miri;
@@ -35,7 +34,6 @@ fn main() {
   let heap = HeapArc::new(Params {
     gc_params: GCParams {
       poll_rate: POLL_RATE,
-      trigger_size: TRIGGER_SIZE,
       cycle_stats_history_size: 20
     },
     max_size: MAX_SIZE
@@ -66,7 +64,7 @@ fn main() {
             let usage = heap.get_usage();
             let usage = (usage as f32) / 1024.0 / 1024.0;
             let max_size = (MAX_SIZE as f32) / 1024.0 / 1024.0;
-            let trigger_size = (TRIGGER_SIZE as f32) / 1024.0 / 1024.0;
+            let trigger_size = 0.0;
             let info = match heap.get_cycle_state() {
               CycleState::Idle => None,
               CycleState::Running(info) => Some(info)

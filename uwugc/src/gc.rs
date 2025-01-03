@@ -10,7 +10,6 @@ use crate::{heap::State as HeapState, objects_manager::{Object, ObjectManager}};
 // therefore be careful with breaking changes
 #[derive(Clone)]
 pub struct GCParams {
-  pub trigger_size: usize,
   pub poll_rate: u32,
   pub cycle_stats_history_size: usize
 }
