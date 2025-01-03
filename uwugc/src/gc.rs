@@ -1,5 +1,5 @@
 use std::{cell::LazyCell, ops::{Add, AddAssign}, ptr::{self, NonNull}, sync::{atomic::Ordering, mpsc, Arc, Weak}, thread::{self, JoinHandle}, time::{Duration, Instant}};
-use crate::{allocator::HeapAlloc, driver::stat_collector::{Parameter, StatCollector}};
+use crate::{allocator::HeapAlloc, driver::{Action as DriverAction, stat_collector::{Parameter, StatCollector}, Driver}};
 use bounded_vec_deque::BoundedVecDeque;
 use parking_lot::{Condvar, Mutex, MutexGuard, RwLock, RwLockReadGuard, RwLockWriteGuard};
 use portable_atomic::AtomicBool;
@@ -230,7 +230,8 @@ struct GCInnerState<A: HeapAlloc> {
   // State of the cycle
   cycle_state: Mutex<CycleState>,
   
-  stat_collector: StatCollector
+  stat_collector: StatCollector,
+  drivers: Vec<Box<dyn Driver<A>>>
 }
 
 pub struct GCState<A: HeapAlloc> {
@@ -367,7 +368,18 @@ impl<A: HeapAlloc> GCState<A> {
   }
   
   fn do_gc_heuristics(gc_state: &Arc<GCInnerState<A>>, heap: &HeapState<A>, cmd_control: &mut GCCommandStruct) {
-    if heap.get_usage() >= gc_state.params.trigger_size {
+    let mut decision = DriverAction::Pass;
+    for drv in &gc_state.drivers {
+      decision = drv.poll(heap);
+    }
+    
+    if let DriverAction::Pass = decision {
+      if heap.get_usage() >= gc_state.params.trigger_size {
+        decision = DriverAction::RunGC;
+      }
+    }
+    
+    if let DriverAction::RunGC = decision {
       cmd_control.submit_count += 1;
       cmd_control.command = Some(GCCommand::RunGC(GCRunReason::Proactive));
     }
@@ -455,7 +467,8 @@ impl<A: HeapAlloc> GCState<A> {
         execute_count: 0,
         submit_count: 0
       }),
-      cycle_state: Mutex::new(CycleState::Idle)
+      cycle_state: Mutex::new(CycleState::Idle),
+      drivers: Vec::new()
     });
     
     let private_data = GCThreadPrivate {
