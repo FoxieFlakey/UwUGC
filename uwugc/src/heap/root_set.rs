@@ -9,8 +9,8 @@ pub struct RootEntry<A: HeapAlloc> {
   // and next's prev)
   next: UnsafeCell<*const RootEntry<A>>,
   prev: UnsafeCell<*const RootEntry<A>>,
-  pub(super) gc_state: *const GCState<A>,
-  pub(super) obj: *mut Object,
+  gc_state: *const GCState<A>,
+  obj: *mut Object,
   
   // RootEntry cannot be moved at will because
   // circular linked list need that guarantee
