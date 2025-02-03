@@ -10,7 +10,7 @@ pub struct RootEntry<A: HeapAlloc> {
   next: UnsafeCell<*const RootEntry<A>>,
   prev: UnsafeCell<*const RootEntry<A>>,
   gc_state: *const GCState<A>,
-  obj: *mut Object,
+  obj: NonNull<Object>,
   
   // RootEntry cannot be moved at will because
   // circular linked list need that guarantee
@@ -27,7 +27,7 @@ impl<A: HeapAlloc> RootEntry<A> {
     self.gc_state
   }
   
-  pub fn get_obj_ptr(&self) -> *mut Object {
+  pub fn get_obj_ptr(&self) -> NonNull<Object> {
     self.obj
   }
   
@@ -88,7 +88,7 @@ impl<A: HeapAlloc> RootSet<A> {
   pub fn new() -> Self {
     let head = Box::pin(RootEntry {
       gc_state: ptr::null_mut(),
-      obj: ptr::null_mut(),
+      obj: NonNull::dangling(),
       next: UnsafeCell::new(ptr::null()),
       prev: UnsafeCell::new(ptr::null()),
       
@@ -124,7 +124,7 @@ impl<A: HeapAlloc> RootSet<A> {
     }
   }
   
-  pub fn insert(&mut self, ptr: *mut Object, gc_state: *const GCState<A>) -> *mut RootEntry<A> {
+  pub fn insert(&mut self, ptr: NonNull<Object>, gc_state: *const GCState<A>) -> *mut RootEntry<A> {
     let entry = Box::new(RootEntry {
       obj: ptr,
       next: UnsafeCell::new(ptr::null()),
@@ -141,8 +141,7 @@ impl<A: HeapAlloc> RootSet<A> {
   
   pub fn take_snapshot(&self, buffer: &mut Vec<NonNull<Object>>) {
     self.for_each(|entry| {
-      // SAFETY: Root set won't allow null pointers
-      unsafe { buffer.push(NonNull::new_unchecked(entry.obj)) };
+      buffer.push(entry.obj);
     });
   }
   

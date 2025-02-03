@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, ptr, sync::atomic::Ordering};
+use std::{marker::PhantomData, ptr::{self, NonNull}, sync::atomic::Ordering};
 
 use crate::allocator::HeapAlloc;
 use portable_atomic::AtomicPtr;
@@ -20,11 +20,7 @@ impl<T: ObjectLikeTraitInternal> GCRefRaw<T> {
   }
   
   fn create_root_ref<'a, A: HeapAlloc>(ptr: *mut Object, ctx: &'a Context<A>, block_gc_cookie: &mut GCLockCookie<A>)  -> Option<RootRefRaw<'a, A, T>> {
-    if ptr.is_null() {
-      return None;
-    }
-    
-    let root_ref = ctx.new_root_ref_from_ptr(ptr, block_gc_cookie);
+    let root_ref = ctx.new_root_ref_from_ptr(NonNull::new(ptr)?, block_gc_cookie);
     let heap = ctx.get_heap();
     // SAFETY: Object is being referenced from root
     // therefore GC won't collect it and will remains valid

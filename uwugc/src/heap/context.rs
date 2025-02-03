@@ -84,9 +84,7 @@ impl<A: HeapAlloc, T: ObjectLikeTraitInternal> RootRefRaw<'_, A, T> {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
     // same thread
-    let root_entry = unsafe { &*self.entry_ref };
-    // SAFETY: References in root refs are always non null
-    unsafe { NonNull::new_unchecked(root_entry.get_obj_ptr()) }
+    unsafe { &*self.entry_ref }.get_obj_ptr()
   }
 }
 
@@ -122,7 +120,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     self.owner
   }
   
-  pub fn new_root_ref_from_ptr<T: ObjectLikeTraitInternal>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie<A>) -> RootRefRaw<'a, A, T> {
+  pub fn new_root_ref_from_ptr<T: ObjectLikeTraitInternal>(&self, ptr: NonNull<Object>, _gc_lock_cookie: &mut GCLockCookie<A>) -> RootRefRaw<'a, A, T> {
     // Acquire fence to allow potential changes to root set by GC to be visible
     atomic::fence(atomic::Ordering::Acquire);
     
@@ -164,7 +162,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
       assert!(obj.is_ok(), "Heap run out of memory!");
     }
     
-    let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
+    let root_ref = self.new_root_ref_from_ptr(obj.map(|x| NonNull::new(x).unwrap()).unwrap(), &mut gc_lock_cookie);
     // SAFETY: The object reference is exclusively owned by this thread
     unsafe { RootRef::new(root_ref) }
   }
@@ -195,7 +193,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
       assert!(obj.is_ok(), "Heap run out of memory!");
     }
     
-    let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
+    let root_ref = self.new_root_ref_from_ptr(obj.map(|x| NonNull::new(x).unwrap()).unwrap(), &mut gc_lock_cookie);
     // SAFETY: The object reference is exclusively owned by this thread
     unsafe { RootRef::new(root_ref) }
   }
