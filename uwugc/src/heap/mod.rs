@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, collections::HashMap, marker::PhantomPinned, ops::Deref, ptr::NonNull, sync::Arc, thread::{self, ThreadId}};
+use std::{collections::HashMap, ops::Deref, ptr::NonNull, sync::Arc, thread::{self, ThreadId}};
 use crate::{allocator::HeapAlloc, gc::{CycleState, GCStats}};
 use parking_lot::Mutex;
 
@@ -8,6 +8,8 @@ pub use context::{Context, RootRefRaw, ConstructorScope};
 use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
 
 mod context;
+mod root_set;
+pub(super) use root_set::RootEntry;
 
 // NOTE: This is considered public API
 // therefore be careful with breaking changes
@@ -15,51 +17,6 @@ mod context;
 pub struct Params {
   pub gc_params: GCParams,
   pub max_size: usize
-}
-
-pub(super) struct RootEntry<A: HeapAlloc> {
-  // The RootEntry itself cannot be *mut
-  // but need to modify these fields because
-  // there would be aliasing *mut (one from prev's next
-  // and next's prev)
-  next: UnsafeCell<*const RootEntry<A>>,
-  prev: UnsafeCell<*const RootEntry<A>>,
-  gc_state: *const GCState<A>,
-  obj: *mut Object,
-  
-  // RootEntry cannot be moved at will because
-  // circular linked list need that guarantee
-  _phantom: PhantomPinned
-}
-
-// SAFETY: It is only shared between GC thread and owning thread
-// and GC thread, its being protected by GC locks
-unsafe impl<A: HeapAlloc> Sync for RootEntry<A> {}
-unsafe impl<A: HeapAlloc> Send for RootEntry<A> {}
-
-impl<A: HeapAlloc> RootEntry<A> {
-  // Insert 'val' to next of this entry
-  // Returns a *mut pointer to it and leaks it
-  pub unsafe fn insert(&self, val: Box<RootEntry<A>>) -> *mut RootEntry<A> {
-    // SAFETY: The caller must ensures that the root set is not concurrently accessed
-    unsafe {
-      let val = Box::leak(val);
-      
-      // Make 'val' prev points to this entry
-      *val.prev.get() = self;
-      
-      // Make 'val' next points to entry next of this
-      *val.next.get() = *self.next.get();
-      
-      // Make next entry's prev to point to 'val'
-      // NOTE: 'next' is always valid in circular list
-      *(**self.next.get()).prev.get() = val;
-      
-      // Make this entry's next to point to 'val'
-      *self.next.get() = val;
-      val
-    }
-  }
 }
 
 pub struct State<A: HeapAlloc> {
