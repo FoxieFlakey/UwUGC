@@ -33,21 +33,12 @@ impl<A: HeapAlloc> DataWrapper<A> {
   // SAFETY: Caller ensures that thread managing the context does not
   // concurrently runs with this function (usually meant mutator
   // threads is being blocked)
-  pub(super) unsafe fn for_each_root(&self, mut iterator: impl FnMut(&RootEntry<A>)) {
+  pub(super) unsafe fn for_each_root(&self, iterator: impl FnMut(&RootEntry<A>)) {
     // Make sure any newly added/removed root entry is visible
     atomic::fence(atomic::Ordering::Acquire);
     // SAFETY: Caller ensured mutators are blocked so nothing modifies this
     let inner = unsafe { &*self.inner.get() };
-    let head = inner.head.as_ref().get_ref();
-    
-    // SAFETY: In circular buffer 'next' is always valid
-    let mut current = unsafe { &*(*head.next.get()) };
-    // While 'current' is not the head as this linked list is circular
-    while ptr::from_ref(current) != ptr::from_ref(head) {
-      iterator(current);
-      // SAFETY: In circular buffer 'next' is always valid
-      current = unsafe { &*(*current.next.get()) };
-    }
+    inner.for_each(iterator);
   }
   
   // SAFETY: Caller ensures that nothing can concurrently access the 

@@ -73,6 +73,19 @@ impl<A: HeapAlloc> RootSet<A> {
       head
     }
   }
+  
+  pub fn for_each(&self, mut iterator: impl FnMut(&RootEntry<A>)) {
+    let head = self.head.as_ref().get_ref();
+    
+    // SAFETY: In circular buffer 'next' is always valid
+    let mut current = unsafe { &*(*head.next.get()) };
+    // While 'current' is not the head as this linked list is circular
+    while ptr::from_ref(current) != ptr::from_ref(head) {
+      iterator(current);
+      // SAFETY: In circular buffer 'next' is always valid
+      current = unsafe { &*(*current.next.get()) };
+    }
+  }
 }
 
 
