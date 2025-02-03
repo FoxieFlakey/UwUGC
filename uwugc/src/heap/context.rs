@@ -30,9 +30,8 @@ impl<A: HeapAlloc> DataWrapper<A> {
     }
   }
   
-  // SAFETY: Caller ensures that thread managing the context does not
-  // concurrently runs with this function (usually meant mutator
-  // threads is being blocked)
+  // SAFETY: Caller ensures that thread managing the context is not actively
+  // accessing this context
   pub(super) unsafe fn for_each_root(&self, iterator: impl FnMut(&RootEntry<A>)) {
     // Make sure any newly added/removed root entry is visible
     atomic::fence(atomic::Ordering::Acquire);
