@@ -23,6 +23,14 @@ unsafe impl<A: HeapAlloc> Sync for RootEntry<A> {}
 unsafe impl<A: HeapAlloc> Send for RootEntry<A> {}
 
 impl<A: HeapAlloc> RootEntry<A> {
+  pub fn get_gc_state(&self) -> *const GCState<A> {
+    self.gc_state
+  }
+  
+  pub fn get_obj_ptr(&self) -> *mut Object {
+    self.obj
+  }
+  
   // SAFETY: Caller make sure its safe to delete this root entry
   // and no possible concurrent access to the owning root set
   pub unsafe fn delete(this: *const RootEntry<A>) {

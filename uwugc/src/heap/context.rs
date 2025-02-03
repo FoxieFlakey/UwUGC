@@ -86,7 +86,7 @@ impl<A: HeapAlloc, T: ObjectLikeTraitInternal> RootRefRaw<'_, A, T> {
     // same thread
     let root_entry = unsafe { &*self.entry_ref };
     // SAFETY: References in root refs are always non null
-    unsafe { NonNull::new_unchecked(root_entry.obj) }
+    unsafe { NonNull::new_unchecked(root_entry.get_obj_ptr()) }
   }
 }
 
@@ -94,7 +94,7 @@ impl<A: HeapAlloc, T: ObjectLikeTraitInternal> Drop for RootRefRaw<'_, A, T> {
   fn drop(&mut self) {
     // Block GC as GC would see half modified root set if without it
     // SAFETY: GCState is always valid
-    let cookie = unsafe { &*(*self.entry_ref).gc_state }.block_gc();
+    let cookie = unsafe { &*(*self.entry_ref).get_gc_state() }.block_gc();
     
     // Corresponding RootEntry and RootRef are free'd together
     // therefore its safe after removing reference from root set
