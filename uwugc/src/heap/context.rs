@@ -40,41 +40,6 @@ impl<A: HeapAlloc> DataWrapper<A> {
     let inner = unsafe { &*self.inner.get() };
     inner.for_each(iterator);
   }
-  
-  // SAFETY: Caller ensures that nothing can concurrently access the 
-  // root set
-  pub unsafe fn clear_root_set(&self) {
-    // Make sure any newly added/removed root entry is visible
-    atomic::fence(atomic::Ordering::Acquire);
-    
-    // SAFETY: Caller ensured mutators are blocked so nothing modifies this
-    let inner = unsafe { &*self.inner.get() };
-    let head = inner.head.as_ref().get_ref();
-    
-    // SAFETY: Caller ensured that nothing accessed the root set concurrently
-    let mut current = unsafe { *head.next.get() };
-    // While 'current' is not the head as this linked list is circular
-    while current != ptr::from_ref(head) {
-      // SAFETY: Guaranteed by caller that root set is not accessed concurrently
-      let next = unsafe { *(*current).next.get() };
-      
-      // Drop the root entry and remove it from set
-      // SAFETY: Guaranteed by caller that root set is not accessed concurrently
-      let _ = unsafe { Box::from_raw(current.cast_mut()) };
-      current = next;
-    }
-    
-    // Make sure changes is visible to other after being cleared
-    atomic::fence(atomic::Ordering::Release);
-  }
-}
-
-impl<A: HeapAlloc> Drop for DataWrapper<A> {
-  fn drop(&mut self) {
-    // Current thread is last one with reference to this context
-    // therefore its safe to clear it (to deallocate the root entries)
-    unsafe { self.clear_root_set() };
-  }
 }
 
 pub struct Context<'a, A: HeapAlloc> {

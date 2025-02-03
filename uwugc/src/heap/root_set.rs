@@ -74,6 +74,23 @@ impl<A: HeapAlloc> RootSet<A> {
     }
   }
   
+  pub fn clear(&mut self) {
+    let head = self.head.as_ref().get_ref();
+    
+    // SAFETY: Borrow checker ensured that nothing accessed the root set concurrently
+    let mut current = unsafe { *head.next.get() };
+    // While 'current' is not the head as this linked list is circular
+    while current != ptr::from_ref(head) {
+      // SAFETY: Guaranteed by borrow checker that root set is not accessed concurrently
+      let next = unsafe { *(*current).next.get() };
+      
+      // Drop the root entry and remove it from set
+      // SAFETY: Guaranteed by borrow checker that root set is not accessed concurrently
+      let _ = unsafe { Box::from_raw(current.cast_mut()) };
+      current = next;
+    }
+  }
+  
   pub fn for_each(&self, mut iterator: impl FnMut(&RootEntry<A>)) {
     let head = self.head.as_ref().get_ref();
     
@@ -88,4 +105,9 @@ impl<A: HeapAlloc> RootSet<A> {
   }
 }
 
+impl<A: HeapAlloc> Drop for RootSet<A> {
+  fn drop(&mut self) {
+    self.clear();
+  }
+}
 
