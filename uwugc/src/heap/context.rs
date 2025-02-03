@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, mem::MaybeUninit, pin::Pin, ptr::{self, NonNull}, sync::{atomic, Arc}, thread};
+use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, mem::MaybeUninit, ptr::{self, NonNull}, sync::{atomic, Arc}, thread};
 
 use crate::{allocator::HeapAlloc, ReferenceType};
 
