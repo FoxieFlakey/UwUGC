@@ -72,6 +72,9 @@ impl<A: HeapAlloc> DataWrapper<A> {
       let _ = unsafe { Box::from_raw(current.cast_mut()) };
       current = next;
     }
+    
+    // Make sure changes is visible to other after being cleared
+    atomic::fence(atomic::Ordering::Release);
   }
 }
 
