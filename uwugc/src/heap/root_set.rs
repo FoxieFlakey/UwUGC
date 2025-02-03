@@ -7,14 +7,14 @@ pub struct RootEntry<A: HeapAlloc> {
   // but need to modify these fields because
   // there would be aliasing *mut (one from prev's next
   // and next's prev)
-  pub(super) next: UnsafeCell<*const RootEntry<A>>,
-  pub(super) prev: UnsafeCell<*const RootEntry<A>>,
+  next: UnsafeCell<*const RootEntry<A>>,
+  prev: UnsafeCell<*const RootEntry<A>>,
   pub(super) gc_state: *const GCState<A>,
   pub(super) obj: *mut Object,
   
   // RootEntry cannot be moved at will because
   // circular linked list need that guarantee
-  pub(super) _phantom: PhantomPinned
+  _phantom: PhantomPinned
 }
 
 // SAFETY: It is only shared between GC thread and owning thread
@@ -73,7 +73,7 @@ impl<A: HeapAlloc> RootEntry<A> {
 }
 
 pub struct RootSet<A: HeapAlloc> {
-  pub(super) head: Pin<Box<RootEntry<A>>>
+  head: Pin<Box<RootEntry<A>>>
 }
 
 impl<A: HeapAlloc> RootSet<A> {
