@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, mem::MaybeUninit, ptr::{self, NonNull}, sync::{atomic, Arc}, thread};
+use std::{cell::UnsafeCell, marker::PhantomData, mem::MaybeUninit, ptr::NonNull, sync::{atomic, Arc}, thread};
 
 use crate::{allocator::HeapAlloc, ReferenceType};
 
@@ -150,22 +150,12 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
   }
   
   pub fn new_root_ref_from_ptr<T: ObjectLikeTraitInternal>(&self, ptr: *mut Object, _gc_lock_cookie: &mut GCLockCookie<A>) -> RootRefRaw<'a, A, T> {
-    let entry = Box::new(RootEntry {
-      gc_state: &self.owner.gc,
-      obj: ptr,
-      next: UnsafeCell::new(ptr::null()),
-      prev: UnsafeCell::new(ptr::null()),
-      
-      _phantom: PhantomPinned
-    });
+    // Acquire fence to allow potential changes to root set by GC to be visible
+    atomic::fence(atomic::Ordering::Acquire);
     
-    // SAFETY: Current thread is only owner of the head, and modification to it
-    // is protected by GC locks by requirement of '_gc_lock_cookie' mutable reference
-    // which requires that GC is blocked to have a reference to it
-    //
-    // therefore, current thread modifies it and GC won't be able to concurrently
-    // access it
-    let entry = unsafe { (*self.ctx.inner.get()).head.insert(entry) };
+    // SAFETY: GC is blocked due existence of lock cookie and GC is only other
+    // thing which access the root
+    let entry = unsafe { (*self.ctx.inner.get()).insert(ptr, &self.owner.gc) };
     
     // Release fence to allow newly added value to be
     // visible to the GC

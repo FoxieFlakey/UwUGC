@@ -91,6 +91,21 @@ impl<A: HeapAlloc> RootSet<A> {
     }
   }
   
+  pub fn insert(&mut self, ptr: *mut Object, gc_state: *const GCState<A>) -> *mut RootEntry<A> {
+    let entry = Box::new(RootEntry {
+      obj: ptr,
+      next: UnsafeCell::new(ptr::null()),
+      prev: UnsafeCell::new(ptr::null()),
+      gc_state,
+      
+      _phantom: PhantomPinned
+    });
+    
+    // SAFETY: No other thread can access the same root set
+    // enforced by mutable borrow checker on self
+    unsafe { self.head.insert(entry) }
+  }
+  
   pub fn for_each(&self, mut iterator: impl FnMut(&RootEntry<A>)) {
     let head = self.head.as_ref().get_ref();
     
