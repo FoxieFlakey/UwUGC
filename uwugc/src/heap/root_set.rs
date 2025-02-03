@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::PhantomPinned};
+use std::{cell::UnsafeCell, marker::PhantomPinned, pin::Pin, ptr};
 
 use crate::{allocator::HeapAlloc, gc::GCState, objects_manager::Object};
 
@@ -46,4 +46,33 @@ impl<A: HeapAlloc> RootEntry<A> {
     }
   }
 }
+
+pub struct RootSet<A: HeapAlloc> {
+  pub(super) head: Pin<Box<RootEntry<A>>>
+}
+
+impl<A: HeapAlloc> RootSet<A> {
+  pub fn new() -> Self {
+    let head = Box::pin(RootEntry {
+      gc_state: ptr::null_mut(),
+      obj: ptr::null_mut(),
+      next: UnsafeCell::new(ptr::null()),
+      prev: UnsafeCell::new(ptr::null()),
+      
+      _phantom: PhantomPinned
+    });
+    
+    // SAFETY: There no way concurrent access can happen yet
+    // and root set need to be circular list
+    unsafe {
+      *head.next.get() = &*head;
+      *head.prev.get() = &*head;
+    }
+    
+    Self {
+      head
+    }
+  }
+}
+
 

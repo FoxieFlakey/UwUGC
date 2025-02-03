@@ -2,15 +2,11 @@ use std::{cell::UnsafeCell, marker::{PhantomData, PhantomPinned}, mem::MaybeUnin
 
 use crate::{allocator::HeapAlloc, ReferenceType};
 
-use super::{Heap, RootEntry};
+use super::{root_set::RootSet, Heap, RootEntry};
 use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{self, Object}, root_refs::{Exclusive, RootRef, Sendable}, ObjectLikeTraitInternal};
 
-pub struct Data<A: HeapAlloc> {
-  head: Pin<Box<RootEntry<A>>>
-}
-
 pub struct DataWrapper<A: HeapAlloc> {
-  inner: UnsafeCell<Data<A>>
+  inner: UnsafeCell<RootSet<A>>
 }
 
 // SAFETY: Manually enforces safety of concurrently accessing it
@@ -29,26 +25,8 @@ pub struct ConstructorScope {
 
 impl<A: HeapAlloc> DataWrapper<A> {
   pub fn new() -> Self {
-    let head = Box::pin(RootEntry {
-      gc_state: ptr::null_mut(),
-      obj: ptr::null_mut(),
-      next: UnsafeCell::new(ptr::null()),
-      prev: UnsafeCell::new(ptr::null()),
-      
-      _phantom: PhantomPinned
-    });
-    
-    // SAFETY: There no way concurrent access can happen yet
-    // and root set need to be circular list
-    unsafe {
-      *head.next.get() = &*head;
-      *head.prev.get() = &*head;
-    }
-    
     Self {
-      inner: UnsafeCell::new(Data {
-        head
-      })
+      inner: UnsafeCell::new(RootSet::new())
     }
   }
   
