@@ -115,7 +115,7 @@ impl<A: HeapAlloc> RootSet<A> {
     });
   }
   
-  pub fn for_each(&self, mut iterator: impl FnMut(&RootEntry<A>)) {
+  fn for_each(&self, mut iterator: impl FnMut(&RootEntry<A>)) {
     let head = self.head.as_ref().get_ref();
     
     // SAFETY: In circular buffer 'next' is always valid
