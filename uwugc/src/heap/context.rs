@@ -92,46 +92,19 @@ impl<A: HeapAlloc, T: ObjectLikeTraitInternal> RootRefRaw<'_, A, T> {
 
 impl<A: HeapAlloc, T: ObjectLikeTraitInternal> Drop for RootRefRaw<'_, A, T> {
   fn drop(&mut self) {
+    // Block GC as GC would see half modified root set if without it
+    // SAFETY: GCState is always valid
+    let cookie = unsafe { &*(*self.entry_ref).gc_state }.block_gc();
+    
     // Corresponding RootEntry and RootRef are free'd together
     // therefore its safe after removing reference from root set
     // SAFETY: The reference to the entry is managed by the same
     // thread which created it
-    let entry = unsafe { &*self.entry_ref };
+    unsafe { RootEntry::delete(self.entry_ref) };
     
-    // Block GC as GC would see half modified root set if without
-    // SAFETY: GCState is always valid
-    let cookie = unsafe { &*entry.gc_state }.block_gc();
-    
-    // SAFETY: Circular linked list is special that every next and prev
-    // is valid so its safe and GC is blocked so GC does not attempting
-    // to access root set
-    let next_ref = unsafe { &*(*entry.next.get()) };
-    let prev_ref = unsafe { &*(*entry.prev.get()) };
-    
-    // Actually removes
-    // SAFETY: GC is blocked so GC does not attempting
-    // to access root set
-    unsafe {
-      *next_ref.prev.get() = prev_ref;
-      *prev_ref.next.get() = next_ref;
-    };
-    
-    // Let GC run again and Release fence to allow GC to see
-    // removal of current entry (Acquire not needed as there
-    // no other writer thread other than GC which only ever
-    // does read)
+    // Release fence to make deletion visible to GC
     atomic::fence(atomic::Ordering::Release);
     drop(cookie);
-    
-    // Make sure that 'entry' reference will never be invalid
-    // by telling Rust its lifetime ends here
-    #[allow(dropping_references)]
-    drop(entry);
-    
-    // Drop the "root_entry" itself as its unused now
-    // SAFETY: Nothing reference it anymore so it is safe
-    // to be dropped and casted to *mut pointer
-    let _ = unsafe { Box::from_raw(self.entry_ref.cast_mut()) };
   }
 }
 

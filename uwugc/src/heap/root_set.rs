@@ -23,6 +23,29 @@ unsafe impl<A: HeapAlloc> Sync for RootEntry<A> {}
 unsafe impl<A: HeapAlloc> Send for RootEntry<A> {}
 
 impl<A: HeapAlloc> RootEntry<A> {
+  // SAFETY: Caller make sure its safe to delete this root entry
+  // and no possible concurrent access to the owning root set
+  pub unsafe fn delete(this: *const RootEntry<A>) {
+    // SAFETY: Circular linked list is special that every next and prev
+    // is valid so its safe and GC is blocked so GC does not attempting
+    // to access root set
+    let next_ref = unsafe { &*(*(*this).next.get()) };
+    let prev_ref = unsafe { &*(*(*this).prev.get()) };
+    
+    // Actually removes
+    // SAFETY: GC is blocked so GC does not attempting
+    // to access root set
+    unsafe {
+      *next_ref.prev.get() = prev_ref;
+      *prev_ref.next.get() = next_ref;
+    };
+    
+    // Drop the root entry itself as its not in any root set
+    // SAFETY: Nothing reference it anymore so it is safe
+    // to be dropped and casted to *mut pointer
+    let _ = unsafe { Box::from_raw(this.cast_mut()) };
+  }
+  
   // Insert 'val' to next of this entry
   // Returns a *mut pointer to it and leaks it
   // SAFETY: Caller ensure that '&self' is the only borrow
