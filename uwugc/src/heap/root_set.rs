@@ -25,8 +25,10 @@ unsafe impl<A: HeapAlloc> Send for RootEntry<A> {}
 impl<A: HeapAlloc> RootEntry<A> {
   // Insert 'val' to next of this entry
   // Returns a *mut pointer to it and leaks it
-  pub unsafe fn insert(&self, val: Box<RootEntry<A>>) -> *mut RootEntry<A> {
-    // SAFETY: The caller must ensures that the root set is not concurrently accessed
+  // SAFETY: Caller ensure that '&self' is the only borrow
+  // TODO: Enforce it with '&mut self' instead
+  unsafe fn insert(&self, val: Box<RootEntry<A>>) -> *mut RootEntry<A> {
+    // SAFETY: Internals of manually just setting pointers for linked list
     unsafe {
       let val = Box::leak(val);
       
@@ -101,8 +103,8 @@ impl<A: HeapAlloc> RootSet<A> {
       _phantom: PhantomPinned
     });
     
-    // SAFETY: No other thread can access the same root set
-    // enforced by mutable borrow checker on self
+    // SAFETY: self is &mut borrow so no other borrow
+    // to 'head' can exist
     unsafe { self.head.insert(entry) }
   }
   
