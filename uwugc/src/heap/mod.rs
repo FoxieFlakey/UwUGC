@@ -80,15 +80,7 @@ impl<A: HeapAlloc> State<A> {
       // SAFETY: Its caller responsibility to make sure there are no
       // concurrent modification to the root set
       unsafe {
-        ctx.for_each_root(|entry| {
-          // NOTE: Cast reference to *mut Object because after this
-          // return caller must ensure that *mut Object is valid
-          // because after this returns no lock ensures that GC isn't
-          // actively collect that potential *mut Object
-          //
-          // SAFETY: root references are never null
-          buffer.push(NonNull::new_unchecked(entry.obj));
-        });
+        ctx.take_root_set_snapshot(buffer);
       }
     }
   }

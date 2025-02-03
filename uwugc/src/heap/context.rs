@@ -32,12 +32,12 @@ impl<A: HeapAlloc> DataWrapper<A> {
   
   // SAFETY: Caller ensures that thread managing the context is not actively
   // accessing this context
-  pub(super) unsafe fn for_each_root(&self, iterator: impl FnMut(&RootEntry<A>)) {
+  pub(super) unsafe fn take_root_set_snapshot(&self, buffer: &mut Vec<NonNull<Object>>) {
     // Make sure any newly added/removed root entry is visible
     atomic::fence(atomic::Ordering::Acquire);
     // SAFETY: Caller ensured mutators are blocked so nothing modifies this
     let inner = unsafe { &*self.inner.get() };
-    inner.for_each(iterator);
+    inner.take_snapshot(buffer);
   }
 }
 

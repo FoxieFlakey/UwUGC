@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::PhantomPinned, pin::Pin, ptr};
+use std::{cell::UnsafeCell, marker::PhantomPinned, pin::Pin, ptr::{self, NonNull}};
 
 use crate::{allocator::HeapAlloc, gc::GCState, objects_manager::Object};
 
@@ -106,6 +106,13 @@ impl<A: HeapAlloc> RootSet<A> {
     // SAFETY: self is &mut borrow so no other borrow
     // to 'head' can exist
     unsafe { self.head.insert(entry) }
+  }
+  
+  pub fn take_snapshot(&self, buffer: &mut Vec<NonNull<Object>>) {
+    self.for_each(|entry| {
+      // SAFETY: Root set won't allow null pointers
+      unsafe { buffer.push(NonNull::new_unchecked(entry.obj)) };
+    });
   }
   
   pub fn for_each(&self, mut iterator: impl FnMut(&RootEntry<A>)) {
