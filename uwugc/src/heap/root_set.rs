@@ -76,7 +76,7 @@ impl<A: HeapAlloc> RootSet<A> {
     }
   }
   
-  pub fn clear(&mut self) {
+  fn clear(&mut self) {
     let head = self.head.as_ref().get_ref();
     
     // SAFETY: Borrow checker ensured that nothing accessed the root set concurrently
