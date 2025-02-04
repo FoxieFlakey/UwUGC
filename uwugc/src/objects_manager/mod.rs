@@ -516,8 +516,8 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
           }
         }
         
-        // SAFETY: *const can be safely converted to *mut as unmarked object
-        // mean mutator has no way accesing it
+        // SAFETY: The object is already dead because
+        // its not marked as live so its fine to deallocate
         unsafe { self.owner.dealloc(current_ptr.cast()) };
         continue;
       }
@@ -545,8 +545,8 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       // and Sweeper hasn't deallocated it
       next_ptr = unsafe { *current.as_ref().next.get() };
       
-      // SAFETY: *const can be safely converted to *mut as unmarked object
-      // mean mutator has no way accesing it
+      // SAFETY: The object is already dead and queued to have it
+      // have its deallocation delayed
       unsafe { self.owner.dealloc(current) };
     }
     
