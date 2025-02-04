@@ -550,19 +550,20 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       unsafe { self.owner.dealloc(current) };
     }
     
-    // There are no living objects
-    if live_objects.is_none() {
-      // If there no live objects, the last can't exist
-      assert!(last_live_objects.is_none());
-      return stats;
-    }
-    
-    // If there are live objects, 'last_live_objects' can't be null
-    assert!(last_live_objects.is_some());
-    
-    // SAFETY: Objects are alive and a valid singly linked chain
-    unsafe {
-      self.owner.add_chain_to_list(live_objects.unwrap(), last_live_objects.unwrap());
+    match (live_objects, last_live_objects) {
+      // There were live objects
+      (Some(head), Some(tail)) => {
+        // SAFETY: Objects are alive and a valid singly linked chain
+        unsafe {
+          self.owner.add_chain_to_list(head, tail);
+        }
+      },
+      
+      // There was no live objects
+      (None, None) => (),
+      
+      // Inconsistent state (likely a bug in sweep code above!)
+      _ => panic!("Live object head and tail pointers are inconsistent")
     }
     
     stats
