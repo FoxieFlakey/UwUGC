@@ -376,7 +376,7 @@ impl<A: HeapAlloc> ObjectManager<A> {
     // SAFETY: Caller ensured that 'obj' pointer is only user left
     // and safe to be deallocated
     unsafe { self.alloc.deallocate(obj.cast(), layout); };
-    self.lifetime_dealloc_bytes.fetch_add(layout.size().try_into().unwrap(), Ordering::Relaxed);
+    // self.lifetime_dealloc_bytes.fetch_add(layout.size().try_into().unwrap(), Ordering::Relaxed);
   }
   
   pub fn create_context(&self) -> Handle<A> {
@@ -566,6 +566,7 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
     }
     
     self.owner.used_size.fetch_sub(stats.dead_bytes, Ordering::Relaxed);
+    self.owner.lifetime_dealloc_bytes.fetch_add(stats.dead_bytes.try_into().unwrap(), Ordering::Relaxed);
     stats
   }
 }
