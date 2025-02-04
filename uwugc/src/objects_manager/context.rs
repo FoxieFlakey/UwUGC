@@ -82,7 +82,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
   
   // SAFETY: Caller has to ensure layout is correct for the data contained
   // so 'usage' can be counted correctly
-  unsafe fn try_alloc_unchecked<F: FnOnce() -> Result<NonNull<Object>, AllocError>>(&self, func: F, data_layout: Layout, _gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
+  unsafe fn try_alloc_unchecked<F: FnOnce() -> Result<NonNull<Object>, AllocError>>(&self, func: F, data_layout: Layout, _gc_lock_cookie: &mut GCLockCookie<A>) -> Result<NonNull<Object>, AllocError> {
     let manager = self.owner;
     let object_size = Object::calc_layout(&data_layout).0.size();
     manager.used_size.fetch_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
@@ -132,11 +132,11 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     
     // Make sure potential flush_to_global can see latest items
     atomic::fence(Ordering::Release);
-    Ok(obj_ptr)
+    Ok(obj)
   }
   
   // SAFETY: Initializer must properly initialize the array
-  pub unsafe fn try_alloc_array<Ref: ReferenceType, F: FnMut(&mut MaybeUninit<[Ref; LEN]>), const LEN: usize>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
+  pub unsafe fn try_alloc_array<Ref: ReferenceType, F: FnMut(&mut MaybeUninit<[Ref; LEN]>), const LEN: usize>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<NonNull<Object>, AllocError> {
     let (array_layout, stride) = Layout::new::<Ref>()
       .repeat(LEN)
       .unwrap();
@@ -151,7 +151,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
   }
   
   // SAFETY: Initializer must properly initialize T
-  pub unsafe fn try_alloc<T: Describeable + ObjectLikeTraitInternal, F: FnMut(&mut MaybeUninit<T>)>(&self, mut func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
+  pub unsafe fn try_alloc<T: Describeable + ObjectLikeTraitInternal, F: FnMut(&mut MaybeUninit<T>)>(&self, mut func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<NonNull<Object>, AllocError> {
     let descriptor = DescriptorInternal {
       api: T::get_descriptor(),
       drop_helper: T::drop_helper
@@ -209,14 +209,12 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         // for object pointer which is treated as special value to reference
         // statically declared descriptor::SELF_DESCRIPTOR
         let new_descriptor = unsafe {
-          NonNull::new_unchecked(
-            self.try_alloc_unchecked(|| {
-                Object::new(self.owner, |x| { x.write(descriptor); }, None)
-              },
-              SELF_DESCRIPTOR.layout,
-              gc_lock_cookie
-            )?
-          )
+          self.try_alloc_unchecked(|| {
+              Object::new(self.owner, |x| { x.write(descriptor); }, None)
+            },
+            SELF_DESCRIPTOR.layout,
+            gc_lock_cookie
+          )?
         };
         
         // If not present in cache, try insert into it with upgraded rwlock

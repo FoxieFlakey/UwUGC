@@ -166,7 +166,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
       assert!(obj.is_ok(), "Heap run out of memory!");
     }
     
-    let root_ref = self.new_root_ref_from_ptr(obj.map(|x| NonNull::new(x).unwrap()).unwrap(), &mut gc_lock_cookie);
+    let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
     // SAFETY: The object reference is exclusively owned by this thread
     unsafe { RootRef::new(root_ref) }
   }
@@ -197,7 +197,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
       assert!(obj.is_ok(), "Heap run out of memory!");
     }
     
-    let root_ref = self.new_root_ref_from_ptr(obj.map(|x| NonNull::new(x).unwrap()).unwrap(), &mut gc_lock_cookie);
+    let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
     // SAFETY: The object reference is exclusively owned by this thread
     unsafe { RootRef::new(root_ref) }
   }
