@@ -125,15 +125,14 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
   }
   
   pub fn new_root_ref_from_ptr<T: ObjectLikeTraitInternal>(&self, ptr: NonNull<Object>, _gc_lock_cookie: &mut GCLockCookie<A>) -> RootRefRaw<'a, A, T> {
-    // Acquire fence to allow potential changes to root set by GC to be visible
-    atomic::fence(atomic::Ordering::Acquire);
-    
     // SAFETY: GC is blocked due existence of lock cookie and GC is only other
     // thing which access the root
     let entry = unsafe { (*self.ctx.inner.get()).insert(ptr) };
     
     // Release fence to allow newly added value to be
     // visible to the GC
+    // NOTE: There is no acquire fence because
+    // GC won't be modifying the list so that is not needed
     atomic::fence(atomic::Ordering::Release);
     RootRefRaw {
       entry_ref: entry,
