@@ -39,14 +39,14 @@ impl<A: HeapAlloc> RootEntry<A> {
     let this = unsafe { this.as_mut() };
     
     // SAFETY: Circular linked list is special that every next and prev
-    // is valid so its safe and GC is blocked so GC does not attempting
-    // to access root set
+    // is valid so its safe and caller ensured that there are no concurrent
+    // access
     let next_ref = unsafe { (*this.next.get()).as_ref() };
     let prev_ref = unsafe { (*this.prev.get()).as_ref() };
     
     // Actually removes
-    // SAFETY: GC is blocked so GC does not attempting
-    // to access root set
+    // SAFETY: Caller ensures there are no concurrent access while
+    // deletion is in progress
     unsafe {
       *next_ref.prev.get() = NonNull::from_ref(prev_ref);
       *prev_ref.next.get() = NonNull::from_ref(next_ref);
