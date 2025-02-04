@@ -11,7 +11,7 @@ use tabled::{settings::Style, Table, Tabled};
 use uwugc::{root_refs::{Exclusive, RootRef, Sendable}, CycleState, CycleStep, GCNullableBox, GCParams, GCRunReason, GCStats, GlobalHeap, HeapArc, HeapStats, Params};
 
 static QUIT_THREADS: AtomicBool = AtomicBool::new(false);
-const MAX_SIZE: usize = 1900 * 1024 * 1024;
+const MAX_SIZE: usize = 1024 * 1024 * 1024;
 const POLL_RATE: u32 = 20;
 
 #[cfg(not(miri))]
@@ -81,7 +81,7 @@ fn main() {
     }
     black_box(store);
   };
-  test();
+  // test();
   println!("Warmup completed!");
   
   let start = Instant::now();
@@ -148,7 +148,7 @@ fn main() {
             let growth_abs = growth.abs();
             
             writeln!(&mut stats_file, "{timestamp},{usage},{max_size},{state_id}").unwrap();
-            /*
+            
             print!("\r\x1b[3A");
             
             print!("\x1b[2K");
@@ -161,7 +161,7 @@ fn main() {
             println!("GC Rate: {gc_rate: >8.2} MiB/s Alloc Rate: {alloc_rate: >8.2} MiB/s Growth: {growth_direction}{growth_abs: >7.2} MiB/s");
             
             io::stdout().flush().unwrap();
-            */
+            
             thread::sleep(Duration::from_secs_f32(1.0 / poll_rate));
           }
           
