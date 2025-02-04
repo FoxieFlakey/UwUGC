@@ -1,6 +1,6 @@
 use std::{cell::UnsafeCell, marker::PhantomData, mem::MaybeUninit, ptr::NonNull, sync::{atomic, Arc}, thread};
 
-use crate::{allocator::HeapAlloc, ReferenceType};
+use crate::{allocator::HeapAlloc, gc::GCState, ReferenceType};
 
 use super::{root_set::RootSet, Heap, RootEntry};
 use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{self, Object}, root_refs::{Exclusive, RootRef, Sendable}, ObjectLikeTraitInternal};
@@ -24,9 +24,13 @@ pub struct ConstructorScope {
 }
 
 impl<A: HeapAlloc> DataWrapper<A> {
-  pub fn new() -> Self {
+  // SAFETY: Caller ensure that gc_state lives longer than
+  // this data wrapper
+  pub unsafe fn new(gc_state: NonNull<GCState<A>>) -> Self {
     Self {
-      inner: UnsafeCell::new(RootSet::new())
+      // SAFETY: Caller already ensured that gc_state lives longer than
+      // this data wrapper
+      inner: UnsafeCell::new(unsafe { RootSet::new(gc_state) })
     }
   }
   
@@ -126,7 +130,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     
     // SAFETY: GC is blocked due existence of lock cookie and GC is only other
     // thing which access the root
-    let entry = unsafe { (*self.ctx.inner.get()).insert(ptr, NonNull::from_ref(&self.owner.gc)) };
+    let entry = unsafe { (*self.ctx.inner.get()).insert(ptr) };
     
     // Release fence to allow newly added value to be
     // visible to the GC

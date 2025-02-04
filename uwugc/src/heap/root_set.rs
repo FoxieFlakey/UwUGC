@@ -85,9 +85,12 @@ pub struct RootSet<A: HeapAlloc> {
 }
 
 impl<A: HeapAlloc> RootSet<A> {
-  pub fn new() -> Self {
+  // SAFETY: Caller must make sure that GCState<A> lives atleast
+  // as long as the root set itself or RootEntry::get_gc_state
+  // may return invalid pointer
+  pub unsafe fn new(owning_gc: NonNull<GCState<A>>) -> Self {
     let head = Box::pin(RootEntry {
-      gc_state: NonNull::dangling(),
+      gc_state: owning_gc,
       obj: NonNull::dangling(),
       next: UnsafeCell::new(ptr::null()),
       prev: UnsafeCell::new(ptr::null()),
@@ -124,12 +127,12 @@ impl<A: HeapAlloc> RootSet<A> {
     }
   }
   
-  pub fn insert(&mut self, ptr: NonNull<Object>, gc_state: NonNull<GCState<A>>) -> *mut RootEntry<A> {
+  pub fn insert(&mut self, ptr: NonNull<Object>) -> *mut RootEntry<A> {
     let entry = Box::new(RootEntry {
       obj: ptr,
       next: UnsafeCell::new(ptr::null()),
       prev: UnsafeCell::new(ptr::null()),
-      gc_state,
+      gc_state: self.head.gc_state,
       
       _phantom: PhantomPinned
     });

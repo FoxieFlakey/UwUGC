@@ -65,7 +65,12 @@ impl<A: HeapAlloc> Heap<A> {
   pub fn create_context(&self) -> Context<A> {
     let mut contexts = self.contexts.lock();
     let ctx = contexts.entry(thread::current().id())
-      .or_insert_with(|| Arc::new(DataWrapper::new()));
+      .or_insert_with(|| {
+        Arc::new(
+          // SAFETY: GC lives longer than data wrapper so it is safe
+          unsafe { DataWrapper::new(NonNull::from_ref(&self.gc)) }
+        )
+      });
     
     Context::new(self, self.object_manager.create_context(), ctx.clone())
   }
