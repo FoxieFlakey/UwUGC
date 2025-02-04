@@ -17,7 +17,7 @@ pub struct AllocError;
 
 #[repr(align(4))]
 pub struct Object {
-  next: UnsafeCell<*mut Object>,
+  next: UnsafeCell<Option<NonNull<Object>>>,
   
   // Containing metadata about this object compressed into
   // single machine word
@@ -78,7 +78,7 @@ impl Object {
   
   fn new_common<A: HeapAlloc, T: ObjectLikeTraitInternal, F: FnOnce(&mut MaybeUninit<T>)>(owner: &ObjectManager<A>, initializer: F, meta_word: MetaWord) -> Result<NonNull<Object>, AllocError> {
     let header = Object {
-      next: UnsafeCell::new(ptr::null_mut()),
+      next: UnsafeCell::new(None),
       meta_word
     };
     
@@ -329,7 +329,7 @@ impl<A: HeapAlloc> ObjectManager<A> {
       // by this and caller ensures that 'start' and 'end' is independent
       // chain owned by caller so 'end' is only modified by current thread
       // and won't be accessed to other until its visible by next compare exchange
-      unsafe { *end.next.get() = current_head }
+      unsafe { *end.next.get() = NonNull::new(current_head) }
       
       // Change head to point to 'start' of chain
       // NOTE: Relaxed failure ordering because don't need to access the 'next' pointer in the head
@@ -493,8 +493,10 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       // SAFETY: Sweeper "owns" the individual object's 'next' field
       unsafe {
         // Get pointer to next, and disconnect current object from chain
-        next_ptr = *current.next.get();
-        *current.next.get() = ptr::null_mut();
+        next_ptr = (*current.next.get())
+          .map(NonNull::as_ptr)
+          .unwrap_or(ptr::null_mut());
+        *current.next.get() = None;
       }
       
       let cur_size = current.get_object_and_data_layout().0.size();
@@ -512,7 +514,7 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
               deferred_dealloc_list = current_ptr.as_ptr();
             } else {
               // SAFETY: Sweeper "owns" the individual object's 'next' field
-              unsafe { *current.next.get() = deferred_dealloc_list };
+              unsafe { *current.next.get() = NonNull::new(deferred_dealloc_list) };
               deferred_dealloc_list = current_ptr.as_ptr();
             }
             
@@ -539,7 +541,7 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       } else {
         // Append current object to list of live objects
         // SAFETY: Sweeper "owns" the individual object's 'next' field
-        unsafe { *current.next.get() = live_objects };
+        unsafe { *current.next.get() = NonNull::new(live_objects) };
         live_objects = current_ptr.as_ptr();
       }
     }
@@ -552,7 +554,11 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       
       // SAFETY: Sweeper "owns" the individual object's 'next' field
       // and Sweeper hasn't deallocated it
-      next_ptr = unsafe { *current.as_ref().next.get() };
+      next_ptr = unsafe {
+        (*current.as_ref().next.get())
+          .map(NonNull::as_ptr)
+          .unwrap_or(ptr::null_mut())
+      };
       
       // SAFETY: *const can be safely converted to *mut as unmarked object
       // mean mutator has no way accesing it

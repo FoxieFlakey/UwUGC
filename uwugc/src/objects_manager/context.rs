@@ -120,7 +120,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       // The list has some objects, append current 'start' to end of this object
       // SAFETY: The object isn't visible yet to other thread so its safe from
       // concurrent accesses
-      Some(x) => unsafe { *obj_header.next.get() = x.as_ptr() },
+      Some(x) => unsafe { *obj_header.next.get() = Some(*x) },
       
       // The list was empty this object is the 'end' of current list
       None => *end = Some(obj)
