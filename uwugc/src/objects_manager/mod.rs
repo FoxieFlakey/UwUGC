@@ -376,7 +376,6 @@ impl<A: HeapAlloc> ObjectManager<A> {
     // SAFETY: Caller ensured that 'obj' pointer is only user left
     // and safe to be deallocated
     unsafe { self.alloc.deallocate(obj.cast(), layout); };
-    self.used_size.fetch_sub(layout.size(), Ordering::Relaxed);
     self.lifetime_dealloc_bytes.fetch_add(layout.size().try_into().unwrap(), Ordering::Relaxed);
   }
   
@@ -566,6 +565,7 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       _ => panic!("Live object head and tail pointers are inconsistent")
     }
     
+    self.owner.used_size.fetch_sub(stats.dead_bytes, Ordering::Relaxed);
     stats
   }
 }
