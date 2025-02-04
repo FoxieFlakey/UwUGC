@@ -135,13 +135,6 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     Ok(obj_ptr)
   }
   
-  // pub fn try_alloc<T: Describeable + ObjectLikeTraitInternal, F: FnMut() -> T>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
-  //   // SAFETY: The descriptor is correct and retrieved from T::get_descriptor so the
-  //   // correctnes of it depends on the unsafe trait Describeable being upheld by the
-  //   // type
-  //   unsafe { self.try_alloc_common(func, gc_lock_cookie, DescriptorInternal { api: T::get_descriptor(), drop_helper: T::drop_helper }) }
-  // }
-  
   // SAFETY: Initializer must properly initialize the array
   pub unsafe fn try_alloc_array<Ref: ReferenceType, F: FnMut(&mut MaybeUninit<[Ref; LEN]>), const LEN: usize>(&self, func: F, gc_lock_cookie: &mut GCLockCookie<A>) -> Result<*mut Object, AllocError> {
     let (array_layout, stride) = Layout::new::<Ref>()
