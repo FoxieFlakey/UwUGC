@@ -107,8 +107,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     // SAFETY: Just allocated it before
     let obj_header = unsafe { obj.as_ref() };
     
-    // Ensure changes made previously by potential flush_to_global
-    // emptying the local list visible to this
+    // Make sure changes to local object chain from GC is visible
     atomic::fence(Ordering::Acquire);
     
     // Add object to local chain
@@ -129,7 +128,7 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
     // Update the 'start' so it point to newly made object
     *start = Some(obj);
     
-    // Make sure potential flush_to_global can see latest items
+    // Make sure changes to local object chain is visible to GC
     atomic::fence(Ordering::Release);
     Ok(obj)
   }
