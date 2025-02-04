@@ -9,7 +9,7 @@ pub struct RootEntry<A: HeapAlloc> {
   // and next's prev)
   next: UnsafeCell<*const RootEntry<A>>,
   prev: UnsafeCell<*const RootEntry<A>>,
-  gc_state: *const GCState<A>,
+  gc_state: NonNull<GCState<A>>,
   obj: NonNull<Object>,
   
   // RootEntry cannot be moved at will because
@@ -23,7 +23,7 @@ unsafe impl<A: HeapAlloc> Sync for RootEntry<A> {}
 unsafe impl<A: HeapAlloc> Send for RootEntry<A> {}
 
 impl<A: HeapAlloc> RootEntry<A> {
-  pub fn get_gc_state(&self) -> *const GCState<A> {
+  pub fn get_gc_state(&self) -> NonNull<GCState<A>> {
     self.gc_state
   }
   
@@ -87,7 +87,7 @@ pub struct RootSet<A: HeapAlloc> {
 impl<A: HeapAlloc> RootSet<A> {
   pub fn new() -> Self {
     let head = Box::pin(RootEntry {
-      gc_state: ptr::null_mut(),
+      gc_state: NonNull::dangling(),
       obj: NonNull::dangling(),
       next: UnsafeCell::new(ptr::null()),
       prev: UnsafeCell::new(ptr::null()),
@@ -124,7 +124,7 @@ impl<A: HeapAlloc> RootSet<A> {
     }
   }
   
-  pub fn insert(&mut self, ptr: NonNull<Object>, gc_state: *const GCState<A>) -> *mut RootEntry<A> {
+  pub fn insert(&mut self, ptr: NonNull<Object>, gc_state: NonNull<GCState<A>>) -> *mut RootEntry<A> {
     let entry = Box::new(RootEntry {
       obj: ptr,
       next: UnsafeCell::new(ptr::null()),

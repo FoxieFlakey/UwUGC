@@ -10,6 +10,7 @@
 
 #![feature(alloc_layout_extra)]
 #![feature(ptr_as_uninit)]
+#![feature(non_null_from_ref)]
 
 mod api;
 mod objects_manager;

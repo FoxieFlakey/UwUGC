@@ -92,7 +92,7 @@ impl<A: HeapAlloc, T: ObjectLikeTraitInternal> Drop for RootRefRaw<'_, A, T> {
   fn drop(&mut self) {
     // Block GC as GC would see half modified root set if without it
     // SAFETY: GCState is always valid
-    let cookie = unsafe { &*(*self.entry_ref).get_gc_state() }.block_gc();
+    let cookie = unsafe { (*self.entry_ref).get_gc_state().as_ref() }.block_gc();
     
     // Corresponding RootEntry and RootRef are free'd together
     // therefore its safe after removing reference from root set
@@ -126,7 +126,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     
     // SAFETY: GC is blocked due existence of lock cookie and GC is only other
     // thing which access the root
-    let entry = unsafe { (*self.ctx.inner.get()).insert(ptr, &self.owner.gc) };
+    let entry = unsafe { (*self.ctx.inner.get()).insert(ptr, NonNull::from_ref(&self.owner.gc)) };
     
     // Release fence to allow newly added value to be
     // visible to the GC
