@@ -279,7 +279,7 @@ unsafe impl<A: HeapAlloc> Send for ObjectManager<A> {}
 
 pub struct Sweeper<'a, A: HeapAlloc> {
   owner: &'a ObjectManager<A>,
-  saved_chain: Option<*mut Object>
+  saved_chain: Option<NonNull<Object>>
 }
 
 impl<A: HeapAlloc> ObjectManager<A> {
@@ -415,7 +415,7 @@ impl<A: HeapAlloc> ObjectManager<A> {
       // Atomically empty the list and get snapshot of current objects
       // at the time of swap, Ordering::Acquire because changes must be
       // visible now
-      saved_chain: Some(self.head.swap(ptr::null_mut(), Ordering::Acquire))
+      saved_chain: NonNull::new(self.head.swap(ptr::null_mut(), Ordering::Acquire))
     };
     
     drop(sweeper_lock_guard);
@@ -473,29 +473,24 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       total_objects: 0
     };
     
-    let mut live_objects: *mut Object = ptr::null_mut();
-    let mut last_live_objects: *mut Object = ptr::null_mut();
-    let mut next_ptr = self.saved_chain.take().unwrap();
+    let mut live_objects: Option<NonNull<Object>> = None;
+    let mut last_live_objects: Option<NonNull<Object>> = None;
+    let mut next_ptr = self.saved_chain.take();
     
     // List of objects which its deallocation be deferred.
     // This list only contains dead descriptors which has to
     // be alive during initial dealloc because descriptor could
     // be used during dealloc.
-    let mut deferred_dealloc_list: *mut Object = ptr::null_mut();
+    let mut deferred_dealloc_list: Option<NonNull<Object>> = None;
     
-    while !next_ptr.is_null() {
-      // SAFETY: Already checked before that it is nonnull
-      let current_ptr = unsafe { NonNull::new_unchecked(next_ptr) };
-      
+    while let Some(current_ptr) = next_ptr {
       // SAFETY: 'current' is valid because its leaked
       let current = unsafe { current_ptr.as_ref() };
       
       // SAFETY: Sweeper "owns" the individual object's 'next' field
       unsafe {
         // Get pointer to next, and disconnect current object from chain
-        next_ptr = (*current.next.get())
-          .map(NonNull::as_ptr)
-          .unwrap_or(ptr::null_mut());
+        next_ptr = *current.next.get();
         *current.next.get() = None;
       }
       
@@ -510,13 +505,9 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
         // It is descriptor object, defer it to deallocate later
         if let ObjectMetadata::Ordinary(meta) = current.meta_word.get_object_metadata() {
           if meta.is_descriptor() {
-            if deferred_dealloc_list.is_null() {
-              deferred_dealloc_list = current_ptr.as_ptr();
-            } else {
-              // SAFETY: Sweeper "owns" the individual object's 'next' field
-              unsafe { *current.next.get() = NonNull::new(deferred_dealloc_list) };
-              deferred_dealloc_list = current_ptr.as_ptr();
-            }
+            // SAFETY: Sweeper "owns" the individual object's 'next' field
+            unsafe { *current.next.get() = deferred_dealloc_list };
+            deferred_dealloc_list = Some(current_ptr);
             
             // Defer deallocation beacuse descriptor object might
             // be needed during deallocation and could cause
@@ -534,31 +525,25 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
       stats.live_bytes += cur_size;
       stats.live_objects += 1;
       
-      // First live object, init the chain
-      if live_objects.is_null() {
-        live_objects = current_ptr.as_ptr();
-        last_live_objects = current_ptr.as_ptr();
-      } else {
-        // Append current object to list of live objects
-        // SAFETY: Sweeper "owns" the individual object's 'next' field
-        unsafe { *current.next.get() = NonNull::new(live_objects) };
-        live_objects = current_ptr.as_ptr();
+      // Current object is the 'last' live object in live objects list
+      // new live objects are prepended
+      if live_objects.is_none() {
+        last_live_objects = Some(current_ptr);
       }
+      
+      // Append current object to list of live objects
+      // SAFETY: Sweeper "owns" the individual object's 'next' field
+      unsafe { *current.next.get() = live_objects };
+      
+      live_objects = Some(current_ptr);
     }
     
     // Now dealloc the deferred deallocs
     next_ptr = deferred_dealloc_list;
-    while !next_ptr.is_null() {
-      // SAFETY: Already checked that pointer is non null
-      let current = unsafe { NonNull::new_unchecked(next_ptr) };
-      
+    while let Some(current) = next_ptr {
       // SAFETY: Sweeper "owns" the individual object's 'next' field
       // and Sweeper hasn't deallocated it
-      next_ptr = unsafe {
-        (*current.as_ref().next.get())
-          .map(NonNull::as_ptr)
-          .unwrap_or(ptr::null_mut())
-      };
+      next_ptr = unsafe { *current.as_ref().next.get() };
       
       // SAFETY: *const can be safely converted to *mut as unmarked object
       // mean mutator has no way accesing it
@@ -566,18 +551,18 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
     }
     
     // There are no living objects
-    if live_objects.is_null() {
+    if live_objects.is_none() {
       // If there no live objects, the last can't exist
-      assert!(last_live_objects.is_null());
+      assert!(last_live_objects.is_none());
       return stats;
     }
     
     // If there are live objects, 'last_live_objects' can't be null
-    assert!(!last_live_objects.is_null());
+    assert!(last_live_objects.is_some());
     
     // SAFETY: Objects are alive and a valid singly linked chain
     unsafe {
-      self.owner.add_chain_to_list(NonNull::new(live_objects).unwrap(), NonNull::new(last_live_objects).unwrap());
+      self.owner.add_chain_to_list(live_objects.unwrap(), last_live_objects.unwrap());
     }
     
     stats
