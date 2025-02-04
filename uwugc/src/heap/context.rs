@@ -5,14 +5,14 @@ use crate::{allocator::HeapAlloc, gc::GCState, ReferenceType};
 use super::{root_set::RootSet, Heap, RootEntry};
 use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{self, Object}, root_refs::{Exclusive, RootRef, Sendable}, ObjectLikeTraitInternal};
 
-pub struct DataWrapper<A: HeapAlloc> {
+pub struct ContextData<A: HeapAlloc> {
   inner: UnsafeCell<RootSet<A>>
 }
 
 // SAFETY: Manually enforces safety of concurrently accessing it
 // by GC lock, and GC is only the other thread which reads this
 // while the owning thread is the only writer
-unsafe impl<A: HeapAlloc> Sync for DataWrapper<A> {}
+unsafe impl<A: HeapAlloc> Sync for ContextData<A> {}
 
 // This type exists so that any API can enforce that
 // it is being constructed/called inside a special context which
@@ -23,7 +23,7 @@ pub struct ConstructorScope {
   _private: ()
 }
 
-impl<A: HeapAlloc> DataWrapper<A> {
+impl<A: HeapAlloc> ContextData<A> {
   // SAFETY: Caller ensure that gc_state lives longer than
   // this data wrapper
   pub unsafe fn new(gc_state: NonNull<GCState<A>>) -> Self {
@@ -46,7 +46,7 @@ impl<A: HeapAlloc> DataWrapper<A> {
 }
 
 pub struct Context<'a, A: HeapAlloc> {
-  ctx: Arc<DataWrapper<A>>,
+  ctx: Arc<ContextData<A>>,
   obj_manager_ctx: objects_manager::Handle<'a, A>,
   owner: &'a Heap<A>,
   // ContextHandle will only stays at current thread
@@ -111,7 +111,7 @@ impl<A: HeapAlloc, T: ObjectLikeTraitInternal> Drop for RootRefRaw<'_, A, T> {
 }
 
 impl<'a, A: HeapAlloc> Context<'a, A> {
-  pub(super) fn new(owner: &'a Heap<A>, obj_manager_ctx: objects_manager::Handle<'a, A>, ctx: Arc<DataWrapper<A>>) -> Self {
+  pub(super) fn new(owner: &'a Heap<A>, obj_manager_ctx: objects_manager::Handle<'a, A>, ctx: Arc<ContextData<A>>) -> Self {
     Self {
       ctx,
       owner,

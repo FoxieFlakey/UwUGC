@@ -2,7 +2,7 @@ use std::{collections::HashMap, ops::Deref, ptr::NonNull, sync::Arc, thread::{se
 use crate::{allocator::HeapAlloc, gc::{CycleState, GCStats}};
 use parking_lot::Mutex;
 
-use context::DataWrapper;
+use context::ContextData;
 pub use context::{Context, RootRefRaw, ConstructorScope};
 
 use crate::{gc::{GCParams, GCState}, objects_manager::{Object, ObjectManager}};
@@ -21,7 +21,7 @@ pub struct Params {
 
 pub struct State<A: HeapAlloc> {
   pub object_manager: ObjectManager<A>,
-  pub contexts: Mutex<HashMap<ThreadId, Arc<DataWrapper<A>>>>,
+  pub contexts: Mutex<HashMap<ThreadId, Arc<ContextData<A>>>>,
   
   pub gc: GCState<A>
 }
@@ -67,8 +67,8 @@ impl<A: HeapAlloc> Heap<A> {
     let ctx = contexts.entry(thread::current().id())
       .or_insert_with(|| {
         Arc::new(
-          // SAFETY: GC lives longer than data wrapper so it is safe
-          unsafe { DataWrapper::new(NonNull::from_ref(&self.gc)) }
+          // SAFETY: GC lives longer than context data so it is safe
+          unsafe { ContextData::new(NonNull::from_ref(&self.gc)) }
         )
       });
     
