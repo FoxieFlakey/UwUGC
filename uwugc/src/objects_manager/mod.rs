@@ -318,13 +318,13 @@ impl<A: HeapAlloc> ObjectManager<A> {
   
   // SAFETY: Caller ensures that 'start' and 'end' is valid Object
   // and also valid chain
-  pub(super) unsafe fn add_chain_to_list(&self, start: *const Object, end: *const Object) {
+  pub(super) unsafe fn add_chain_to_list(&self, start: NonNull<Object>, end: NonNull<Object>) {
     // NOTE: Relaxed ordering because don't need to access next pointer of the 'head'
     let mut current_head = self.head.load(Ordering::Relaxed);
     loop {
       // Modify 'end' object's 'next' field so it connects to current head 
       // SAFETY: Caller responsibility that 'end' is valid
-      let end = unsafe { &*end };
+      let end = unsafe { end.as_ref() };
       // SAFETY: The 'next' field in 'end' will ever be only modified
       // by this and caller ensures that 'start' and 'end' is independent
       // chain owned by caller so 'end' is only modified by current thread
@@ -335,7 +335,7 @@ impl<A: HeapAlloc> ObjectManager<A> {
       // NOTE: Relaxed failure ordering because don't need to access the 'next' pointer in the head
       // NOTE: Release success ordering because potential changes made by the caller
       // to chain of objects should be visible to other threads now 
-      match self.head.compare_exchange_weak(current_head, start.cast_mut(), Ordering::Release, Ordering::Relaxed) {
+      match self.head.compare_exchange_weak(current_head, start.as_ptr(), Ordering::Release, Ordering::Relaxed) {
         Ok(_) => break,
         Err(new_next) => current_head = new_next
       }
@@ -571,7 +571,7 @@ impl<A: HeapAlloc> Sweeper<'_, A> {
     
     // SAFETY: Objects are alive and a valid singly linked chain
     unsafe {
-      self.owner.add_chain_to_list(live_objects, last_live_objects);
+      self.owner.add_chain_to_list(NonNull::new(live_objects).unwrap(), NonNull::new(last_live_objects).unwrap());
     }
     
     stats

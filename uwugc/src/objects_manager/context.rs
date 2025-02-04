@@ -8,8 +8,8 @@ use super::{AllocError, NewPodError, ObjectManager};
 
 pub struct LocalObjectsChain {
   // Maintains start and end of chain
-  start: UnsafeCell<Option<*mut Object>>,
-  end: UnsafeCell<Option<*mut Object>>
+  start: UnsafeCell<Option<NonNull<Object>>>,
+  end: UnsafeCell<Option<NonNull<Object>>>
 }
 
 // SAFETY: Accesses to this is protected by GC lock and lock on 'contexts'
@@ -102,11 +102,10 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
         self.owner.used_size.fetch_sub(object_size, Ordering::Relaxed);
         return Err(AllocError);
       };
-    let obj_ptr = obj.as_ptr();
     manager.lifetime_alloc_success_bytes.fetch_add(object_size.try_into().unwrap(), Ordering::Relaxed);
     
     // SAFETY: Just allocated it before
-    let obj_header = unsafe { obj_ptr.as_ref().unwrap_unchecked() };
+    let obj_header = unsafe { obj.as_ref() };
     
     // Ensure changes made previously by potential flush_to_global
     // emptying the local list visible to this
@@ -121,14 +120,14 @@ impl<'a, A: HeapAlloc> Handle<'a, A> {
       // The list has some objects, append current 'start' to end of this object
       // SAFETY: The object isn't visible yet to other thread so its safe from
       // concurrent accesses
-      Some(x) => unsafe { *obj_header.next.get() = *x },
+      Some(x) => unsafe { *obj_header.next.get() = x.as_ptr() },
       
       // The list was empty this object is the 'end' of current list
-      None => *end = Some(obj_ptr)
+      None => *end = Some(obj)
     }
     
     // Update the 'start' so it point to newly made object
-    *start = Some(obj_ptr);
+    *start = Some(obj);
     
     // Make sure potential flush_to_global can see latest items
     atomic::fence(Ordering::Release);
