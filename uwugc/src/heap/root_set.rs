@@ -33,12 +33,16 @@ impl<A: HeapAlloc> RootEntry<A> {
   
   // SAFETY: Caller make sure its safe to delete this root entry
   // and no possible concurrent access to the owning root set
-  pub unsafe fn delete(this: *const RootEntry<A>) {
+  // and ensure that 'this' is valid
+  pub unsafe fn delete(mut this: NonNull<RootEntry<A>>) {
+    // SAFETY: Caller ensured that 'this' is valid pointer
+    let this = unsafe { this.as_mut() };
+    
     // SAFETY: Circular linked list is special that every next and prev
     // is valid so its safe and GC is blocked so GC does not attempting
     // to access root set
-    let next_ref = unsafe { &*(*(*this).next.get()) };
-    let prev_ref = unsafe { &*(*(*this).prev.get()) };
+    let next_ref = unsafe { &*(*this.next.get()) };
+    let prev_ref = unsafe { &*(*this.prev.get()) };
     
     // Actually removes
     // SAFETY: GC is blocked so GC does not attempting
@@ -51,14 +55,14 @@ impl<A: HeapAlloc> RootEntry<A> {
     // Drop the root entry itself as its not in any root set
     // SAFETY: Nothing reference it anymore so it is safe
     // to be dropped and casted to *mut pointer
-    let _ = unsafe { Box::from_raw(this.cast_mut()) };
+    let _ = unsafe { Box::from_raw(this) };
   }
   
   // Insert 'val' to next of this entry
   // Returns a *mut pointer to it and leaks it
   // SAFETY: Caller ensure that '&self' is the only borrow
   // TODO: Enforce it with '&mut self' instead
-  unsafe fn insert(&self, val: Box<RootEntry<A>>) -> *mut RootEntry<A> {
+  unsafe fn insert(&self, val: Box<RootEntry<A>>) -> NonNull<RootEntry<A>> {
     // SAFETY: Internals of manually just setting pointers for linked list
     unsafe {
       let val = Box::leak(val);
@@ -75,7 +79,7 @@ impl<A: HeapAlloc> RootEntry<A> {
       
       // Make this entry's next to point to 'val'
       *self.next.get() = val;
-      val
+      NonNull::from_mut(val)
     }
   }
 }
@@ -127,7 +131,7 @@ impl<A: HeapAlloc> RootSet<A> {
     }
   }
   
-  pub fn insert(&mut self, ptr: NonNull<Object>) -> *mut RootEntry<A> {
+  pub fn insert(&mut self, ptr: NonNull<Object>) -> NonNull<RootEntry<A>> {
     let entry = Box::new(RootEntry {
       obj: ptr,
       next: UnsafeCell::new(ptr::null()),

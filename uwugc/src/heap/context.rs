@@ -54,7 +54,7 @@ pub struct Context<'a, A: HeapAlloc> {
 }
 
 pub struct RootRefRaw<'a, A: HeapAlloc, T: ObjectLikeTraitInternal> {
-  entry_ref: *const RootEntry<A>,
+  entry_ref: NonNull<RootEntry<A>>,
   _phantom: PhantomData<&'a T>,
   // RootRef will only stays at current thread
   _force_not_send_sync: PhantomData<*const ()>
@@ -88,7 +88,7 @@ impl<A: HeapAlloc, T: ObjectLikeTraitInternal> RootRefRaw<'_, A, T> {
     // SAFETY: root_entry is managed by current thread
     // so it can only be allocated and deallocated on
     // same thread
-    unsafe { &*self.entry_ref }.get_obj_ptr()
+    unsafe { self.entry_ref.as_ref() }.get_obj_ptr()
   }
 }
 
@@ -96,7 +96,7 @@ impl<A: HeapAlloc, T: ObjectLikeTraitInternal> Drop for RootRefRaw<'_, A, T> {
   fn drop(&mut self) {
     // Block GC as GC would see half modified root set if without it
     // SAFETY: GCState is always valid
-    let cookie = unsafe { (*self.entry_ref).get_gc_state().as_ref() }.block_gc();
+    let cookie = unsafe { self.entry_ref.as_ref().get_gc_state().as_ref() }.block_gc();
     
     // Corresponding RootEntry and RootRef are free'd together
     // therefore its safe after removing reference from root set
