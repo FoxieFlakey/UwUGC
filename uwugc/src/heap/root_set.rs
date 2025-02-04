@@ -1,4 +1,4 @@
-use std::{cell::UnsafeCell, marker::PhantomPinned, pin::Pin, ptr::{self, NonNull}};
+use std::{cell::UnsafeCell, marker::PhantomPinned, pin::Pin, ptr::NonNull};
 
 use crate::{allocator::HeapAlloc, gc::GCState, objects_manager::Object};
 
@@ -7,8 +7,8 @@ pub struct RootEntry<A: HeapAlloc> {
   // but need to modify these fields because
   // there would be aliasing *mut (one from prev's next
   // and next's prev)
-  next: UnsafeCell<*const RootEntry<A>>,
-  prev: UnsafeCell<*const RootEntry<A>>,
+  next: UnsafeCell<NonNull<RootEntry<A>>>,
+  prev: UnsafeCell<NonNull<RootEntry<A>>>,
   gc_state: NonNull<GCState<A>>,
   obj: NonNull<Object>,
   
@@ -41,15 +41,15 @@ impl<A: HeapAlloc> RootEntry<A> {
     // SAFETY: Circular linked list is special that every next and prev
     // is valid so its safe and GC is blocked so GC does not attempting
     // to access root set
-    let next_ref = unsafe { &*(*this.next.get()) };
-    let prev_ref = unsafe { &*(*this.prev.get()) };
+    let next_ref = unsafe { (*this.next.get()).as_ref() };
+    let prev_ref = unsafe { (*this.prev.get()).as_ref() };
     
     // Actually removes
     // SAFETY: GC is blocked so GC does not attempting
     // to access root set
     unsafe {
-      *next_ref.prev.get() = prev_ref;
-      *prev_ref.next.get() = next_ref;
+      *next_ref.prev.get() = NonNull::from_ref(prev_ref);
+      *prev_ref.next.get() = NonNull::from_ref(next_ref);
     };
     
     // Drop the root entry itself as its not in any root set
@@ -66,19 +66,20 @@ impl<A: HeapAlloc> RootEntry<A> {
     // SAFETY: Internals of manually just setting pointers for linked list
     unsafe {
       let val = Box::leak(val);
+      let val_nonnull = NonNull::from_mut(val);
       
       // Make 'val' prev points to this entry
-      *val.prev.get() = self;
+      *val.prev.get() = NonNull::from_ref(self);
       
       // Make 'val' next points to entry next of this
       *val.next.get() = *self.next.get();
       
       // Make next entry's prev to point to 'val'
       // NOTE: 'next' is always valid in circular list
-      *(**self.next.get()).prev.get() = val;
+      *(*self.next.get()).as_ref().prev.get() = val_nonnull;
       
       // Make this entry's next to point to 'val'
-      *self.next.get() = val;
+      *self.next.get() = val_nonnull;
       NonNull::from_mut(val)
     }
   }
@@ -95,9 +96,11 @@ impl<A: HeapAlloc> RootSet<A> {
   pub unsafe fn new(owning_gc: NonNull<GCState<A>>) -> Self {
     let head = Box::pin(RootEntry {
       gc_state: owning_gc,
+      // Dangling next and prev because it will be overwritten later
+      // and 'head' node don't have any object associated
       obj: NonNull::dangling(),
-      next: UnsafeCell::new(ptr::null()),
-      prev: UnsafeCell::new(ptr::null()),
+      next: UnsafeCell::new(NonNull::dangling()),
+      prev: UnsafeCell::new(NonNull::dangling()),
       
       _phantom: PhantomPinned
     });
@@ -105,8 +108,8 @@ impl<A: HeapAlloc> RootSet<A> {
     // SAFETY: There no way concurrent access can happen yet
     // and root set need to be circular list
     unsafe {
-      *head.next.get() = &*head;
-      *head.prev.get() = &*head;
+      *head.next.get() = NonNull::from_ref(&*head);
+      *head.prev.get() = NonNull::from_ref(&*head);
     }
     
     Self {
@@ -120,13 +123,13 @@ impl<A: HeapAlloc> RootSet<A> {
     // SAFETY: Borrow checker ensured that nothing accessed the root set concurrently
     let mut current = unsafe { *head.next.get() };
     // While 'current' is not the head as this linked list is circular
-    while current != ptr::from_ref(head) {
+    while current != NonNull::from_ref(head) {
       // SAFETY: Guaranteed by borrow checker that root set is not accessed concurrently
-      let next = unsafe { *(*current).next.get() };
+      let next = unsafe { *current.as_ref().next.get() };
       
       // Drop the root entry and remove it from set
       // SAFETY: Guaranteed by borrow checker that root set is not accessed concurrently
-      let _ = unsafe { Box::from_raw(current.cast_mut()) };
+      let _ = unsafe { Box::from_raw(current.as_ptr()) };
       current = next;
     }
   }
@@ -134,8 +137,9 @@ impl<A: HeapAlloc> RootSet<A> {
   pub fn insert(&mut self, ptr: NonNull<Object>) -> NonNull<RootEntry<A>> {
     let entry = Box::new(RootEntry {
       obj: ptr,
-      next: UnsafeCell::new(ptr::null()),
-      prev: UnsafeCell::new(ptr::null()),
+      // Dangling next and prev because it will be overwritten later
+      next: UnsafeCell::new(NonNull::dangling()),
+      prev: UnsafeCell::new(NonNull::dangling()),
       gc_state: self.head.gc_state,
       
       _phantom: PhantomPinned
@@ -156,12 +160,18 @@ impl<A: HeapAlloc> RootSet<A> {
     let head = self.head.as_ref().get_ref();
     
     // SAFETY: In circular buffer 'next' is always valid
-    let mut current = unsafe { &*(*head.next.get()) };
+    let mut current = unsafe { *head.next.get() };
     // While 'current' is not the head as this linked list is circular
-    while ptr::from_ref(current) != ptr::from_ref(head) {
-      iterator(current);
+    while current != NonNull::from_ref(head) {
+      // SAFETY: Nodes pointer in circular linked list is valid
+      // because immutable borrow which mean nodes can't be deallocated
+      // or removed
+      let current_ref = unsafe { current.as_ref() };
+      
+      iterator(current_ref);
+      
       // SAFETY: In circular buffer 'next' is always valid
-      current = unsafe { &*(*current.next.get()) };
+      current = unsafe { *current_ref.next.get() };
     }
   }
 }
