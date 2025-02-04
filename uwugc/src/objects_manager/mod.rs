@@ -1,5 +1,6 @@
 use std::{alloc::Layout, any::TypeId, cell::UnsafeCell, collections::HashMap, mem::MaybeUninit, ops::{Add, AddAssign, Sub, SubAssign}, ptr::{self, NonNull}, sync::{atomic::{AtomicPtr, AtomicUsize, Ordering}, Arc}, thread::{self, ThreadId}};
 use crate::{allocator::HeapAlloc, ReferenceType};
+use crossbeam_utils::CachePadded;
 use meta_word::{MetaWord, ObjectMetadata};
 use parking_lot::{Mutex, RwLock};
 
@@ -241,17 +242,17 @@ impl Add for Stats {
 }
 
 pub struct ObjectManager<A: HeapAlloc> {
-  head: AtomicPtr<Object>,
-  used_size: AtomicUsize,
+  head: CachePadded<AtomicPtr<Object>>,
+  used_size: CachePadded<AtomicUsize>,
   
   // Bytes that object manager tried to allocates
   // which may or may not failed
-  lifetime_alloc_attempt_bytes: AtomicU64,
+  lifetime_alloc_attempt_bytes: CachePadded<AtomicU64>,
   // Bytes which object manager successfully
   // allocated
-  lifetime_alloc_success_bytes: AtomicU64,
+  lifetime_alloc_success_bytes: CachePadded<AtomicU64>,
   // Bytes which is deallocated
-  lifetime_dealloc_bytes: AtomicU64,
+  lifetime_dealloc_bytes: CachePadded<AtomicU64>,
   
   contexts: Mutex<HashMap<ThreadId, Arc<LocalObjectsChain>>>,
   max_size: usize,
@@ -265,10 +266,10 @@ pub struct ObjectManager<A: HeapAlloc> {
   sweeper_protect_mutex: Mutex<()>,
   
   // What bit to initialize mark_bit to
-  new_object_mark_value: AtomicBool,
+  new_object_mark_value: CachePadded<AtomicBool>,
   
   // What bit value to consider an object to be marked
-  marked_bit_value: AtomicBool,
+  marked_bit_value: CachePadded<AtomicBool>,
 }
 
 // SAFETY: It is safe to send *const Object to other thread
@@ -285,15 +286,15 @@ pub struct Sweeper<'a, A: HeapAlloc> {
 impl<A: HeapAlloc> ObjectManager<A> {
   pub fn new(allocator: A, max_size: usize) -> Self {
     Self {
-      head: AtomicPtr::new(ptr::null_mut()),
-      used_size: AtomicUsize::new(0),
-      lifetime_alloc_attempt_bytes: AtomicU64::new(0),
-      lifetime_alloc_success_bytes: AtomicU64::new(0),
-      lifetime_dealloc_bytes: AtomicU64::new(0),
+      head: CachePadded::new(AtomicPtr::new(ptr::null_mut())),
+      used_size: CachePadded::new(AtomicUsize::new(0)),
+      lifetime_alloc_attempt_bytes: CachePadded::new(AtomicU64::new(0)),
+      lifetime_alloc_success_bytes: CachePadded::new(AtomicU64::new(0)),
+      lifetime_dealloc_bytes: CachePadded::new(AtomicU64::new(0)),
       contexts: Mutex::new(HashMap::new()),
       sweeper_protect_mutex: Mutex::new(()),
-      marked_bit_value: AtomicBool::new(true),
-      new_object_mark_value: AtomicBool::new(false),
+      marked_bit_value: CachePadded::new(AtomicBool::new(true)),
+      new_object_mark_value: CachePadded::new(AtomicBool::new(false)),
       descriptor_cache: RwLock::new(HashMap::new()),
       alloc: Arc::new(allocator),
       max_size
