@@ -85,12 +85,18 @@ pub fn drivers_list<A: HeapAlloc>() -> Vec<Box<dyn Driver<A>>> {
       // the more space is used the more aggresive GC is
       
       // TODO: Document what those knobs does
-      let aggresiveness_scale = 3.0;
-      let aggresiveness_base = 0.4;
-      let aggresiveness_exponent = 2.2;
-      let aggresiveness_offset = 0.3;
+      // let aggresiveness_scale = 3.0;
+      // let aggresiveness_base = 0.4;
+      // let aggresiveness_exponent = 2.2;
+      // let aggresiveness_offset = 0.3;
       
-      let aggresiveness = (stat.heap_usage / stat.heap_size + aggresiveness_offset).powf(aggresiveness_exponent) * aggresiveness_scale + aggresiveness_base;
+      // Alternative version
+      let aggresiveness_offset = 0.26;
+      let aggresiveness_base = -0.6;
+      let aggresiveness_scale = 2.25;
+      
+      // let aggresiveness = (stat.heap_usage / stat.heap_size + aggresiveness_offset).powf(aggresiveness_exponent) * aggresiveness_scale + aggresiveness_base;
+      let aggresiveness = (stat.heap_usage / stat.heap_size + aggresiveness_offset) * aggresiveness_scale + aggresiveness_base;
       
       // Set lower bound on cycle time to be driver_tick_period
       // because driver might not have enough time to react later
