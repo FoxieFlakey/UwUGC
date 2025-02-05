@@ -81,13 +81,22 @@ pub fn drivers_list<A: HeapAlloc>() -> Vec<Box<dyn Driver<A>>> {
       let cycle_stats = stat.average_cycle_stats.unwrap();
       
       let time_to_oom = (stat.heap_size - stat.heap_usage) / (stat.alloc_rate + 1.0);
-      let free_percent = 1.0 - (stat.heap_usage / stat.heap_size);
+      // Make GC aggressiveness based on used percent
+      // the more space is used the more aggresive GC is
+      
+      // TODO: Document what those knobs does
+      let aggresiveness_scale = 3.0;
+      let aggresiveness_base = 0.4;
+      let aggresiveness_exponent = 2.2;
+      let aggresiveness_offset = 0.3;
+      
+      let aggresiveness = (stat.heap_usage / stat.heap_size + aggresiveness_offset).powf(aggresiveness_exponent) * aggresiveness_scale + aggresiveness_base;
       
       // Set lower bound on cycle time to be driver_tick_period
       // because driver might not have enough time to react later
       let cycle_time = cmp::max(driver_tick_period, cycle_stats.cycle_time);
       
-      if Duration::from_secs_f64(time_to_oom * free_percent) <= cycle_time {
+      if Duration::from_secs_f64(time_to_oom * f64::clamp(1.0 - aggresiveness, 0.0, 1.0)) <= cycle_time {
         return Action::RunGC;
       }
       
