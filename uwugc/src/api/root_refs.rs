@@ -10,19 +10,8 @@ use crate::allocator::HeapAlloc;
 use crate::api::ObjectLikeTrait;
 use crate::heap::RootRefRaw;
 
-// NOTE: This type is considered to be part of public API
-#[sealed]
-pub trait RefKind {}
-
-// NOTE: This type is considered to be part of public API
-pub struct Exclusive {}
-#[sealed]
-impl RefKind for Exclusive {}
-
-// NOTE: This type is considered to be part of public API
-pub struct Shared {}
-#[sealed]
-impl RefKind for Shared {}
+// Re-export for compatibility at the moment
+pub use crate::access_kind::{Exclusive, Shared, RefKind};
 
 // NOTE: This type is considered to be part of public API
 #[sealed]

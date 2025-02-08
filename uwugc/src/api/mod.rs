@@ -16,6 +16,7 @@ pub use crate::allocator::GlobalHeap;
 pub use crate::objects_manager::Stats as HeapStats ;
 
 pub mod root_refs;
+pub mod access_kind;
 
 mod gc_box;
 pub use gc_box::GCBox;
