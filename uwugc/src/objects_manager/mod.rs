@@ -139,7 +139,7 @@ impl Object {
           // SAFETY: Reference array are guaranteed to be type of [AtomicPtr<Object>; N]
           // and is guaranteed tightly packed
           // Source: https://doc.rust-lang.org/nomicon/repr-rust.html
-          let item = unsafe { (*array_ptr.add(i).as_ptr()).load(Ordering::Relaxed) };
+          let item = unsafe { array_ptr.add(i).as_ref().load(Ordering::Relaxed) };
           tracer(NonNull::new(item));
         }
       },
