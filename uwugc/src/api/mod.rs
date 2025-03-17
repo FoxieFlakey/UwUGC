@@ -14,13 +14,8 @@ pub use crate::descriptor::{Describeable, DescriptorAPI as Descriptor, Field};
 pub use crate::heap::ConstructorScope;
 pub use crate::allocator::GlobalHeap;
 pub use crate::objects_manager::Stats as HeapStats ;
+pub use crate::refs::GCRefRaw;
 
-pub mod root_refs;
-pub mod access_kind;
-
-mod gc_box;
-pub use gc_box::GCBox;
-pub use gc_box::GCNullableBox;
 use sealed::sealed;
 
 helper::export_type_as_wrapper!(HeapArc, Arc<HeapInternal<GlobalHeap>>);
@@ -39,7 +34,7 @@ impl<T: 'static> ObjectLikeTrait for T {
 
 // Internal trait used by crate, to include 
 // internal stuffs
-pub(crate) trait ObjectLikeTraitInternal: ObjectLikeTrait + 'static {
+pub trait ObjectLikeTraitInternal: ObjectLikeTrait + 'static {
   fn drop_helper(this: *mut ());
 }
 
@@ -65,11 +60,6 @@ pub unsafe trait ReferenceType: 'static {
 // SAFETY: GCBox boils down to AtomicPtr<Object> and has
 // #[repr(transparent)]
 #[sealed]
-unsafe impl<T: ObjectLikeTrait> ReferenceType for GCBox<T> {}
-
-// SAFETY: GCNullableBox boils down to AtomicPtr<Object> and has
-// #[repr(transparent)]
-#[sealed]
-unsafe impl<T: ObjectLikeTrait> ReferenceType for GCNullableBox<T> {}
+unsafe impl<T: ObjectLikeTrait> ReferenceType for GCRefRaw<T> {}
 
 

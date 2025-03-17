@@ -3,7 +3,7 @@ use std::{cell::UnsafeCell, marker::PhantomData, mem::MaybeUninit, ptr::NonNull,
 use crate::{allocator::HeapAlloc, gc::GCState, ReferenceType};
 
 use super::{root_set::RootSet, Heap, RootEntry};
-use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{self, Object}, root_refs::{Exclusive, RootRef, Sendable}, ObjectLikeTraitInternal};
+use crate::{descriptor::Describeable, gc::GCLockCookie, objects_manager::{self, Object}, ObjectLikeTraitInternal};
 
 pub struct ContextData<A: HeapAlloc> {
   inner: UnsafeCell<RootSet<A>>
@@ -142,7 +142,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
   }
   
   // SAFETY: Caller must make sure that initializer properly initialize T
-  pub unsafe fn alloc<T: Describeable + ObjectLikeTraitInternal>(&self, initer: impl FnOnce(&mut ConstructorScope, &mut MaybeUninit<T>)) -> RootRef<'a, Sendable, Exclusive, A, T> {
+  pub unsafe fn alloc<T: Describeable + ObjectLikeTraitInternal>(&self, initer: impl FnOnce(&mut ConstructorScope, &mut MaybeUninit<T>)) -> RootRefRaw<'a, A, T> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut special_ctx = ConstructorScope { _private: () };
@@ -166,14 +166,13 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     }
     
     let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
-    // SAFETY: The object reference is exclusively owned by this thread
-    unsafe { RootRef::new(root_ref) }
+    root_ref
   }
   
   // TODO: Try deduplicate alloc and alloc_array without coming a foul with borrow
   // checker
   // SAFETY: Initializer has to make sure that array is properly initialized
-  pub unsafe fn alloc_array<Ref: ReferenceType, const LEN: usize>(&self, initer: impl FnOnce(&mut ConstructorScope, &mut MaybeUninit<[Ref; LEN]>)) -> RootRef<'a, Sendable, Exclusive, A, [Ref; LEN]> {
+  pub unsafe fn alloc_array<Ref: ReferenceType, const LEN: usize>(&self, initer: impl FnOnce(&mut ConstructorScope, &mut MaybeUninit<[Ref; LEN]>)) -> RootRefRaw<'a, A, [Ref; LEN]> {
     // Shouldn't panic if try_alloc succeded once, and with this
     // method this function shouldnt try alloc again
     let mut special_ctx = ConstructorScope { _private: () };
@@ -197,8 +196,7 @@ impl<'a, A: HeapAlloc> Context<'a, A> {
     }
     
     let root_ref = self.new_root_ref_from_ptr(obj.unwrap(), &mut gc_lock_cookie);
-    // SAFETY: The object reference is exclusively owned by this thread
-    unsafe { RootRef::new(root_ref) }
+    root_ref
   }
 }
 

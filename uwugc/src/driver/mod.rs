@@ -49,6 +49,9 @@ pub fn drivers_list<A: HeapAlloc>() -> Vec<Box<dyn Driver<A>>> {
   let mut current_warm_count = 0.0;
   
   Vec::from([
+    // Run nonstop
+    SimpleDriver::new(|_, _, _| Action::RunGC),
+    
     // First executed
     // Warmup driver make sure so there cycles data
     SimpleDriver::new(move |_, _, stat| {
