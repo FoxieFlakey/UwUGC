@@ -102,7 +102,9 @@ impl MM {
         let mut slot = self.page_table[page_index].lock();
         *slot = Some(FlexPage::new(
             kind,
-            self.mapping.ptr_mut().wrapping_byte_add(page_index * BASE_PAGE_SIZE),
+            self.mapping
+                .ptr_mut()
+                .wrapping_byte_add(page_index * BASE_PAGE_SIZE),
         ));
 
         Some(page_index)
