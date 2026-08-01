@@ -1505,6 +1505,16 @@ impl MmapMut {
     pub unsafe fn remap(&mut self, new_len: usize, options: RemapOptions) -> Result<()> {
         self.inner.remap(new_len, options)
     }
+
+    // Get base pointer of this MmapMut. Which is result from mmap
+    pub fn ptr(&self) -> *const u8 {
+        self.inner.ptr()
+    }
+
+    // Get base pointer of this MmapMut. Which is result from mmap
+    pub fn ptr_mut(&self) -> *mut u8 {
+        self.inner.ptr().cast_mut()
+    }
 }
 
 #[cfg(feature = "stable_deref_trait")]

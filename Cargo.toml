@@ -1,0 +1,11 @@
+[package]
+name = "uwugc"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+arbitrary-int = "2.1.1"
+memfd = "0.6.5"
+memmap2 = { path = "./memmap2-rs/" }
+parking_lot = "0.12.5"
+thiserror = "2.0.19"
