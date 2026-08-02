@@ -5,7 +5,7 @@ use std::ptr::NonNull;
 #[derive(Clone)]
 pub struct FlexPage {
     kind: FlexPageKind,
-    start: NonNull<u8>,
+    pub(super) start: NonNull<u8>,
     used_bytes: usize,
 }
 

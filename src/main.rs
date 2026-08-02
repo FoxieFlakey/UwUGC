@@ -6,20 +6,26 @@ mod object;
 
 fn main() {
     println!("Hello, world!");
-    let mm = MM::new(128 * 1024 * 1024).unwrap();
+    let mut mm = MM::new(128 * 1024 * 1024).unwrap();
 
     let mut ctx = mm::Context::new();
 
-    let bytes = ctx.alloc(&mm, 8291);
-    println!("Bytes: 0x{:16x}", bytes.unwrap().addr());
+    let (bytes, page_id) = ctx.alloc(&mm, 8291).unwrap();
+    println!("Bytes: 0x{:16x} from page {page_id:#6}", bytes.addr());
 
-    let bytes = ctx.alloc(&mm, 8291);
-    println!("Bytes: 0x{:16x}", bytes.unwrap().addr());
+    let (bytes, page_id) = ctx.alloc(&mm, 8291).unwrap();
+    println!("Bytes: 0x{:16x} from page {page_id:#6}", bytes.addr());
 
-    let bytes = ctx.alloc(&mm, 8291);
-    println!("Bytes: 0x{:16x}", bytes.unwrap().addr());
+    let (bytes, page_id) = ctx.alloc(&mm, 8291).unwrap();
+    println!("Bytes: 0x{:16x} from page {page_id:#6}", bytes.addr());
 
     let mut ctx = mm::Context::new();
-    let bytes = ctx.alloc(&mm, 8291);
-    println!("Bytes: 0x{:16x}", bytes.unwrap().addr());
+    let (bytes, page_id) = ctx.alloc(&mm, 8291).unwrap();
+    println!("Bytes: 0x{:16x} from page {page_id:#6}", bytes.addr());
+    
+    ctx.flush_local_buf();
+    
+    let mm2 = unsafe { mm.remap_and_clear() }.unwrap();
+    let (bytes, page_id) = ctx.alloc(&mm, 8291).unwrap();
+    println!("Bytes after cleared: 0x{:16x} from page {page_id:#6}", bytes.addr());
 }

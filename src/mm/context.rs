@@ -18,7 +18,8 @@ impl Context {
         self.local_buffer_page = None;
     }
 
-    pub fn alloc(&mut self, mm: &MM, size: usize) -> Option<*mut u8> {
+    // Return the pointer to allocation, and page id. where its allocated from
+    pub fn alloc(&mut self, mm: &MM, size: usize) -> Option<(*mut u8, usize)> {
         if size >= FlexPageKind::Small.max_object_size() {
             return mm.alloc(size);
         }
@@ -35,6 +36,6 @@ impl Context {
             local_page = mm.page_table[self.local_buffer_page.unwrap()].lock();
         }
 
-        Some(local_page.as_mut().unwrap().alloc(size).unwrap())
+        Some((local_page.as_mut().unwrap().alloc(size).unwrap(), self.local_buffer_page.unwrap()))
     }
 }

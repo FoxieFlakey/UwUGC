@@ -490,6 +490,29 @@ impl MmapInner {
         }
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn move_mapping_and_clear(&mut self, options: crate::RemapOptions, target: Option<usize>) -> io::Result<MmapInner> {
+        let (old_ptr, old_len, offset) = self.as_mmap_params();
+        let (map_len, offset) = Self::adjust_mmap_params(old_len, offset)?;
+
+        let flags = options.into_flags() | libc::MREMAP_DONTUNMAP;
+        let new_ptr;
+        if let Some(new) = target {
+            new_ptr = unsafe { libc::mremap(old_ptr, old_len, map_len, flags | libc::MREMAP_FIXED | libc::MREMAP_MAYMOVE, new) };
+        } else {
+            // SAFETY: we hold a mutable reference to self, so we can adjust the location and size of the mapping.
+            new_ptr = unsafe { libc::mremap(old_ptr, old_len, map_len, flags) };
+        }
+
+        if new_ptr == libc::MAP_FAILED {
+            Err(io::Error::last_os_error())
+        } else {
+            // SAFETY: The pointer and length passed to `from_raw_parts` have just been obtained from a real map, so they must be valid.
+            let new_map = unsafe { Self::from_raw_parts(new_ptr, old_len, offset) };
+            Ok(new_map)
+        }
+    }
+
     pub fn lock(&self) -> io::Result<()> {
         unsafe {
             if libc::mlock(self.ptr, self.len) != 0 {

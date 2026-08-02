@@ -1506,6 +1506,27 @@ impl MmapMut {
         self.inner.remap(new_len, options)
     }
 
+    /// Move mapping to new location then clear everything in current
+    /// mapping. Equivalent to MAP_DONTUNMAP | MAP_MAYMOVE. Optionally fixed
+    /// target address can be used. The result MmapMut acts on its own
+    /// 
+    /// Only supported on Linux.
+    ///
+    /// See the [`mremap(2)`] man page.
+    ///
+    /// # Safety
+    ///
+    /// If replaces target mapping thru MAP_FIXED. Permissions must kept the
+    /// same as the destination or other use might trigger SEGFAULT because
+    /// mismatching permissions
+    ///
+    /// [`mremap(2)`]: https://man7.org/linux/man-pages/man2/mremap.2.html
+    #[cfg(target_os = "linux")]
+    pub unsafe fn move_mapping_and_clear(&mut self, options: RemapOptions, target: Option<usize>) -> Result<MmapMut> {
+        self.inner.move_mapping_and_clear(options, target)
+            .map(|inner| MmapMut { inner })
+    }
+
     // Get base pointer of this MmapMut. Which is result from mmap
     pub fn ptr(&self) -> *const u8 {
         self.inner.ptr()
