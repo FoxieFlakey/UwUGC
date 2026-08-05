@@ -36,6 +36,9 @@ impl Context {
             local_page = mm.page_table[self.local_buffer_page.unwrap()].lock();
         }
 
-        Some((local_page.as_mut().unwrap().alloc(size).unwrap(), self.local_buffer_page.unwrap()))
+        Some((
+            local_page.as_mut().unwrap().alloc(size).unwrap(),
+            self.local_buffer_page.unwrap(),
+        ))
     }
 }
