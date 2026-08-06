@@ -206,7 +206,7 @@ impl<T> Drop for SharedGuard<'_, T> {
                 // So go with slow path
                 self.owner
                     .gc_commands
-                    .write(Command::UnregisterThread)
+                    .write_blocking(Command::UnregisterThread)
                     .map_err(|x| x.0)
                     .unwrap();
             }
