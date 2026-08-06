@@ -146,14 +146,14 @@ impl<T> GCSync<T> {
 
         ExclusiveGuard {
             owner: self,
-            guard: live_count,
+            _guard: live_count,
         }
     }
 }
 
 pub struct ExclusiveGuard<'a, T> {
     owner: &'a GCSync<T>,
-    guard: MutexGuard<'a, u32>,
+    _guard: MutexGuard<'a, u32>,
 }
 
 impl<T> ExclusiveGuard<'_, T> {
