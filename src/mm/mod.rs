@@ -50,7 +50,7 @@ impl MM {
 
     #[expect(unused)]
     pub fn size(&self) -> usize {
-        self.mapping.len()
+        self.nr_pages * BASE_PAGE_SIZE
     }
 
     pub fn alloc(&self, size: usize) -> Option<(*mut u8, usize)> {
