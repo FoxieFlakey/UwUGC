@@ -35,10 +35,10 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
     // Let pretend we marked the heap
     drop(saved_roots);
 
-    // SAFETY: For now, we assume all objects are dead
-    let _ = unsafe { shared.get_exclusive().get().mm.remap_and_clear() }.unwrap();
-
     let mut heap = shared.get_exclusive();
+    // SAFETY: For now, we assume all objects are dead
+    let _ = unsafe { heap.get().mm.remap_and_clear() }.unwrap();
+    
     heap.get()
         .gc_state
         .set(gc)
