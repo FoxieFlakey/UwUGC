@@ -48,11 +48,13 @@ impl MM {
         })
     }
 
+    #[expect(unused)]
     pub fn size(&self) -> usize {
         self.mapping.len()
     }
 
     pub fn alloc(&self, size: usize) -> Option<(*mut u8, usize)> {
+        assert!(size.is_multiple_of(8), "Object sizes must be multiple of 8");
         if size >= FlexPageKind::Medium.max_object_size() {
             // Huge object, skip over the medium
             let page_id = self.alloc_page(FlexPageKind::Huge {

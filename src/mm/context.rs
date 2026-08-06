@@ -20,6 +20,7 @@ impl Context {
 
     // Return the pointer to allocation, and page id. where its allocated from
     pub fn alloc(&mut self, mm: &MM, size: usize) -> Option<(*mut u8, usize)> {
+        assert!(size.is_multiple_of(8), "Object sizes must be multiple of 8");
         if size >= FlexPageKind::Small.max_object_size() {
             return mm.alloc(size);
         }

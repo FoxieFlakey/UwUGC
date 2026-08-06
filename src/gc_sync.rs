@@ -1,10 +1,7 @@
 // Implements stuffs like safepoint, STW, etc
 
 use std::{
-    cell::UnsafeCell,
-    io,
-    os::fd::AsFd,
-    sync::atomic::{Ordering, fence},
+    cell::UnsafeCell, io, mem, os::fd::AsFd, sync::atomic::{Ordering, fence}
 };
 
 use memmap2::{Mmap, MmapOptions, UncheckedAdvice};
@@ -192,6 +189,25 @@ pub struct SharedGuard<'a, T> {
 
 impl<T> Drop for SharedGuard<'_, T> {
     fn drop(&mut self) {
+        // SAFETY: We're not getting the &T anymore, at drop code
+        unsafe { self.disable_guard() };
+    }
+}
+
+impl<T> SharedGuard<'_, T> {
+    // # Safety
+    // enable_guard must be paired with disable_guard!
+    unsafe fn enable_guard(&mut self) {
+        // Follows what disable_guard wants. mem::forget the disabled guard
+        mem::forget(mem::replace(self, self.owner.get_shared()));
+    }
+    
+    // # Safety
+    // The guard is disabled, its caller responsibility to never
+    // get &T until guard is re-enabled. If needed to drop this
+    // guard you must use mem::forget. Or disable_guard is called
+    // twice in row, which is not allowed
+    unsafe fn disable_guard(&mut self) {
         // Make sure writes cannot happen before this
         // so GC get up to date data.
         fence(Ordering::Release);
@@ -216,15 +232,38 @@ impl<T> Drop for SharedGuard<'_, T> {
             }
         }
     }
-}
-
-impl<T> SharedGuard<'_, T> {
+    
     pub fn get(&self) -> &T {
         // SAFETY: No other thread can access inner mutably
         // as mutable access requires all readers to be blocked
         // on safe page. With existence of SharedGuard. There
         // is thread that is not on safe page
         unsafe { self.owner.inner.get().as_ref_unchecked() }
+    }
+
+    // Runs 'f' while having this guard temporarily deactivated
+    // &mut make sure no one get &T
+    pub fn unguarded<F, R>(&mut self, f: F) -> R
+    where
+        F: FnOnce() -> R,
+    {
+        // SAFETY: With &mut bound, this function has exclusive
+        // reference to self. and the f() has no access to the
+        // guard due &mut
+        unsafe { self.disable_guard() };
+
+        // Catching unwind is needed because drop code for SharedGuard
+        // will call disable_guard which means it will calls it twice
+        // So catch it so we can reenable temporarily
+        let ret = std::panic::catch_unwind(std::panic::AssertUnwindSafe(f));
+
+        // SAFETY: Pairs with disable_guard
+        unsafe { self.enable_guard() };
+
+        match ret {
+            Ok(ret) => ret,
+            Err(e) => std::panic::resume_unwind(e)
+        }
     }
 
     pub fn safepoint(&self) {

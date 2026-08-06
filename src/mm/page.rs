@@ -22,6 +22,7 @@ impl FlexPage {
         self.kind.nr_pages() * BASE_PAGE_SIZE
     }
 
+    #[expect(unused)]
     pub fn nr_pages(&self) -> usize {
         self.kind.nr_pages()
     }
@@ -34,6 +35,7 @@ impl FlexPage {
         self.size() - self.used()
     }
 
+    #[expect(unused)]
     pub fn kind(&self) -> FlexPageKind {
         self.kind
     }
