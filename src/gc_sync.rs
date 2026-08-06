@@ -1,7 +1,10 @@
 // Implements stuffs like safepoint, STW, etc
 
 use std::{
-    cell::UnsafeCell, io, mem, os::fd::AsFd, sync::atomic::{Ordering, fence}
+    cell::UnsafeCell,
+    io, mem,
+    os::fd::AsFd,
+    sync::atomic::{Ordering, fence},
 };
 
 use memmap2::{Advice, Mmap, MmapOptions, UncheckedAdvice};
@@ -61,7 +64,9 @@ impl<T> GCSync<T> {
                     .create()
                 {
                     Ok(uffd) => match lock_page.advise(Advice::PopulateRead) {
-                        Ok(()) =>  match uffd.register(lock_page.as_ptr().cast_mut().cast(), page_size::get()) {
+                        Ok(()) => match uffd
+                            .register(lock_page.as_ptr().cast_mut().cast(), page_size::get())
+                        {
                             Ok(_) => Ok(Self {
                                 live_threads: Mutex::new(0),
                                 inner: UnsafeCell::new(data),
@@ -71,8 +76,8 @@ impl<T> GCSync<T> {
                             }),
 
                             Err(e) => Err((CreateError::RegisterUFFD(e), data)),
-                        }
-                        
+                        },
+
                         Err(e) => Err((CreateError::PrefaultLockPage(e), data)),
                     },
 
@@ -213,7 +218,7 @@ impl<T> SharedGuard<'_, T> {
         // Follows what disable_guard wants. mem::forget the disabled guard
         mem::forget(mem::replace(self, self.owner.get_shared()));
     }
-    
+
     // # Safety
     // The guard is disabled, its caller responsibility to never
     // get &T until guard is re-enabled. If needed to drop this
@@ -244,7 +249,7 @@ impl<T> SharedGuard<'_, T> {
             }
         }
     }
-    
+
     pub fn get(&self) -> &T {
         // SAFETY: No other thread can access inner mutably
         // as mutable access requires all readers to be blocked
@@ -274,7 +279,7 @@ impl<T> SharedGuard<'_, T> {
 
         match ret {
             Ok(ret) => ret,
-            Err(e) => std::panic::resume_unwind(e)
+            Err(e) => std::panic::resume_unwind(e),
         }
     }
 

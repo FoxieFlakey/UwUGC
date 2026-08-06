@@ -17,10 +17,8 @@ fn main() {
     let state = State::new(128 * 1024 * 1024).unwrap();
 
     let mut ctx = state.new_context();
-    let safepoint_args = SafepointArgs {
-        
-    };
-    
+    let safepoint_args = SafepointArgs {};
+
     loop {
         let _ = ctx
             .alloc_fast(8192)
@@ -30,7 +28,7 @@ fn main() {
                 unsafe { ctx.alloc_slow(8192, &safepoint_args) }
             })
             .unwrap();
-        
+
         unsafe { ctx.safepoint(&safepoint_args) };
     }
 }

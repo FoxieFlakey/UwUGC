@@ -81,7 +81,11 @@ impl<'a> Context<'a> {
     //
     // DO NOTE, if you're calee. you dont know what caller might want
     // to keep. SO be VERY careful
-    pub unsafe fn alloc_slow(&mut self, size: usize, _safepoint_args: &SafepointArgs) -> Option<*mut u8> {
+    pub unsafe fn alloc_slow(
+        &mut self,
+        size: usize,
+        _safepoint_args: &SafepointArgs,
+    ) -> Option<*mut u8> {
         // Retry 3 times :3
         for _ in 0..3 {
             let ret = self
