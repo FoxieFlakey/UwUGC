@@ -104,19 +104,6 @@ impl<T: Send> Pipe<T> {
         Ok(Some(unsafe { bytes.assume_init() }))
     }
 
-    pub fn read_blocking(&self) -> Result<T, Errno> {
-        loop {
-            let mut fds = [PollFd::new(self.write_fd.as_fd(), PollFlags::POLLIN)];
-            poll(&mut fds, PollTimeout::NONE)?;
-
-            if !fds[0].revents().unwrap().is_empty() {
-                if let Some(data) = self.read()? {
-                    return Ok(data);
-                }
-            }
-        }
-    }
-
     pub fn write_blocking(&self, mut data: T) -> Result<(), (Errno, T)> {
         loop {
             let mut fds = [PollFd::new(self.write_fd.as_fd(), PollFlags::POLLOUT)];
@@ -138,9 +125,5 @@ impl<T: Send> Pipe<T> {
 
     pub fn get_read_fd<'a>(&'a self) -> BorrowedFd<'a> {
         self.read_fd.as_fd()
-    }
-
-    pub fn get_write_fd<'a>(&'a self) -> BorrowedFd<'a> {
-        self.write_fd.as_fd()
     }
 }
