@@ -43,6 +43,7 @@ impl GCController {
         let mut state = self.state.lock();
         let cur_count = state.finished_count;
         state.is_requested = true;
+        self.condvar.notify_all();
 
         // Wait while a cycle is running
         self.cycle_done_condvar
