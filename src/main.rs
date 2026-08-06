@@ -1,6 +1,9 @@
 #![feature(current_thread_id)]
 
-use crate::state::{SafepointArgs, State};
+use crate::{
+    root_set::NoopRootSet,
+    state::{SafepointArgs, State},
+};
 
 mod bitmap;
 mod gc;
@@ -9,6 +12,7 @@ mod gc_sync;
 mod mm;
 mod object;
 mod pipe;
+mod root_set;
 mod state;
 
 fn main() {
@@ -16,7 +20,7 @@ fn main() {
 
     let state = State::new(128 * 1024 * 1024).unwrap();
 
-    let mut ctx = state.new_context();
+    let mut ctx = state.new_context(8192, NoopRootSet::new);
     let safepoint_args = SafepointArgs {};
 
     loop {

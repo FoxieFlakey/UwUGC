@@ -4,17 +4,20 @@ use parking_lot::Mutex;
 
 use crate::{
     gc_sync, mm,
+    root_set::RootSet,
     state::{SharedState, State},
 };
 
 pub struct ContextShared {
     pub mm_context: mm::Context,
+    pub root_set: Arc<dyn RootSet>,
 }
 
-pub struct Context<'a> {
+pub struct Context<'a, R: RootSet> {
     owner: &'a State,
     shared: gc_sync::SharedGuard<'a, SharedState>,
     shared_data: Arc<Mutex<ContextShared>>,
+    root_set_concrete: Arc<R>,
     _not_send_sync: PhantomData<*mut u8>,
 }
 
@@ -22,16 +25,21 @@ pub struct Context<'a> {
 // to perform safepoints
 pub struct SafepointArgs {}
 
-impl<'a> Context<'a> {
+impl<'a, R> Context<'a, R>
+where
+    R: RootSet,
+{
     pub(crate) fn new(
         owner: &'a State,
         shared: gc_sync::SharedGuard<'a, SharedState>,
         shared_data: Arc<Mutex<ContextShared>>,
+        root_set_concrete: Arc<R>,
     ) -> Self {
         Self {
             owner,
             shared,
             shared_data,
+            root_set_concrete,
             _not_send_sync: PhantomData,
         }
     }
@@ -106,5 +114,10 @@ impl<'a> Context<'a> {
         }
 
         None
+    }
+
+    #[expect(unused)]
+    pub fn get_root_set(&'a self) -> &'a R {
+        &self.root_set_concrete
     }
 }

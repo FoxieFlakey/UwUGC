@@ -13,6 +13,7 @@ use crate::{
     gc_controller::GCController,
     gc_sync::{self, GCSync},
     mm::{self, MM},
+    root_set::{RootSet, RootSetRaw},
     state::context::{Context, ContextShared},
 };
 
@@ -60,9 +61,25 @@ impl State {
     // There has to be only one context per thread!
     // or else there contexts that "cant" be parked
     // or safepoint'ed so GC can be deadlocked
-    pub fn new_context<'a>(&'a self) -> Context<'a> {
+    pub fn new_context<'a, F, T>(
+        &'a self,
+        root_set_size: usize,
+        root_set_maker: F,
+    ) -> Context<'a, T>
+    where
+        T: RootSet + 'static,
+        F: FnOnce(RootSetRaw) -> T,
+    {
+        let root_set_size = if root_set_size.is_multiple_of(page_size::get()) {
+            root_set_size
+        } else {
+            root_set_size.next_multiple_of(page_size::get())
+        };
+
+        let root_set = Arc::new(root_set_maker(RootSetRaw::new(root_set_size)));
         let shared_data = Arc::new(Mutex::new(ContextShared {
             mm_context: mm::Context::new(),
+            root_set: root_set.clone(),
         }));
 
         let shared = self.shared.get_shared();
@@ -72,7 +89,7 @@ impl State {
             .lock()
             .insert(thread::current_id(), shared_data.clone());
 
-        Context::new(self, shared, shared_data)
+        Context::new(self, shared, shared_data, root_set)
     }
 
     pub fn new(size: usize) -> Result<State, CreateError> {
