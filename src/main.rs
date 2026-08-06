@@ -1,37 +1,34 @@
-use crate::mm::MM;
+#![feature(current_thread_id)]
+
+use crate::state::{SafepointArgs, State};
 
 mod bitmap;
+mod gc;
+mod gc_controller;
 mod gc_sync;
 mod mm;
 mod object;
+mod pipe;
 mod state;
-mod sync;
 
 fn main() {
     println!("Hello, world!");
-    let mut mm = MM::new(128 * 1024 * 1024).unwrap();
 
-    let mut ctx = mm::Context::new();
+    let state = State::new(128 * 1024 * 1024).unwrap();
 
-    let (bytes, page_id) = ctx.alloc(&mm, 8291).unwrap();
-    println!("Bytes: 0x{:16x} from page {page_id:#6}", bytes.addr());
-
-    let (bytes, page_id) = ctx.alloc(&mm, 8291).unwrap();
-    println!("Bytes: 0x{:16x} from page {page_id:#6}", bytes.addr());
-
-    let (bytes, page_id) = ctx.alloc(&mm, 8291).unwrap();
-    println!("Bytes: 0x{:16x} from page {page_id:#6}", bytes.addr());
-
-    let mut ctx = mm::Context::new();
-    let (bytes, page_id) = ctx.alloc(&mm, 8291).unwrap();
-    println!("Bytes: 0x{:16x} from page {page_id:#6}", bytes.addr());
-
-    ctx.flush_local_buf();
-
-    let mm2 = unsafe { mm.remap_and_clear() }.unwrap();
-    let (bytes, page_id) = ctx.alloc(&mm, 8291).unwrap();
-    println!(
-        "Bytes after cleared: 0x{:16x} from page {page_id:#6}",
-        bytes.addr()
-    );
+    let mut ctx = state.new_context();
+    let safepoint_args = SafepointArgs {
+        
+    };
+    
+    let _ = ctx
+        .alloc_fast(8192)
+        .or_else(|| {
+            // This comment can be like safepoint'ing stuffs
+            // spilling contents and such
+            unsafe { ctx.alloc_slow(8192, &safepoint_args) }
+        })
+        .unwrap();
+    
+    unsafe { ctx.safepoint(&safepoint_args) };
 }
