@@ -3,17 +3,16 @@
 use std::{
     cell::UnsafeCell,
     io,
-    os::fd::{AsFd, OwnedFd},
+    os::fd::AsFd,
     sync::atomic::{Ordering, fence},
 };
 
 use memmap2::{Mmap, MmapOptions, UncheckedAdvice};
-use nix::{
-    fcntl::OFlag,
-    poll::{PollFd, PollFlags, PollTimeout, poll},
-};
+use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use parking_lot::{Mutex, MutexGuard};
 use userfaultfd::{Uffd, UffdBuilder};
+
+use crate::pipe::Pipe;
 
 pub struct GCSync<T> {
     lock_page: Mmap,
@@ -21,11 +20,14 @@ pub struct GCSync<T> {
     live_threads: Mutex<u32>,
     uffd: Uffd,
 
-    // thread wanting to unregister writes to this
-    unregister_write_fd: OwnedFd,
+    gc_commands: Pipe<Command>,
+}
 
-    // thread wants to receive unregister reads this
-    unregister_read_fd: OwnedFd,
+enum Command {
+    // Slow path where direct modification to live_threads
+    // is not possible. This won't be returned in "wait_command"
+    // call
+    UnregisterThread,
 }
 
 unsafe impl<T: Sync> Sync for GCSync<T> {}
@@ -45,9 +47,7 @@ pub enum CreateError {
 
 impl<T> GCSync<T> {
     pub fn new(data: T) -> Result<Self, (CreateError, T)> {
-        let (ro, wr) = match nix::unistd::pipe2(
-            OFlag::O_RDWR | OFlag::O_CLOEXEC | OFlag::O_DIRECT | OFlag::O_NONBLOCK,
-        ) {
+        let thread_activity_queue = match Pipe::new() {
             Ok(x) => x,
             Err(e) => return Err((CreateError::CreatePipe(e), data)),
         };
@@ -64,8 +64,7 @@ impl<T> GCSync<T> {
                         inner: UnsafeCell::new(data),
                         lock_page,
                         uffd,
-                        unregister_read_fd: ro,
-                        unregister_write_fd: wr,
+                        gc_commands: thread_activity_queue,
                     }),
 
                     Err(e) => Err((CreateError::InitUFFD(e), data)),
@@ -106,20 +105,26 @@ impl<T> GCSync<T> {
         let mut blocked_count = 0;
         while blocked_count < *live_count {
             let mut fds = [
-                PollFd::new(self.unregister_read_fd.as_fd(), PollFlags::POLLIN),
+                PollFd::new(self.gc_commands.get_read_fd(), PollFlags::POLLIN),
                 PollFd::new(self.uffd.as_fd(), PollFlags::POLLIN),
             ];
 
             poll(&mut fds, PollTimeout::NONE).unwrap();
 
-            let unregister_event = fds[0].revents().unwrap();
+            let thread_activity = fds[0].revents().unwrap();
             let uffd_event = fds[1].revents().unwrap();
 
-            if !unregister_event.is_empty() {
-                // A thread is exited. But because this code took lock on live_count.
-                // other thread can't decrement it, thus notifies it here. If live_count
-                // is locked very sure we're going to be here sooner or later
-                *live_count -= 1;
+            if !thread_activity.is_empty() {
+                while let Some(action) = self.gc_commands.read().unwrap() {
+                    match action {
+                        Command::UnregisterThread => {
+                            // A thread is exited. But because this code took lock on live_count.
+                            // other thread can't decrement it, thus notifies it here. If live_count
+                            // is locked very sure we're going to be here sooner or later
+                            *live_count -= 1;
+                        }
+                    }
+                }
             }
 
             if !uffd_event.is_empty() {
@@ -190,14 +195,20 @@ impl<T> Drop for SharedGuard<'_, T> {
         // Make sure writes cannot happen before this
         // so GC get up to date data.
         fence(Ordering::Release);
-        
+
         match self.owner.live_threads.try_lock() {
             None => {
                 // Notify the writer, that a thread
                 // has exited. We cant block here. GC
                 // might waits for current thread to
-                // safepoint
-                nix::unistd::write(&self.owner.unregister_write_fd, &[0]).unwrap();
+                // safepoint.
+                //
+                // So go with slow path
+                self.owner
+                    .gc_commands
+                    .write(Command::UnregisterThread)
+                    .map_err(|x| x.0)
+                    .unwrap();
             }
 
             Some(mut live) => {
