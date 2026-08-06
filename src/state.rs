@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     mem::ManuallyDrop,
-    sync::Arc,
+    sync::{Arc, OnceLock},
     thread::{self, JoinHandle, ThreadId},
 };
 
@@ -22,6 +22,7 @@ pub use context::SafepointArgs;
 
 pub struct SharedState {
     pub mm: MM,
+    pub gc_state: OnceLock<gc::PersistentState>,
     pub contexts: Mutex<HashMap<ThreadId, Arc<Mutex<ContextShared>>>>,
 }
 pub struct State {
@@ -97,6 +98,7 @@ impl State {
             GCSync::new(SharedState {
                 mm: MM::new(size)?,
                 contexts: Mutex::new(HashMap::new()),
+                gc_state: OnceLock::new(),
             })
             .map_err(|x| x.0)?,
         );

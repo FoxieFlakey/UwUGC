@@ -2,8 +2,15 @@ use std::sync::Arc;
 
 use crate::{gc_controller::GCController, gc_sync::GCSync, state::SharedState};
 
+pub struct PersistentState {}
+
 pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController>) {
     let mut heap = shared.get_exclusive();
+    let gc = heap.get().gc_state.take().unwrap_or_else(|| {
+        // GC may store persistent state like caching few stuffs
+        // or store reusable stuffs to avoid reallocating on each cycle
+        PersistentState {}
+    });
 
     // Take snapshot of root set (a.k.a the SATB)
     let saved_roots = heap
@@ -32,6 +39,11 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
     let _ = unsafe { shared.get_exclusive().get().mm.remap_and_clear() }.unwrap();
 
     let mut heap = shared.get_exclusive();
+    heap.get()
+        .gc_state
+        .set(gc)
+        .ok()
+        .expect("GC persistent state somehow is initialized?");
     heap.get().contexts.get_mut().iter().for_each(|x| {
         let root_set = &x.1.lock().root_set;
         unsafe {
