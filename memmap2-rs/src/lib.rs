@@ -615,7 +615,7 @@ impl MmapOptions {
     /// when `len > isize::MAX`.
     ///
     /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
-    pub fn map_anon(&self) -> Result<MmapMut> {
+    pub fn map_anon(&self, is_shared: bool) -> Result<MmapMut> {
         let len = self.len.unwrap_or(0);
 
         // See get_len() for details.
@@ -627,6 +627,7 @@ impl MmapOptions {
             self.populate,
             self.huge,
             self.no_reserve_swap,
+            is_shared
         )
         .map(|inner| MmapMut { inner })
     }
@@ -1286,7 +1287,7 @@ impl MmapMut {
     ///
     /// Returns [`ErrorKind::Unsupported`] on unsupported platforms.
     pub fn map_anon(length: usize) -> Result<MmapMut> {
-        MmapOptions::new().len(length).map_anon()
+        MmapOptions::new().len(length).map_anon(false)
     }
 
     /// Flushes outstanding memory map modifications to disk.
@@ -1752,7 +1753,7 @@ mod test {
 
     #[test]
     fn map_anon_zero_len() {
-        assert!(MmapOptions::new().map_anon().unwrap().is_empty());
+        assert!(MmapOptions::new().map_anon(false).unwrap().is_empty());
     }
 
     #[test]

@@ -360,7 +360,12 @@ impl MmapInner {
         _populate: bool,
         _huge: Option<u8>,
         _no_reserve: bool,
+        is_shared: bool,
     ) -> io::Result<MmapInner> {
+        if is_shared {
+            panic!("Windows does not have capability for MAP_SHARED!");
+        }
+
         // Ensure a non-zero length for the underlying mapping
         let mapped_len = len.max(1);
         unsafe {

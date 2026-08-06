@@ -39,7 +39,7 @@ impl MmapInner {
         MmapInner::new()
     }
 
-    pub fn map_anon(_: usize, _: bool, _: bool, _: Option<u8>, _: bool) -> io::Result<MmapInner> {
+    pub fn map_anon(_: usize, _: bool, _: bool, _: Option<u8>, _: bool, _: bool) -> io::Result<MmapInner> {
         MmapInner::new()
     }
 

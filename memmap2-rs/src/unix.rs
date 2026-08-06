@@ -339,6 +339,7 @@ impl MmapInner {
         populate: bool,
         huge: Option<u8>,
         no_reserve: bool,
+        is_shared: bool,
     ) -> io::Result<MmapInner> {
         let stack = if stack { MAP_STACK } else { 0 };
         let populate = if populate { MAP_POPULATE } else { 0 };
@@ -347,10 +348,11 @@ impl MmapInner {
             (u64::from(mask) & (MAP_HUGE_MASK as u64)) << MAP_HUGE_SHIFT
         }) as i32;
         let no_reserve = if no_reserve { MAP_NORESERVE } else { 0 };
+        let shared = if is_shared { libc::MAP_SHARED } else { libc::MAP_PRIVATE };
         MmapInner::new(
             len,
             libc::PROT_READ | libc::PROT_WRITE,
-            libc::MAP_PRIVATE
+            shared
                 | libc::MAP_ANON
                 | stack
                 | populate
