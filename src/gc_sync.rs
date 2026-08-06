@@ -4,7 +4,7 @@ use std::{
     cell::UnsafeCell, io, mem, os::fd::AsFd, sync::atomic::{Ordering, fence}
 };
 
-use memmap2::{Mmap, MmapOptions, UncheckedAdvice};
+use memmap2::{Advice, Mmap, MmapOptions, UncheckedAdvice};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use parking_lot::{Mutex, MutexGuard};
 use userfaultfd::{Uffd, UffdBuilder};
@@ -40,6 +40,10 @@ pub enum CreateError {
     InitUFFD(userfaultfd::Error),
     #[error("cannot create pipe")]
     CreatePipe(nix::errno::Errno),
+    #[error("cannot register lock page to UFFD")]
+    RegisterUFFD(userfaultfd::Error),
+    #[error("cannot prefault lock page")]
+    PrefaultLockPage(io::Error),
 }
 
 impl<T> GCSync<T> {
@@ -56,13 +60,21 @@ impl<T> GCSync<T> {
                     .close_on_exec(true)
                     .create()
                 {
-                    Ok(uffd) => Ok(Self {
-                        live_threads: Mutex::new(0),
-                        inner: UnsafeCell::new(data),
-                        lock_page,
-                        uffd,
-                        gc_commands: thread_activity_queue,
-                    }),
+                    Ok(uffd) => match lock_page.advise(Advice::PopulateRead) {
+                        Ok(()) =>  match uffd.register(lock_page.as_ptr().cast_mut().cast(), page_size::get()) {
+                            Ok(_) => Ok(Self {
+                                live_threads: Mutex::new(0),
+                                inner: UnsafeCell::new(data),
+                                lock_page,
+                                uffd,
+                                gc_commands: thread_activity_queue,
+                            }),
+
+                            Err(e) => Err((CreateError::RegisterUFFD(e), data)),
+                        }
+                        
+                        Err(e) => Err((CreateError::PrefaultLockPage(e), data)),
+                    },
 
                     Err(e) => Err((CreateError::InitUFFD(e), data)),
                 },
