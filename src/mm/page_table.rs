@@ -1,4 +1,4 @@
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::{ptr::NonNull, sync::atomic::{AtomicUsize, Ordering}};
 
 use parking_lot::Mutex;
 
@@ -11,7 +11,7 @@ pub struct PageTable {
 
     // TODO: Turn these to be much more efficient than mutex
     // maybe use some UnsafeCells, AtomicPtr or pointer
-    pub(super) page_table: Vec<Mutex<Option<FlexPage>>>,
+    page_table: Vec<Mutex<Option<FlexPage>>>,
     medium_buffer_page: Mutex<Option<usize>>,
 }
 
@@ -34,6 +34,12 @@ impl PageTable {
 
     pub fn nr_pages(&self) -> usize {
         self.nr_pages
+    }
+
+    pub fn clear(&mut self) {
+        *self.current_base_page.get_mut() = 0;
+        self.page_table.iter_mut().for_each(|x| *x.get_mut() = None);
+        *self.medium_buffer_page.get_mut() = None;
     }
 
     // Whether caller own or not the memory, depends on where you got
@@ -79,6 +85,19 @@ impl PageTable {
 
     pub fn get_page<'a>(&'a self, idx: usize) -> &'a Mutex<Option<FlexPage>> {
         &self.page_table[idx]
+    }
+
+    pub fn set_base(&mut self, new_base: *mut u8) {
+        let old_base = self.base_addr;
+        for page in self.page_table.iter_mut() {
+            let Some(page) = page.get_mut().as_mut() else {
+                continue;
+            };
+            page.start =
+                NonNull::new(new_base.wrapping_byte_add(page.start.addr().get() - old_base.addr()))
+                    .unwrap();
+        }
+        self.base_addr = new_base;
     }
 
     // Return page index where its allocated. Caller "owns" the range of memory

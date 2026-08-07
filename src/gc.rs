@@ -1,15 +1,23 @@
-use std::sync::{Arc, atomic::Ordering};
+use std::{mem, sync::{Arc, atomic::Ordering}};
 
-use crate::{gc_controller::GCController, gc_sync::GCSync, object::ObjectPtr, state::SharedState};
+use memmap2::MmapMut;
 
-pub struct PersistentState {}
+use crate::{gc_controller::GCController, gc_sync::GCSync, mm::PageTable, object::ObjectPtr, state::SharedState};
+
+pub struct PersistentState {
+    prev_page_table: Option<PageTable>,
+    prev_temp_mapping: Option<MmapMut>
+}
 
 pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController>) {
     let mut heap = shared.get_exclusive();
-    let gc = heap.get().gc_state.take().unwrap_or_else(|| {
+    let mut gc = heap.get().gc_state.take().unwrap_or_else(|| {
         // GC may store persistent state like caching few stuffs
         // or store reusable stuffs to avoid reallocating on each cycle
-        PersistentState {}
+        PersistentState {
+            prev_page_table: None,
+            prev_temp_mapping: None,
+        }
     });
 
     // Take snapshot of root set (a.k.a the SATB)
@@ -72,8 +80,20 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
     println!("Live count: {live_count}, Total count: {total_count}");
 
     let mut heap = shared.get_exclusive();
+
+    let target = gc.prev_temp_mapping.as_ref().map(|x| x.ptr().addr());
+    
     // SAFETY: For now, we assume all objects are dead
-    let _ = unsafe { heap.get().mm.remap_and_clear() }.unwrap();
+    let (mut page_table, new_mapping) = unsafe { heap.get().mm.remap_and_clear(target, gc.prev_page_table.take()) }.unwrap();
+
+    if target.is_some() {
+        // I should manually use mremap without thru memmap2 api, there two MmapMut owned the same mapping. so lets mem::forget one
+        mem::forget(new_mapping);
+    }
+
+    // Empty the table for later use by next cycle
+    page_table.clear();
+    gc.prev_page_table = Some(page_table);
 
     heap.get()
         .gc_state

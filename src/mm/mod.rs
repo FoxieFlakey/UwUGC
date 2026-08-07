@@ -1,7 +1,7 @@
 // This uses mechanism like ZGC's ZPage and ZPageTable. Using similar parameter
 // like small is 2 MiB, medium kinda changing, huge is whatever multiple of 2 MiB
 
-use std::{io, mem, ptr::NonNull};
+use std::{io, mem};
 
 use memmap2::{MmapMut, RemapOptions};
 
@@ -12,7 +12,7 @@ mod page_table;
 pub use context::Context;
 pub use page::{BASE_PAGE_SIZE, FlexPage, FlexPageKind};
 
-use crate::mm::page_table::PageTable;
+pub use page_table::PageTable;
 
 pub struct MM {
     mapping: MmapMut,
@@ -45,22 +45,20 @@ impl MM {
         &self.page_table
     }
 
-    // # Safety
-    // Caller also must ensure that all live contexts be flushed by flush_local_buf
-    pub unsafe fn remap_and_clear(&mut self) -> io::Result<MM> {
-        // SAFETY: We're passing None, so it always move to new
-        // safe mapping.
-        unsafe { self.remap_and_clear_impl(None) }
-    }
-
-    // Remap this MM to other location optionally with target
+    // Remap this MM to other location optionally with target and optionally
+    // replace the page table
     //
     // # Safety
     // Caller must make sure if hint is Some, it must not be any mapping
     // If needed to remap into other MM, use remap_into_and_clear.
     //
     // Caller also must ensure that all live contexts be flushed by flush_local_buf
-    unsafe fn remap_and_clear_impl(&mut self, target: Option<usize>) -> io::Result<MM> {
+    //
+    // If new_page_table is Some, all previous allocation by other part
+    // may or may not become "invalid" depends on what the new table said.
+    pub unsafe fn remap_and_clear(&mut self, target: Option<usize>, new_table: Option<PageTable>) -> io::Result<(PageTable, MmapMut)> {
+        let nr_pages = self.page_table.nr_pages();
+        
         // SAFETY: Caller ensured that target either None (always moves to unused space)
         // or Some which ensures it must not be used by anything
         let moved = unsafe {
@@ -68,29 +66,16 @@ impl MM {
                 .move_mapping_and_clear(RemapOptions::new().may_move(true), target)
         }?;
 
-        // Clear current table, and take the old table
-        // to be moved
-        let empty_table = PageTable::new(self.mapping.ptr_mut(), self.page_table.nr_pages());
-        let mut moved_page_table = mem::replace(&mut self.page_table, empty_table);
+        let new_table = new_table.map(|mut x| {
+                assert_eq!(x.nr_pages(), nr_pages, "New page table doesnt manage same memory size as current MM");
+                x.set_base(self.mapping.ptr_mut());
+                x
+            }).unwrap_or_else(|| PageTable::new(self.mapping.ptr_mut(), nr_pages));
+        let mut moved_page_table = mem::replace(&mut self.page_table, new_table);
 
         // Fix the pointer in page table
-        let old_base = self.mapping.ptr_mut();
-        let new_base = moved.ptr_mut();
-        for page in moved_page_table.page_table.iter_mut() {
-            let Some(page) = page.get_mut().as_mut() else {
-                continue;
-            };
-            page.start =
-                NonNull::new(new_base.wrapping_byte_add(page.start.addr().get() - old_base.addr()))
-                    .unwrap();
-        }
+        moved_page_table.set_base(moved.ptr_mut());
 
-        // New MM describing the moved space
-        let moved_mm = MM {
-            page_table: moved_page_table,
-            mapping: moved,
-        };
-
-        Ok(moved_mm)
+        Ok((moved_page_table, moved))
     }
 }
