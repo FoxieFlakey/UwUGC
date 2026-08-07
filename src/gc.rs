@@ -42,18 +42,16 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
         let obj = unsafe { ObjectPtr::new(x) };
 
         // Mark the object
-        let ret = obj.metadata_ref()
-            .try_update(
-                Ordering::Relaxed,
-                Ordering::Relaxed,
-                |mut x| {
-                    if x.is_marked {
-                        None
-                    } else {
-                        x.is_marked = true;
-                        Some(x)
-                    }
-                });
+        let ret = obj
+            .metadata_ref()
+            .try_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
+                if x.is_marked {
+                    None
+                } else {
+                    x.is_marked = true;
+                    Some(x)
+                }
+            });
 
         total_count += 1;
         if ret.is_ok() {
@@ -76,7 +74,7 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
     let mut heap = shared.get_exclusive();
     // SAFETY: For now, we assume all objects are dead
     let _ = unsafe { heap.get().mm.remap_and_clear() }.unwrap();
-    
+
     heap.get()
         .gc_state
         .set(gc)

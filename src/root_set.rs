@@ -27,13 +27,13 @@ pub unsafe trait RootSet: Sync + Send {
     /// is guaranteed by GC. That mutator wont see half complete update
     /// to the raw set either via doing it in STW or via UFFD pagefaults
     /// to update on demand if GC hasn't catched up
-    /// 
+    ///
     /// This is a little complicated so I'll show the code (not valid rust)
     ///
     /// ```rust,ignore
     /// // get root set from context. Assume its dumb
     /// // [*mut u8] array pointers
-    /// 
+    ///
     /// // Thread Mutator                                   | Thread GC
     /// let set: &mut [*mut u8] = context.get_root_set();   |
     ///                                                     |
@@ -56,11 +56,11 @@ pub unsafe trait RootSet: Sync + Send {
     ///                                                     | // figure where pointers are)
     ///                                                     | let snapshotted = mutator_root_set.clone_metadata(backing_raw);
     ///                                                     | snapshotted.map_pointers(|x| fixup_ptr(x));
-    ///                                                     | 
+    ///                                                     |
     ///                                                     | // Here what i mean by raw root set be allowed to be modified directly by GC
     ///                                                     | let current_raw = mutator_root_set.get_raw();
     ///                                                     | let updated_raw = snapshotted.get_raw();
-    ///                                                     | 
+    ///                                                     |
     ///                                                     | // Here what I meant. GC can copies from updated_raw to current_raw
     ///                                                     | // without consulting the root set trait. Only guarantee GC will give is
     ///                                                     | // mutator root set is not modified relative to one returned from clone_metadata
@@ -74,10 +74,10 @@ pub unsafe trait RootSet: Sync + Send {
     ///                                                     |
     /// do_something_else(obj2);                            |
     /// ```
-    /// 
+    ///
     /// Mechanism on GC like before, allows GC to defer copying and map_pointers to be concurrent via userfaultfd or other mechanisms
     /// without needing cooperation from root set implementation
-    /// 
+    ///
     /// # Safety
     /// Caller must make sure nothing uses the pointers inside RootSet. While
     /// this function is running.

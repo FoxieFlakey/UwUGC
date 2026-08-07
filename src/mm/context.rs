@@ -25,16 +25,20 @@ impl Context {
             return mm.alloc(size);
         }
 
+        let page_table = mm.get_page_table();
         // Fast path with local buf
         if self.local_buffer_page.is_none() {
-            self.local_buffer_page = Some(mm.alloc_page(FlexPageKind::Small)?);
+            self.local_buffer_page = Some(page_table.alloc_page(FlexPageKind::Small)?);
         }
 
-        let mut local_page = mm.page_table[self.local_buffer_page.unwrap()].lock();
+        let mut local_page = page_table.get_page(self.local_buffer_page.unwrap()).lock();
         if size >= local_page.as_mut().unwrap().free() {
             // Not enough space, allocate new FlexPage
-            self.local_buffer_page = Some(mm.alloc_page(FlexPageKind::Small)?);
-            local_page = mm.page_table[self.local_buffer_page.unwrap()].lock();
+            self.local_buffer_page = Some(page_table.alloc_page(FlexPageKind::Small)?);
+            local_page = mm
+                .page_table
+                .get_page(self.local_buffer_page.unwrap())
+                .lock();
         }
 
         Some((

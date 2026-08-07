@@ -4,7 +4,10 @@ use arbitrary_int::u60;
 use parking_lot::Mutex;
 
 use crate::{
-    gc_sync, mm, object::{Metadata, MetadataCompressed, ObjectKind, ObjectPtr}, root_set::RootSet, state::{SharedState, State}
+    gc_sync, mm,
+    object::{Metadata, MetadataCompressed, ObjectKind, ObjectPtr},
+    root_set::RootSet,
+    state::{SharedState, State},
 };
 
 pub struct ContextShared {
@@ -91,7 +94,10 @@ where
         };
 
         // SAFETY: Caller ensure corect alignment and size
-        unsafe { ptr.cast::<MetadataCompressed>().write(MetadataCompressed::new(meta)) };
+        unsafe {
+            ptr.cast::<MetadataCompressed>()
+                .write(MetadataCompressed::new(meta))
+        };
 
         // SAFETY: We have initialized the object to be valid object and has correct alignment and size
         unsafe { ObjectPtr::new(ptr) }
@@ -114,7 +120,8 @@ where
     ) -> Option<ObjectPtr> {
         // Retry 3 times :3
         for _ in 0..3 {
-            let kind = ObjectKind::PlainOldData(u60::try_new(u64::try_from(size).unwrap()).unwrap());
+            let kind =
+                ObjectKind::PlainOldData(u60::try_new(u64::try_from(size).unwrap()).unwrap());
             let ret = self
                 .shared_data
                 .lock()

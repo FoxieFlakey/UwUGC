@@ -1,6 +1,8 @@
 mod metadata;
 
-pub use metadata::{Metadata as MetadataCompressed, MetadataEnum as ObjectKind, MetadataExpanded as Metadata};
+pub use metadata::{
+    Metadata as MetadataCompressed, MetadataEnum as ObjectKind, MetadataExpanded as Metadata,
+};
 
 // A pointer to object
 #[repr(transparent)]
@@ -33,7 +35,7 @@ impl ObjectPtr {
         match self.metadata_ref().get().payload {
             ObjectKind::NotPlainOldData(_) => unimplemented!(),
             ObjectKind::PlainOldData(size) => size.value().try_into().unwrap(),
-            ObjectKind::RefArray(len) => usize::try_from(len.value()).unwrap() * size_of::<u64>()
+            ObjectKind::RefArray(len) => usize::try_from(len.value()).unwrap() * size_of::<u64>(),
         }
     }
 
@@ -44,4 +46,3 @@ impl ObjectPtr {
         unsafe { self.0.byte_add(size_of::<MetadataCompressed>()) }
     }
 }
-
