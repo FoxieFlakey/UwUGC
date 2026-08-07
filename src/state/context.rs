@@ -1,11 +1,10 @@
 use std::{marker::PhantomData, sync::Arc};
 
+use arbitrary_int::u60;
 use parking_lot::Mutex;
 
 use crate::{
-    gc_sync, mm,
-    root_set::RootSet,
-    state::{SharedState, State},
+    gc_sync, mm, object::{Metadata, MetadataCompressed, ObjectKind, ObjectPtr}, root_set::RootSet, state::{SharedState, State}
 };
 
 pub struct ContextShared {
@@ -70,13 +69,32 @@ where
     // }
     //
     // <use the object>
-    pub fn alloc_fast(&mut self, size: usize) -> Option<*mut u8> {
+    pub fn alloc_fast(&mut self, size: usize) -> Option<ObjectPtr> {
+        let kind = ObjectKind::PlainOldData(u60::try_new(u64::try_from(size).unwrap()).unwrap());
         return self
             .shared_data
             .lock()
             .mm_context
             .alloc(&self.shared.get().mm, size)
-            .map(|x| x.0);
+            .map(|x| unsafe { Self::init_object(x.0, kind) });
+    }
+
+    // # Safety
+    // caller has to ensure 'ptr' is atleast MetadataCompressed size and
+    // has valid metadata which include the sizing and aligned to be
+    // 64-bit on both size and alignment of pointer
+    unsafe fn init_object(ptr: *mut u8, kind: ObjectKind) -> ObjectPtr {
+        let meta = Metadata {
+            is_marked: false,
+            payload: kind,
+            write_barrier_activated: false,
+        };
+
+        // SAFETY: Caller ensure corect alignment and size
+        unsafe { ptr.cast::<MetadataCompressed>().write(MetadataCompressed::new(meta)) };
+
+        // SAFETY: We have initialized the object to be valid object and has correct alignment and size
+        unsafe { ObjectPtr::new(ptr) }
     }
 
     // This is like alloc_fast, but this may start GC/be blocked. So
@@ -93,15 +111,16 @@ where
         &mut self,
         size: usize,
         _safepoint_args: &SafepointArgs,
-    ) -> Option<*mut u8> {
+    ) -> Option<ObjectPtr> {
         // Retry 3 times :3
         for _ in 0..3 {
+            let kind = ObjectKind::PlainOldData(u60::try_new(u64::try_from(size).unwrap()).unwrap());
             let ret = self
                 .shared_data
                 .lock()
                 .mm_context
                 .alloc(&self.shared.get().mm, size)
-                .map(|x| x.0);
+                .map(|x| unsafe { Self::init_object(x.0, kind) });
 
             if ret.is_some() {
                 return ret;

@@ -82,6 +82,23 @@ pub unsafe trait RootSet: Sync + Send {
     /// Caller must make sure nothing uses the pointers inside RootSet. While
     /// this function is running.
     unsafe fn map_pointers(&self, visitor: &mut dyn FnMut(*mut u8) -> *mut u8);
+
+    // This like map_pointers, but less stricter read only operations. This is
+    // implemented in term of map_pointers. Implementer should override this
+    // if there faster way for read only.
+    //
+    // # Safety
+    // Caller must make sure nothing uses the pointers inside RootSet. While
+    // this function is running.
+    unsafe fn iter_pointers(&self, visitor: &mut dyn FnMut(*mut u8)) {
+        // SAFETY: Caller already meet the requirements
+        unsafe {
+            self.map_pointers(&mut |x| {
+                visitor(x);
+                x
+            })
+        };
+    }
 }
 
 pub struct RootSetRaw {

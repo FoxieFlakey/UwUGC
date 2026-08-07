@@ -1,6 +1,6 @@
-use std::sync::Arc;
+use std::sync::{Arc, atomic::Ordering};
 
-use crate::{gc_controller::GCController, gc_sync::GCSync, state::SharedState};
+use crate::{gc_controller::GCController, gc_sync::GCSync, object::ObjectPtr, state::SharedState};
 
 pub struct PersistentState {}
 
@@ -32,8 +32,46 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
     controller.clear_request();
     drop(heap);
 
-    // Let pretend we marked the heap
-    drop(saved_roots);
+    // Mark objects concurrently, note for now the mark bit doesnt
+    // get used its assume all dead
+    let mut live_count = 0;
+    let mut total_count = 0;
+    let mut visitor = |x| {
+        // SAFETY: The implementer of iter_pointers ensures the
+        // only pointers that given is the same one GC gave
+        let obj = unsafe { ObjectPtr::new(x) };
+
+        // Mark the object
+        let ret = obj.metadata_ref()
+            .try_update(
+                Ordering::Relaxed,
+                Ordering::Relaxed,
+                |mut x| {
+                    if x.is_marked {
+                        None
+                    } else {
+                        x.is_marked = true;
+                        Some(x)
+                    }
+                });
+
+        total_count += 1;
+        if ret.is_ok() {
+            // This just first marked.
+            // TODO: push object to mark stack to be continued
+            // recusrively
+            live_count += 1;
+        } else {
+            // Already marked this, either a while ago, or another thread
+        }
+    };
+
+    for root in saved_roots {
+        // SAFETY: We cloned the RootSet, so nobody
+        // accesses it
+        unsafe { root.iter_pointers(&mut visitor) };
+    }
+    println!("Live count: {live_count}, Total count: {total_count}");
 
     let mut heap = shared.get_exclusive();
     // SAFETY: For now, we assume all objects are dead

@@ -1,12 +1,11 @@
 use arbitrary_int::prelude::*;
 use std::sync::atomic::{AtomicU64, Ordering};
 
-#[expect(unused)]
+#[repr(transparent)]
 pub struct Metadata {
     word: AtomicU64,
 }
 
-#[expect(unused)]
 pub enum MetadataEnum {
     // While these 3, GC calculate it itself. as this
     // encodes the size directly. The content is ignored
@@ -18,7 +17,6 @@ pub enum MetadataEnum {
     RefArray(u60),
 }
 
-#[expect(unused)]
 pub struct MetadataExpanded {
     pub is_marked: bool,
     pub write_barrier_activated: bool,
@@ -36,7 +34,6 @@ const MARK_BIT: u64 = 0b0001;
 const WRITE_BARRIER_BIT: u64 = 0b0010;
 const OBJECT_TYPE_MASK: u64 = 0b1100;
 
-#[expect(unused)]
 impl Metadata {
     pub fn new(data: MetadataExpanded) -> Metadata {
         Metadata {
@@ -44,6 +41,7 @@ impl Metadata {
         }
     }
 
+    #[expect(unused)]
     pub fn update<F>(
         &self,
         set_order: Ordering,
