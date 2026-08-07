@@ -20,12 +20,67 @@ pub unsafe trait RootSet: Sync + Send {
     // STW time on SATB step
     fn clone_metadata(&self, set: RootSetRaw) -> Box<dyn RootSet>;
 
-    // Visitor receives *mut u8 which is a GC pointer and returns
-    // another *mut u8 to be replaced with.
-    //
-    // # Safety
-    // Caller must make sure nothing uses the pointers inside RootSet. While
-    // this function is running.
+    /// Visitor receives *mut u8 which is a GC pointer and returns
+    /// another *mut u8 to be replaced with. Implementer MUST allow
+    /// portion of the region in RootSetRaw to be safely mutated by
+    /// GC directly. But the changes are made by this function. It
+    /// is guaranteed by GC. That mutator wont see half complete update
+    /// to the raw set either via doing it in STW or via UFFD pagefaults
+    /// to update on demand if GC hasn't catched up
+    /// 
+    /// This is a little complicated so I'll show the code (not valid rust)
+    ///
+    /// ```rust,ignore
+    /// // get root set from context. Assume its dumb
+    /// // [*mut u8] array pointers
+    /// 
+    /// // Thread Mutator                                   | Thread GC
+    /// let set: &mut [*mut u8] = context.get_root_set();   |
+    ///                                                     |
+    /// // Do something like alloc object                   |
+    /// let obj1: *mut u8 = context.alloc(283);             |
+    /// do_something(obj2);                                 |
+    ///                                                     |
+    /// let obj2: *mut u8 = context.alloc(283);             |
+    ///                                                     |
+    /// set[0] = obj1;                                      |
+    /// set[1] = obj2;                                      |
+    /// // Assume GC started                                |
+    /// context.safepoint();                                |
+    /// // Paused                                           | // Start cycle
+    ///                                                     | // ... normal GC cycle ... //
+    ///                                                     | // ... skip to reference updates at root ... //
+    ///                                                     | let backing_raw = memcpy_clone_of_raw_set(mutator_root_set.get_raw());
+    ///                                                     | // Clone the root set, assuming GC already clone the raw set. The trait
+    ///                                                     | // impl only need to clone metadata (a.k.a the data needed to properly
+    ///                                                     | // figure where pointers are)
+    ///                                                     | let snapshotted = mutator_root_set.clone_metadata(backing_raw);
+    ///                                                     | snapshotted.map_pointers(|x| fixup_ptr(x));
+    ///                                                     | 
+    ///                                                     | // Here what i mean by raw root set be allowed to be modified directly by GC
+    ///                                                     | let current_raw = mutator_root_set.get_raw();
+    ///                                                     | let updated_raw = snapshotted.get_raw();
+    ///                                                     | 
+    ///                                                     | // Here what I meant. GC can copies from updated_raw to current_raw
+    ///                                                     | // without consulting the root set trait. Only guarantee GC will give is
+    ///                                                     | // mutator root set is not modified relative to one returned from clone_metadata
+    ///                                                     | updated_raw.copy_from(current_raw);
+    /// // Resumed                                          | // End cycle
+    /// let set: &mut [*mut u8] = context.get_root_set();   |
+    ///                                                     |
+    /// // Reload pointer, which maybe moved                |
+    /// let obj1 = set[0];                                  |
+    /// let obj2 = set[1];                                  |
+    ///                                                     |
+    /// do_something_else(obj2);                            |
+    /// ```
+    /// 
+    /// Mechanism on GC like before, allows GC to defer copying and map_pointers to be concurrent via userfaultfd or other mechanisms
+    /// without needing cooperation from root set implementation
+    /// 
+    /// # Safety
+    /// Caller must make sure nothing uses the pointers inside RootSet. While
+    /// this function is running.
     unsafe fn map_pointers(&self, visitor: &mut dyn FnMut(*mut u8) -> *mut u8);
 }
 
