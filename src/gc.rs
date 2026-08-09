@@ -81,18 +81,14 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
     let mut heap = shared.get_exclusive();
 
     // SAFETY: For now, we assume all objects are dead
-    let (prev_page_table, mut prev_mapping) = gc
+    let (mut prev_page_table, mut prev_mapping) = gc
         .prev_page_and_temp_mapping
         .take()
         .map(|(x, y)| (Some(x), Some(y)))
         .unwrap_or((None, None));
 
-    let (mut page_table, mapping) = unsafe {
-        heap.get()
-            .mm
-            .remap(&mut prev_mapping, prev_page_table)
-    }
-    .unwrap();
+    let (mut page_table, mapping) =
+        unsafe { heap.get().mm.remap(&mut prev_mapping, &mut prev_page_table) }.unwrap();
 
     // Empty the table for later use by next cycle
     page_table.clear();

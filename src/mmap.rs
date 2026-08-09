@@ -104,8 +104,8 @@ impl Mmap {
         let moved = Errno::result(unsafe {
             libc::mremap(
                 self.ptr,
-                self.len,
-                self.len,
+                self.len(),
+                self.len(),
                 flags,
                 target.as_ref().map(|x| x.ptr).unwrap_or(ptr::null_mut()),
             )
@@ -116,7 +116,7 @@ impl Mmap {
             Ok(mapping)
         } else {
             // SAFETY: The pointer is valid to be munmap, its entirely new mapping
-            Ok(unsafe { Mmap::from_raw(moved, self.len) })
+            Ok(unsafe { Mmap::from_raw(moved, self.len()) })
         }
     }
 }

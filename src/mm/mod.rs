@@ -59,31 +59,30 @@ impl MM {
     pub unsafe fn remap(
         &mut self,
         target: &mut Option<Mmap>,
-        new_table: Option<PageTable>,
+        new_table: &mut Option<PageTable>,
     ) -> io::Result<(PageTable, Mmap)> {
         let nr_pages = self.page_table.nr_pages();
-        let len = self.page_table.nr_pages() * BASE_PAGE_SIZE;
-        if let Some(prev) = target.as_ref() {
-            assert!(
-                prev.len() == len,
-                "target mapping does not have same length as current MM"
+        if let Some(table) = &new_table {
+            assert_eq!(
+                table.nr_pages(),
+                nr_pages,
+                "New page table doesnt manage same memory size as current MM"
             );
         }
 
         // SAFETY: Caller ensured nothing uses the current mapping
         let remapped = unsafe { self.mapping.remap(target) }?;
-        let new_table = new_table
-            .map(|mut x| {
-                assert_eq!(
-                    x.nr_pages(),
-                    nr_pages,
-                    "New page table doesnt manage same memory size as current MM"
-                );
-                x.set_base(self.mapping.get_ptr());
-                x
-            })
-            .unwrap_or_else(|| PageTable::new(self.mapping.get_ptr(), nr_pages));
-        let mut moved_page_table = mem::replace(&mut self.page_table, new_table);
+
+        let mut moved_page_table = mem::replace(
+            &mut self.page_table,
+            new_table
+                .take()
+                .map(|mut x| {
+                    x.set_base(self.mapping.get_ptr());
+                    x
+                })
+                .unwrap_or_else(|| PageTable::new(remapped.get_ptr(), nr_pages)),
+        );
 
         // Fix the pointer in page table
         moved_page_table.set_base(remapped.get_ptr());
