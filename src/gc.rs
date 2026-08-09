@@ -1,12 +1,32 @@
-use std::{mem, sync::{Arc, atomic::Ordering}};
+use std::sync::{Arc, atomic::Ordering};
 
-use memmap2::MmapMut;
+use nix::errno::Errno;
 
-use crate::{gc_controller::GCController, gc_sync::GCSync, mm::PageTable, object::ObjectPtr, state::SharedState};
+use crate::{
+    gc_controller::GCController,
+    gc_sync::GCSync,
+    mm::{BASE_PAGE_SIZE, PageTable},
+    object::ObjectPtr,
+    state::SharedState,
+};
 
 pub struct PersistentState {
-    prev_page_table: Option<PageTable>,
-    prev_temp_mapping: Option<MmapMut>
+    prev_page_and_temp_mapping: Option<(PageTable, *mut u8)>,
+}
+
+unsafe impl Send for PersistentState {}
+unsafe impl Sync for PersistentState {}
+
+impl Drop for PersistentState {
+    fn drop(&mut self) {
+        if let Some((page_table, ptr)) = self.prev_page_and_temp_mapping.take() {
+            let unmap_size = page_table.nr_pages() * BASE_PAGE_SIZE;
+
+            // SAFETY: No, we own the memory
+            Errno::result(unsafe { nix::libc::munmap(ptr.cast(), unmap_size) })
+                .expect("Cannot unmap temporary mapping");
+        }
+    }
 }
 
 pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController>) {
@@ -15,8 +35,7 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
         // GC may store persistent state like caching few stuffs
         // or store reusable stuffs to avoid reallocating on each cycle
         PersistentState {
-            prev_page_table: None,
-            prev_temp_mapping: None,
+            prev_page_and_temp_mapping: None,
         }
     });
 
@@ -81,19 +100,24 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
 
     let mut heap = shared.get_exclusive();
 
-    let target = gc.prev_temp_mapping.as_ref().map(|x| x.ptr().addr());
-    
-    // SAFETY: For now, we assume all objects are dead
-    let (mut page_table, new_mapping) = unsafe { heap.get().mm.remap_and_clear(target, gc.prev_page_table.take()) }.unwrap();
-
-    if target.is_some() {
-        // I should manually use mremap without thru memmap2 api, there two MmapMut owned the same mapping. so lets mem::forget one
-        mem::forget(new_mapping);
+    let mut page_table;
+    let mapping;
+    if let Some((prev_page_table, prev_mapping)) = gc.prev_page_and_temp_mapping.take() {
+        // SAFETY: For now, we assume all objects are dead
+        (page_table, mapping) = unsafe {
+            heap.get()
+                .mm
+                .remap_and_clear(Some(prev_mapping), Some(prev_page_table))
+        }
+        .unwrap();
+    } else {
+        // SAFETY: For now, we assume all objects are dead
+        (page_table, mapping) = unsafe { heap.get().mm.remap_and_clear(None, None) }.unwrap();
     }
 
     // Empty the table for later use by next cycle
     page_table.clear();
-    gc.prev_page_table = Some(page_table);
+    gc.prev_page_and_temp_mapping = Some((page_table, mapping));
 
     heap.get()
         .gc_state

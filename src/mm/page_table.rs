@@ -1,4 +1,7 @@
-use std::{ptr::NonNull, sync::atomic::{AtomicUsize, Ordering}};
+use std::{
+    ptr::NonNull,
+    sync::atomic::{AtomicUsize, Ordering},
+};
 
 use parking_lot::Mutex;
 

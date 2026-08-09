@@ -103,6 +103,7 @@ pub unsafe trait RootSet: Sync + Send {
 
 pub struct RootSetRaw {
     pub(crate) mapping: MmapMut,
+    ptr: *mut u8,
     size: usize,
 }
 
@@ -111,15 +112,17 @@ unsafe impl Sync for RootSetRaw {}
 
 impl RootSetRaw {
     pub(crate) fn new(size: usize) -> Self {
+        let mut mapping = MmapMut::map_anon(size).unwrap();
         Self {
-            mapping: MmapMut::map_anon(size).unwrap(),
             size,
+            ptr: mapping.as_mut_ptr(),
+            mapping,
         }
     }
 
     #[expect(unused)]
     pub fn get_ptr(&self) -> *mut u8 {
-        self.mapping.ptr_mut()
+        self.ptr
     }
 
     #[expect(unused)]

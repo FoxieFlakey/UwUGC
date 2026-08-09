@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 arbitrary-int = "2.1.1"
 memfd = "0.6.5"
-memmap2 = { path = "./memmap2-rs/" }
+memmap2 = "0.9.11"
 nix = { version = "0.31.3", features = ["fs", "poll"] }
 page_size = "0.6.0"
 parking_lot = "0.12.5"
