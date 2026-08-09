@@ -1,14 +1,13 @@
 // This uses mechanism like ZGC's ZPage and ZPageTable. Using similar parameter
 // like small is 2 MiB, medium kinda changing, huge is whatever multiple of 2 MiB
 
-use std::{ffi::c_void, io, mem, ptr};
+use std::{io, mem};
 
 mod context;
 mod page;
 mod page_table;
 
 pub use context::Context;
-use nix::errno::Errno;
 pub use page::{BASE_PAGE_SIZE, FlexPage, FlexPageKind};
 
 pub use page_table::PageTable;
@@ -57,34 +56,22 @@ impl MM {
     //
     // If new_page_table is Some, all previous allocation by other part
     // may or may not become "invalid" depends on what the new table said.
-    pub unsafe fn remap_and_clear(
+    pub unsafe fn remap(
         &mut self,
-        target: Option<Mmap>,
+        target: &mut Option<Mmap>,
         new_table: Option<PageTable>,
     ) -> io::Result<(PageTable, Mmap)> {
         let nr_pages = self.page_table.nr_pages();
         let len = self.page_table.nr_pages() * BASE_PAGE_SIZE;
         if let Some(prev) = target.as_ref() {
-            assert!(prev.len() == len, "target mapping does not have same length as current MM");
+            assert!(
+                prev.len() == len,
+                "target mapping does not have same length as current MM"
+            );
         }
 
-        let mut flags = nix::libc::MREMAP_DONTUNMAP | nix::libc::MREMAP_MAYMOVE;
-        if target.is_some() {
-            flags |= nix::libc::MREMAP_FIXED;
-        }
-
-        // SAFETY: a
-        let moved = Errno::result(unsafe {
-            nix::libc::mremap(
-                self.mapping.get_ptr().cast(),
-                len,
-                len,
-                flags,
-                target.as_ref().map(|x| x.get_ptr()).unwrap_or(ptr::null_mut()).cast::<c_void>(),
-            )
-        })?
-        .cast::<u8>();
-
+        // SAFETY: Caller ensured nothing uses the current mapping
+        let remapped = unsafe { self.mapping.remap(target) }?;
         let new_table = new_table
             .map(|mut x| {
                 assert_eq!(
@@ -99,13 +86,9 @@ impl MM {
         let mut moved_page_table = mem::replace(&mut self.page_table, new_table);
 
         // Fix the pointer in page table
-        moved_page_table.set_base(moved);
+        moved_page_table.set_base(remapped.get_ptr());
 
-        // Forget the target, because we're recreating Mmap unconditionally
-        mem::forget(target);
-        
         // SAFETY: This mapping can be munmap like normal
-        let moved = unsafe { Mmap::from_raw(moved, len) };
-        Ok((moved_page_table, moved))
+        Ok((moved_page_table, remapped))
     }
 }

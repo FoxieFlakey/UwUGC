@@ -11,7 +11,10 @@ use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use parking_lot::{Mutex, MutexGuard};
 use userfaultfd::{Uffd, UffdBuilder};
 
-use crate::{mmap::{Advice, Mmap}, pipe::Pipe};
+use crate::{
+    mmap::{Advice, Mmap},
+    pipe::Pipe,
+};
 
 pub struct GCSync<T> {
     lock_page: Mmap,
@@ -61,9 +64,7 @@ impl<T> GCSync<T> {
             {
                 // SAFETY: PopulateRead is only pre-loading pages. Does not destroys
                 Ok(uffd) => match unsafe { lock_page.advise(Advice::PopulateRead) } {
-                    Ok(()) => match uffd
-                        .register(lock_page.get_ptr().cast(), page_size::get())
-                    {
+                    Ok(()) => match uffd.register(lock_page.get_ptr().cast(), page_size::get()) {
                         Ok(_) => Ok(Self {
                             live_threads: Mutex::new(0),
                             inner: UnsafeCell::new(data),
@@ -105,11 +106,7 @@ impl<T> GCSync<T> {
 
         // SAFETY: We dont care the content. The remove can
         // remove. Only want side effect of page fault
-        unsafe {
-            self.lock_page
-                .advise(Advice::Remove)
-                .unwrap()
-        };
+        unsafe { self.lock_page.advise(Advice::Remove).unwrap() };
 
         let mut blocked_count = 0;
         while blocked_count < *live_count {

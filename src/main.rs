@@ -10,11 +10,11 @@ mod gc;
 mod gc_controller;
 mod gc_sync;
 mod mm;
+mod mmap;
 mod object;
 mod pipe;
 mod root_set;
 mod state;
-mod mmap;
 
 fn main() {
     println!("Hello, world!");

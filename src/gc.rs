@@ -1,7 +1,8 @@
 use std::sync::{Arc, atomic::Ordering};
 
 use crate::{
-    gc_controller::GCController, gc_sync::GCSync, mm::PageTable, mmap::Mmap, object::ObjectPtr, state::SharedState
+    gc_controller::GCController, gc_sync::GCSync, mm::PageTable, mmap::Mmap, object::ObjectPtr,
+    state::SharedState,
 };
 
 pub struct PersistentState {
@@ -79,20 +80,19 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
 
     let mut heap = shared.get_exclusive();
 
-    let mut page_table;
-    let mapping;
-    if let Some((prev_page_table, prev_mapping)) = gc.prev_page_and_temp_mapping.take() {
-        // SAFETY: For now, we assume all objects are dead
-        (page_table, mapping) = unsafe {
-            heap.get()
-                .mm
-                .remap_and_clear(Some(prev_mapping), Some(prev_page_table))
-        }
-        .unwrap();
-    } else {
-        // SAFETY: For now, we assume all objects are dead
-        (page_table, mapping) = unsafe { heap.get().mm.remap_and_clear(None, None) }.unwrap();
+    // SAFETY: For now, we assume all objects are dead
+    let (prev_page_table, mut prev_mapping) = gc
+        .prev_page_and_temp_mapping
+        .take()
+        .map(|(x, y)| (Some(x), Some(y)))
+        .unwrap_or((None, None));
+
+    let (mut page_table, mapping) = unsafe {
+        heap.get()
+            .mm
+            .remap(&mut prev_mapping, prev_page_table)
     }
+    .unwrap();
 
     // Empty the table for later use by next cycle
     page_table.clear();

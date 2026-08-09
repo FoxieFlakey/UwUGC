@@ -4,7 +4,7 @@ use nix::{errno::Errno, libc};
 
 pub struct Mmap {
     ptr: *mut c_void,
-    len: usize
+    len: usize,
 }
 
 unsafe impl Sync for Mmap {}
@@ -20,7 +20,7 @@ impl Drop for Mmap {
 
 pub enum Advice {
     Remove,
-    PopulateRead
+    PopulateRead,
 }
 
 impl Mmap {
@@ -66,7 +66,10 @@ impl Mmap {
     // The pointer and len give, must corresopnd to valid range
     // mapping from mmap
     pub unsafe fn from_raw(ptr: *mut u8, len: usize) -> Self {
-        Self { ptr: ptr.cast(), len }
+        Self {
+            ptr: ptr.cast(),
+            len,
+        }
     }
 
     // # Safety
@@ -77,10 +80,43 @@ impl Mmap {
             Advice::PopulateRead => libc::MADV_POPULATE_READ,
             Advice::Remove => libc::MADV_REMOVE,
         };
-        
+
         // SAFETY: bweh
         Errno::result(unsafe { libc::madvise(self.ptr.cast(), self.len, advice) })?;
         Ok(())
     }
-}
 
+    // Remaps current mapping to new 'target' which can be existing Mmap or create new
+    // one. Performs mremap
+    //
+    // # Safety
+    // This function move current mapping to new target or create new Mmap. Caller
+    // make sure no one use the mapping and current mapping would be zero page filled
+    // after moved away to target. The target must have compatible mapping type and prots
+    // as needed by caller
+    pub unsafe fn remap(&mut self, target: &mut Option<Mmap>) -> io::Result<Mmap> {
+        let mut flags = libc::MREMAP_DONTUNMAP | libc::MREMAP_MAYMOVE;
+        if target.is_some() {
+            flags |= libc::MREMAP_FIXED;
+        }
+
+        // SAFETY: ignore
+        let moved = Errno::result(unsafe {
+            libc::mremap(
+                self.ptr,
+                self.len,
+                self.len,
+                flags,
+                target.as_ref().map(|x| x.ptr).unwrap_or(ptr::null_mut()),
+            )
+        })?
+        .cast::<u8>();
+
+        if let Some(mapping) = target.take() {
+            Ok(mapping)
+        } else {
+            // SAFETY: The pointer is valid to be munmap, its entirely new mapping
+            Ok(unsafe { Mmap::from_raw(moved, self.len) })
+        }
+    }
+}
