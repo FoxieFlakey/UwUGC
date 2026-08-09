@@ -35,6 +35,10 @@ impl PageTable {
         }
     }
 
+    pub fn get_top_addr(&self) -> usize {
+        self.base_addr.addr() + self.current_base_page.load(Ordering::Relaxed) * BASE_PAGE_SIZE
+    }
+
     pub fn nr_pages(&self) -> usize {
         self.nr_pages
     }

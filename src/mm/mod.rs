@@ -38,6 +38,14 @@ impl MM {
         })
     }
 
+    pub fn get_page_table(&self) -> &PageTable {
+        &self.page_table
+    }
+
+    pub fn get_mapping(&self) -> &Mmap {
+        &self.mapping
+    }
+
     // Remap this MM to other location optionally with target and optionally
     // replace the page table. Caller also can remap into existing mapping
     //

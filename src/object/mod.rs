@@ -30,7 +30,6 @@ impl ObjectPtr {
         unsafe { self.0.cast::<MetadataCompressed>().as_ref_unchecked() }
     }
 
-    #[expect(unused)]
     pub fn size(&self) -> usize {
         match self.metadata_ref().get().payload {
             ObjectKind::NotPlainOldData(_) => unimplemented!(),
