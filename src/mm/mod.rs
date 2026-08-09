@@ -38,16 +38,6 @@ impl MM {
         })
     }
 
-    pub fn alloc(&self, size: usize) -> Option<(*mut u8, usize)> {
-        // Note: because we own the memory and page table do not
-        // cause overlaps. The pointer can be used directly
-        self.page_table.alloc(size)
-    }
-
-    pub fn get_page_table(&self) -> &PageTable {
-        &self.page_table
-    }
-
     // Remap this MM to other location optionally with target and optionally
     // replace the page table. Caller also can remap into existing mapping
     //

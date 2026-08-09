@@ -74,12 +74,16 @@ where
     // <use the object>
     pub fn alloc_fast(&mut self, size: usize) -> Option<ObjectPtr> {
         let kind = ObjectKind::PlainOldData(u60::try_new(u64::try_from(size).unwrap()).unwrap());
-        return self
-            .shared_data
-            .lock()
-            .mm_context
-            .alloc(&self.shared.get().mm, size)
-            .map(|x| unsafe { Self::init_object(x.0, kind) });
+
+        // SAFETY: We're using same mm consistently
+        let ret = unsafe {
+            self.shared_data
+                .lock()
+                .mm_context
+                .alloc(&self.shared.get().mm, size)
+        };
+
+        ret.map(|x| unsafe { Self::init_object(x.0, kind) })
     }
 
     // # Safety
@@ -122,15 +126,16 @@ where
         for _ in 0..3 {
             let kind =
                 ObjectKind::PlainOldData(u60::try_new(u64::try_from(size).unwrap()).unwrap());
-            let ret = self
-                .shared_data
-                .lock()
-                .mm_context
-                .alloc(&self.shared.get().mm, size)
-                .map(|x| unsafe { Self::init_object(x.0, kind) });
+            // SAFETY: We're using same mm consistently
+            let ret = unsafe {
+                self.shared_data
+                    .lock()
+                    .mm_context
+                    .alloc(&self.shared.get().mm, size)
+            };
 
             if ret.is_some() {
-                return ret;
+                return ret.map(|x| unsafe { Self::init_object(x.0, kind) });
             }
 
             self.shared.unguarded(|| {
