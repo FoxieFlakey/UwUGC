@@ -1,4 +1,6 @@
-use memmap2::MmapMut;
+use std::slice;
+
+use crate::mmap::Mmap;
 
 // # Guarantees
 // the set and len, are always aligned to system page size
@@ -102,8 +104,7 @@ pub unsafe trait RootSet: Sync + Send {
 }
 
 pub struct RootSetRaw {
-    pub(crate) mapping: MmapMut,
-    ptr: *mut u8,
+    pub(crate) mapping: Mmap,
     size: usize,
 }
 
@@ -112,20 +113,16 @@ unsafe impl Sync for RootSetRaw {}
 
 impl RootSetRaw {
     pub(crate) fn new(size: usize) -> Self {
-        let mut mapping = MmapMut::map_anon(size).unwrap();
         Self {
             size,
-            ptr: mapping.as_mut_ptr(),
-            mapping,
+            mapping: Mmap::map(size, true, true, true).unwrap(),
         }
     }
 
-    #[expect(unused)]
     pub fn get_ptr(&self) -> *mut u8 {
-        self.ptr
+        self.mapping.get_ptr()
     }
 
-    #[expect(unused)]
     pub fn get_size(&self) -> usize {
         self.size
     }
@@ -133,8 +130,15 @@ impl RootSetRaw {
     // # Safety
     // there must be no active modification to the root set
     pub(crate) unsafe fn clone(&self) -> RootSetRaw {
-        let mut cloned = Self::new(self.size);
-        cloned.mapping.copy_from_slice(&self.mapping);
+        let cloned = Self::new(self.size);
+
+        // SAFETY: We just made cloned, and nobody access so &mut is safe
+        let dest = unsafe { slice::from_raw_parts_mut(cloned.get_ptr(), cloned.get_size()) };
+
+        // SAFETY: Caller ensures there no active modification or &mut so this is safe
+        let src = unsafe { slice::from_raw_parts(self.get_ptr(), self.get_size()) };
+
+        dest.copy_from_slice(src);
         cloned
     }
 }

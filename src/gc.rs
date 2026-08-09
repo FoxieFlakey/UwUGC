@@ -1,32 +1,11 @@
 use std::sync::{Arc, atomic::Ordering};
 
-use nix::errno::Errno;
-
 use crate::{
-    gc_controller::GCController,
-    gc_sync::GCSync,
-    mm::{BASE_PAGE_SIZE, PageTable},
-    object::ObjectPtr,
-    state::SharedState,
+    gc_controller::GCController, gc_sync::GCSync, mm::PageTable, mmap::Mmap, object::ObjectPtr, state::SharedState
 };
 
 pub struct PersistentState {
-    prev_page_and_temp_mapping: Option<(PageTable, *mut u8)>,
-}
-
-unsafe impl Send for PersistentState {}
-unsafe impl Sync for PersistentState {}
-
-impl Drop for PersistentState {
-    fn drop(&mut self) {
-        if let Some((page_table, ptr)) = self.prev_page_and_temp_mapping.take() {
-            let unmap_size = page_table.nr_pages() * BASE_PAGE_SIZE;
-
-            // SAFETY: No, we own the memory
-            Errno::result(unsafe { nix::libc::munmap(ptr.cast(), unmap_size) })
-                .expect("Cannot unmap temporary mapping");
-        }
-    }
+    prev_page_and_temp_mapping: Option<(PageTable, Mmap)>,
 }
 
 pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController>) {

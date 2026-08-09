@@ -14,6 +14,7 @@ mod object;
 mod pipe;
 mod root_set;
 mod state;
+mod mmap;
 
 fn main() {
     println!("Hello, world!");

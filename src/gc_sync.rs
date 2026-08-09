@@ -7,12 +7,11 @@ use std::{
     sync::atomic::{Ordering, fence},
 };
 
-use memmap2::{Advice, Mmap, MmapOptions, UncheckedAdvice};
 use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use parking_lot::{Mutex, MutexGuard};
 use userfaultfd::{Uffd, UffdBuilder};
 
-use crate::pipe::Pipe;
+use crate::{mmap::{Advice, Mmap}, pipe::Pipe};
 
 pub struct GCSync<T> {
     lock_page: Mmap,
@@ -37,8 +36,6 @@ unsafe impl<T: Send> Send for GCSync<T> {}
 pub enum CreateError {
     #[error("cannot map lock page")]
     MappingLockPage(io::Error),
-    #[error("cannot change lock page to be read only")]
-    ChangeToRO(io::Error),
     #[error("cannot init UFFD")]
     InitUFFD(userfaultfd::Error),
     #[error("cannot create pipe")]
@@ -56,35 +53,32 @@ impl<T> GCSync<T> {
             Err(e) => return Err((CreateError::CreatePipe(e), data)),
         };
 
-        match MmapOptions::new().len(page_size::get()).map_anon() {
-            Ok(lock_page) => match lock_page.make_read_only() {
-                Ok(lock_page) => match UffdBuilder::new()
-                    .non_blocking(true)
-                    .close_on_exec(true)
-                    .create()
-                {
-                    Ok(uffd) => match lock_page.advise(Advice::PopulateRead) {
-                        Ok(()) => match uffd
-                            .register(lock_page.as_ptr().cast_mut().cast(), page_size::get())
-                        {
-                            Ok(_) => Ok(Self {
-                                live_threads: Mutex::new(0),
-                                inner: UnsafeCell::new(data),
-                                lock_page,
-                                uffd,
-                                gc_commands: thread_activity_queue,
-                            }),
+        match Mmap::map(page_size::get(), false, true, false) {
+            Ok(lock_page) => match UffdBuilder::new()
+                .non_blocking(true)
+                .close_on_exec(true)
+                .create()
+            {
+                // SAFETY: PopulateRead is only pre-loading pages. Does not destroys
+                Ok(uffd) => match unsafe { lock_page.advise(Advice::PopulateRead) } {
+                    Ok(()) => match uffd
+                        .register(lock_page.get_ptr().cast(), page_size::get())
+                    {
+                        Ok(_) => Ok(Self {
+                            live_threads: Mutex::new(0),
+                            inner: UnsafeCell::new(data),
+                            lock_page,
+                            uffd,
+                            gc_commands: thread_activity_queue,
+                        }),
 
-                            Err(e) => Err((CreateError::RegisterUFFD(e), data)),
-                        },
-
-                        Err(e) => Err((CreateError::PrefaultLockPage(e), data)),
+                        Err(e) => Err((CreateError::RegisterUFFD(e), data)),
                     },
 
-                    Err(e) => Err((CreateError::InitUFFD(e), data)),
+                    Err(e) => Err((CreateError::PrefaultLockPage(e), data)),
                 },
 
-                Err(e) => Err((CreateError::ChangeToRO(e), data)),
+                Err(e) => Err((CreateError::InitUFFD(e), data)),
             },
 
             Err(e) => Err((CreateError::MappingLockPage(e), data)),
@@ -109,10 +103,11 @@ impl<T> GCSync<T> {
     pub fn get_exclusive<'a>(&'a self) -> ExclusiveGuard<'a, T> {
         let mut live_count = self.live_threads.lock();
 
-        // The content of it doesn't matter
+        // SAFETY: We dont care the content. The remove can
+        // remove. Only want side effect of page fault
         unsafe {
             self.lock_page
-                .unchecked_advise(UncheckedAdvice::Remove)
+                .advise(Advice::Remove)
                 .unwrap()
         };
 
@@ -189,7 +184,7 @@ impl<T> Drop for ExclusiveGuard<'_, T> {
         let uffd = &self.owner.uffd;
         unsafe {
             uffd.zeropage(
-                self.owner.lock_page.as_ptr().cast_mut().cast(),
+                self.owner.lock_page.get_ptr().cast(),
                 page_size::get(),
                 true,
             )
@@ -290,7 +285,7 @@ impl<T> SharedGuard<'_, T> {
 
         // Triggers safepoint, to maybe blocks if writer is waiting
         // SAFETY: We dont do anything than read and discard...
-        unsafe { self.owner.lock_page.as_ptr().read_volatile() };
+        unsafe { self.owner.lock_page.get_ptr().read_volatile() };
 
         // Fence necessary so current thread dont read data
         // before the safepoint because it can get out of date

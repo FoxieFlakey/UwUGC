@@ -3,8 +3,6 @@
 
 use std::{ffi::c_void, io, mem, ptr};
 
-use memmap2::MmapMut;
-
 mod context;
 mod page;
 mod page_table;
@@ -15,10 +13,10 @@ pub use page::{BASE_PAGE_SIZE, FlexPage, FlexPageKind};
 
 pub use page_table::PageTable;
 
+use crate::mmap::Mmap;
+
 pub struct MM {
-    #[expect(unused)]
-    mapping: MmapMut,
-    mapping_ptr: *mut u8,
+    mapping: Mmap,
     page_table: PageTable,
 }
 
@@ -34,10 +32,9 @@ pub enum CreateError {
 impl MM {
     pub fn new(size: usize) -> Result<Self, CreateError> {
         let nr_pages = size.div_ceil(BASE_PAGE_SIZE);
-        let mut mapping = MmapMut::map_anon(nr_pages * BASE_PAGE_SIZE)?;
+        let mapping = Mmap::map(nr_pages * BASE_PAGE_SIZE, true, true, true)?;
         Ok(Self {
-            page_table: PageTable::new(mapping.as_mut_ptr(), nr_pages),
-            mapping_ptr: mapping.as_mut_ptr(),
+            page_table: PageTable::new(mapping.get_ptr(), nr_pages),
             mapping,
         })
     }
@@ -53,32 +50,37 @@ impl MM {
     }
 
     // Remap this MM to other location optionally with target and optionally
-    // replace the page table. The caler now has to do munmap on the target
-    // or returned mapping
+    // replace the page table. Caller also can remap into existing mapping
     //
     // # Safety
-    // Caller make sure 'target' is either unused, or used but "compatible" depending
-    // on what caller want to use it with
-    //
     // Caller also must ensure that all live contexts be flushed by flush_local_buf
     //
     // If new_page_table is Some, all previous allocation by other part
     // may or may not become "invalid" depends on what the new table said.
     pub unsafe fn remap_and_clear(
         &mut self,
-        target: Option<*mut u8>,
+        target: Option<Mmap>,
         new_table: Option<PageTable>,
-    ) -> io::Result<(PageTable, *mut u8)> {
+    ) -> io::Result<(PageTable, Mmap)> {
         let nr_pages = self.page_table.nr_pages();
         let len = self.page_table.nr_pages() * BASE_PAGE_SIZE;
+        if let Some(prev) = target.as_ref() {
+            assert!(prev.len() == len, "target mapping does not have same length as current MM");
+        }
+
+        let mut flags = nix::libc::MREMAP_DONTUNMAP | nix::libc::MREMAP_MAYMOVE;
+        if target.is_some() {
+            flags |= nix::libc::MREMAP_FIXED;
+        }
+
         // SAFETY: a
         let moved = Errno::result(unsafe {
             nix::libc::mremap(
-                self.mapping_ptr.cast(),
+                self.mapping.get_ptr().cast(),
                 len,
                 len,
-                nix::libc::MREMAP_DONTUNMAP | nix::libc::MREMAP_FIXED | nix::libc::MREMAP_MAYMOVE,
-                target.unwrap_or(ptr::null_mut()).cast::<c_void>(),
+                flags,
+                target.as_ref().map(|x| x.get_ptr()).unwrap_or(ptr::null_mut()).cast::<c_void>(),
             )
         })?
         .cast::<u8>();
@@ -90,15 +92,20 @@ impl MM {
                     nr_pages,
                     "New page table doesnt manage same memory size as current MM"
                 );
-                x.set_base(self.mapping_ptr);
+                x.set_base(self.mapping.get_ptr());
                 x
             })
-            .unwrap_or_else(|| PageTable::new(self.mapping_ptr, nr_pages));
+            .unwrap_or_else(|| PageTable::new(self.mapping.get_ptr(), nr_pages));
         let mut moved_page_table = mem::replace(&mut self.page_table, new_table);
 
         // Fix the pointer in page table
         moved_page_table.set_base(moved);
 
+        // Forget the target, because we're recreating Mmap unconditionally
+        mem::forget(target);
+        
+        // SAFETY: This mapping can be munmap like normal
+        let moved = unsafe { Mmap::from_raw(moved, len) };
         Ok((moved_page_table, moved))
     }
 }
