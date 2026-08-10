@@ -86,14 +86,14 @@ unsafe impl RootSet for DumbRootSet {
         &self.raw
     }
 
-    unsafe fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr)) {
+    fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr)) {
         self.as_slice()
             .iter()
             .flatten()
             .for_each(visitor);
     }
 
-    unsafe fn map_pointers(&mut self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {
+    fn map_pointers(&mut self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {
         self.as_slice_mut()
             .iter_mut()
             .flatten()

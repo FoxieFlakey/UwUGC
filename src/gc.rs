@@ -108,9 +108,7 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
     };
 
     for root in saved_roots {
-        // SAFETY: We cloned the RootSet, so nobody
-        // accesses it
-        unsafe { root.iter_pointers(&mut visitor) };
+        root.iter_pointers(&mut visitor);
     }
 
     println!("Live count: {live_count}, Total count: {total_count}");
@@ -143,12 +141,9 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
         let mut root_set = x.1.lock();
         let root_set = &mut root_set.root_set;
 
-        // SAFETY: We're in STW so no mutator is running
-        unsafe {
-            root_set.map_pointers(&mut |x| {
-                // Lets assume we modifies or fixed the pointer :3
-                x
-            });
-        };
+        root_set.map_pointers(&mut |x| {
+            // Lets assume we modifies or fixed the pointer :3
+            x
+        });
     });
 }

@@ -79,20 +79,12 @@ pub unsafe trait RootSet: Sync + Send + Any {
     ///
     /// Mechanism on GC like before, allows GC to defer copying and map_pointers to be concurrent via userfaultfd or other mechanisms
     /// without needing cooperation from root set implementation
-    ///
-    /// # Safety
-    /// Caller must make sure nothing uses the pointers inside RootSet. While
-    /// this function is running.
-    unsafe fn map_pointers(&mut self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr);
+    fn map_pointers(&mut self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr);
 
     // This like map_pointers, but less stricter read only operations. This is
     // implemented in term of map_pointers. Implementer should override this
     // if there faster way for read only.
-    //
-    // # Safety
-    // Caller must make sure nothing modify the data in RootSet. While
-    // this function is running.
-    unsafe fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr));
+    fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr));
 }
 
 pub struct RootSetRaw {
@@ -158,6 +150,6 @@ unsafe impl RootSet for NoopRootSet {
     }
 
     // there nothing in here so no-op
-    unsafe fn map_pointers(&mut self, _: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {}
-    unsafe fn iter_pointers(&self, _: &mut dyn FnMut(&ObjectPtr)) {}
+    fn map_pointers(&mut self, _: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {}
+    fn iter_pointers(&self, _: &mut dyn FnMut(&ObjectPtr)) {}
 }
