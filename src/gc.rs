@@ -79,8 +79,8 @@ pub struct Step1Args<'a> {
 }
 
 /// Step 1: (STW) Take snapshot of root, and capture some heap states
-pub fn step1<'a>(_section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Args<'a> {
-    let mut heap = args.common.shared.get_exclusive();
+pub fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Args<'a> {
+    let mut heap = section_cookie.section("STW wait", |_| args.common.shared.get_exclusive());
 
     // Take snapshot of root set
     let saved_roots = heap
@@ -198,16 +198,18 @@ pub struct Step3Args<'a> {
 }
 
 /// Step 3: (STW) Prepare for relocation and fix root pointer
-pub fn step3<'a>(_section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Step4Args<'a> {
-    let mut heap = args.common.shared.get_exclusive();
+pub fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Step4Args<'a> {
+    let mut heap = section_cookie.section("STW wait", |_| args.common.shared.get_exclusive());
     let registry_frozen = args.relocation_registry.freeze();
 
     // SAFETY: For now, we assume all objects are dead
     let mut page_table_opt = Some(args.page_table);
     let (mut page_table, mapping) = unsafe {
-        heap.get()
-            .mm
-            .remap(&mut args.common.gc.cached_temp_mapping, &mut page_table_opt)
+        section_cookie.section("Remap heap", |_| {
+            heap.get()
+                .mm
+                .remap(&mut args.common.gc.cached_temp_mapping, &mut page_table_opt)
+        })
     }
     .unwrap();
     assert!(
@@ -215,16 +217,18 @@ pub fn step3<'a>(_section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -
         "Expecting remap used the page table"
     );
 
-    heap.get().contexts.get_mut().iter().for_each(|x| {
-        let mut root_set = x.1.lock();
-        let root_set = &mut root_set.root_set;
+    section_cookie.section("Fix root", |_| {
+        heap.get().contexts.get_mut().iter().for_each(|x| {
+            let mut root_set = x.1.lock();
+            let root_set = &mut root_set.root_set;
 
-        root_set.map_pointers(&mut |x| {
-            let record = registry_frozen
-                .map_src_to_dest(x.to_ptr().addr())
-                .expect("Cannot find relocation record");
-            // SAFETY: This points to correct address after relocated
-            unsafe { ObjectPtr::new(record as *mut u8) }
+            root_set.map_pointers(&mut |x| {
+                let record = registry_frozen
+                    .map_src_to_dest(x.to_ptr().addr())
+                    .expect("Cannot find relocation record");
+                // SAFETY: This points to correct address after relocated
+                unsafe { ObjectPtr::new(record as *mut u8) }
+            });
         });
     });
 
@@ -257,11 +261,9 @@ pub struct Step5Args<'a> {
 }
 
 /// Step 5: (STW) Finalize cycle
-pub fn step5(_section_cookie: &mut SectionCookie, args: Step5Args<'_>) {
-    args.common
-        .shared
-        .get_exclusive()
-        .get()
+pub fn step5(section_cookie: &mut SectionCookie, args: Step5Args<'_>) {
+    let mut heap = section_cookie.section("STW wait", |_| args.common.shared.get_exclusive());
+    heap.get()
         .gc_state
         .set(args.common.gc)
         .ok()
