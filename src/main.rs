@@ -23,29 +23,41 @@ fn main() {
     let state = State::new(128 * 1024 * 1024).unwrap();
 
     let mut ctx = state.new_context(8192, DumbRootSet::new);
-    let obj = ctx
-        .alloc_fast(8192)
-        .or_else(|| {
-            // This comment can be like safepoint'ing stuffs
-            // spilling contents and such
-            unsafe { ctx.alloc_slow(8192) }
-        })
-        .unwrap();
-    let mut set = ctx.get_root_set();
-
-    set.as_slice_mut()[0] = Some(obj);
-    drop(set);
-
+    let mut has_slow_pathed = false;
     loop {
         let _ = ctx
             .alloc_fast(8192)
             .or_else(|| {
                 // This comment can be like safepoint'ing stuffs
                 // spilling contents and such
-                unsafe { ctx.alloc_slow(8192) }
+                let ret = unsafe { ctx.alloc_slow(8192) };
+
+                // Reload poiner as needed
+                let set = ctx.get_root_set();
+                let obj = set.as_slice()[0];
+                println!("[Mutator] After safepoint time: 0x{:016x}", obj.map(|x| x.to_ptr().addr()).unwrap_or(0));
+                drop(set);
+
+                has_slow_pathed = true;
+                ret
             })
             .unwrap();
 
+        if has_slow_pathed {
+            has_slow_pathed = false;
+            let obj = ctx
+                .alloc_fast(8192)
+                .or_else(|| {
+                    // This comment can be like safepoint'ing stuffs
+                    // spilling contents and such
+                    unsafe { ctx.alloc_slow(8192) }
+                })
+                .unwrap();
+            let mut set = ctx.get_root_set();
+
+            set.as_slice_mut()[0] = Some(obj);
+            println!("[Mutator] At alloc time: 0x{:016x}", obj.to_ptr().addr());
+        }
         unsafe { ctx.safepoint() };
     }
 }
