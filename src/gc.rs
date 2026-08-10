@@ -35,11 +35,10 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
         .get_mut()
         .iter()
         .map(|(_, v)| {
-            let guard = v.lock();
-            let root_set = &guard.root_set;
+            let mut guard = v.lock();
+            let root_set = &mut guard.root_set;
 
-            // SAFETY: We're in STW nothing is modifying the root set at all
-            let raw_cloned = unsafe { root_set.get_raw().clone() };
+            let raw_cloned = root_set.get_raw_mut().clone();
 
             root_set.clone_metadata(raw_cloned)
         })

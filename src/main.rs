@@ -86,6 +86,10 @@ unsafe impl RootSet for DumbRootSet {
         &self.raw
     }
 
+    fn get_raw_mut(&mut self) -> &mut RootSetRaw {
+        &mut self.raw
+    }
+
     fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr)) {
         self.as_slice()
             .iter()

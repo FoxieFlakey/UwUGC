@@ -12,7 +12,11 @@ use crate::{mmap::Mmap, object::ObjectPtr};
 // contract
 pub unsafe trait RootSet: Sync + Send + Any {
     // This must return the root set raw given at creation or clone
+    #[expect(unused)]
     fn get_raw(&self) -> &RootSetRaw;
+
+    // This must return the root set raw given at creation or clone
+    fn get_raw_mut(&mut self) -> &mut RootSetRaw;
 
     // RootSet must clone all data necessary for proper iteration
     // of GC pointers. Its current set is copied by GC to other
@@ -111,15 +115,13 @@ impl RootSetRaw {
         self.size
     }
 
-    // # Safety
-    // there must be no active modification to the root set
-    pub(crate) unsafe fn clone(&self) -> RootSetRaw {
+    pub(crate) fn clone(&mut self) -> RootSetRaw {
         let cloned = Self::new(self.size);
 
         // SAFETY: We just made cloned, and nobody access so &mut is safe
         let dest = unsafe { slice::from_raw_parts_mut(cloned.get_ptr(), cloned.get_size()) };
 
-        // SAFETY: Caller ensures there no active modification or &mut so this is safe
+        // SAFETY: &mut ensures no &mut or shared access existed
         let src = unsafe { slice::from_raw_parts(self.get_ptr(), self.get_size()) };
 
         dest.copy_from_slice(src);
@@ -147,6 +149,10 @@ unsafe impl RootSet for NoopRootSet {
 
     fn get_raw(&self) -> &RootSetRaw {
         &self.raw
+    }
+
+    fn get_raw_mut(&mut self) -> &mut RootSetRaw {
+        &mut self.raw
     }
 
     // there nothing in here so no-op
