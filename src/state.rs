@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use thiserror::Error;
 
 use crate::{
-    gc,
+    gc::{self, GCArgs},
     gc_controller::GCController,
     gc_sync::{self, GCSync},
     mm::{self, MM},
@@ -91,10 +91,10 @@ impl State {
         Context::new(self, shared, shared_data)
     }
 
-    pub fn new(size: usize) -> Result<State, CreateError> {
+    pub fn new(size: usize, preferred_heap_base: Option<usize>, preferred_temp_base: Option<usize>) -> Result<State, CreateError> {
         let shared = Arc::new(
             GCSync::new(SharedState {
-                mm: MM::new(size)?,
+                mm: MM::new(size, preferred_heap_base)?,
                 contexts: Mutex::new(HashMap::new()),
                 gc_state: OnceLock::new(),
             })
@@ -102,15 +102,19 @@ impl State {
         );
         let controller = Arc::new(GCController::new());
 
+        let gc_args = GCArgs {
+            preferred_temp_base
+        };
+
         Ok(State {
             shared: shared.clone(),
             controller: controller.clone(),
-            gc_thread: ManuallyDrop::new(thread::spawn(move || gc_thread(shared, controller))),
+            gc_thread: ManuallyDrop::new(thread::spawn(move || gc_thread(shared, controller, gc_args))),
         })
     }
 }
 
-fn gc_thread(shared: Arc<GCSync<SharedState>>, controller: Arc<GCController>) {
+fn gc_thread(shared: Arc<GCSync<SharedState>>, controller: Arc<GCController>, gc_args: GCArgs) {
     println!("[GC] Started");
 
     controller.do_looper(|| {
@@ -130,7 +134,7 @@ fn gc_thread(shared: Arc<GCSync<SharedState>>, controller: Arc<GCController>) {
             });
 
         println!("[GC] Cycle start");
-        gc::do_cycle(&shared, &controller);
+        gc::do_cycle(&shared, &controller, &gc_args);
         println!("[GC] Cycle end");
     });
 

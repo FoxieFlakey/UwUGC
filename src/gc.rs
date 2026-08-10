@@ -21,12 +21,18 @@ pub struct PersistentState {
     cached_page_table: Option<PageTable>,
     cached_temp_mapping: Option<Mmap>,
     cached_registry: Option<RegistryBuilder>,
+    args: GCArgs,
 }
 
-pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController>) {
+#[derive(Clone)]
+pub struct GCArgs {
+    pub preferred_temp_base: Option<usize>,
+}
+
+pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController>, args: &GCArgs) {
     let mut profiler = Profiler::new();
     profiler.start(|scope| {
-        let ret = scope.section("(Conc) Init", |scope| init(scope, shared, controller));
+        let ret = scope.section("(Conc) Init", |scope| init(scope, shared, controller, args));
         let ret = scope.section("(STW ) Step 1", |scope| step1(scope, ret));
         let ret = scope.section("(Conc) Step 2", |scope| step2(scope, ret));
         let ret = scope.section("(STW ) Step 3", |scope| step3(scope, ret));
@@ -49,9 +55,13 @@ pub fn init<'a>(
     _section_cookie: &mut SectionCookie,
     shared: &'a Arc<GCSync<SharedState>>,
     controller: &'a Arc<GCController>,
+    args: &GCArgs,
 ) -> Step1Args<'a> {
-    let gc = shared
-        .get_exclusive()
+    let mut heap = shared.get_exclusive();
+    let len = heap.get().mm.get_mapping().len();
+    let heap_base = heap.get().mm.get_mapping().get_ptr();
+    let nr_pages = heap.get().mm.get_page_table().nr_pages();
+    let gc = heap
         .get()
         .gc_state
         .take()
@@ -59,9 +69,10 @@ pub fn init<'a>(
             // GC may store persistent state like caching few stuffs
             // or store reusable stuffs to avoid reallocating on each cycle
             PersistentState {
-                cached_page_table: None,
-                cached_temp_mapping: None,
+                cached_page_table: Some(PageTable::new(heap_base, nr_pages)),
+                cached_temp_mapping: Some(Mmap::map(len, true, true, true, args.preferred_temp_base).unwrap()),
                 cached_registry: Some(RegistryBuilder::new()),
+                args: args.clone()
             }
         });
 
@@ -216,6 +227,10 @@ pub fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) ->
         page_table_opt.is_none(),
         "Expecting remap used the page table"
     );
+
+    if let Some(preferred_temp_base) = args.common.gc.args.preferred_temp_base {
+        assert_eq!(mapping.get_ptr().addr(), preferred_temp_base, "kernel moved the remap target! should have been 0x{preferred_temp_base:16} but moved to 0x{:16}", mapping.get_ptr().addr());
+    }
 
     section_cookie.section("Fix root", |_| {
         heap.get().contexts.get_mut().iter().for_each(|x| {

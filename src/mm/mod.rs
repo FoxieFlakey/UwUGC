@@ -29,9 +29,9 @@ pub enum CreateError {
 }
 
 impl MM {
-    pub fn new(size: usize) -> Result<Self, CreateError> {
+    pub fn new(size: usize, preferred_heap_base: Option<usize>) -> Result<Self, CreateError> {
         let nr_pages = size.div_ceil(BASE_PAGE_SIZE);
-        let mapping = Mmap::map(nr_pages * BASE_PAGE_SIZE, true, true, true)?;
+        let mapping = Mmap::map(nr_pages * BASE_PAGE_SIZE, true, true, true, preferred_heap_base)?;
         Ok(Self {
             page_table: PageTable::new(mapping.get_ptr(), nr_pages),
             mapping,

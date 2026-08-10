@@ -103,7 +103,7 @@ impl RootSetRaw {
     pub(crate) fn new(size: usize) -> Self {
         Self {
             size,
-            mapping: Mmap::map(size, true, true, true).unwrap(),
+            mapping: Mmap::map(size, true, true, true, None).unwrap(),
         }
     }
 

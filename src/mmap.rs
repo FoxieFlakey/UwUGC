@@ -32,7 +32,7 @@ impl Mmap {
         self.len
     }
 
-    pub fn map(size: usize, is_private: bool, can_read: bool, can_write: bool) -> io::Result<Self> {
+    pub fn map(size: usize, is_private: bool, can_read: bool, can_write: bool, preferred_addr: Option<usize>) -> io::Result<Self> {
         let mut prot = 0;
         if can_read {
             prot |= libc::PROT_READ;
@@ -53,7 +53,11 @@ impl Mmap {
             flags |= libc::MAP_SHARED;
         }
 
-        let mapped = unsafe { libc::mmap(ptr::null_mut(), size, prot, flags, -1, 0) };
+        if preferred_addr.is_some() {
+            flags |= libc::MAP_FIXED;
+        }
+
+        let mapped = unsafe { libc::mmap(preferred_addr.map(|x| x as *mut c_void).unwrap_or(ptr::null_mut()), size, prot, flags, -1, 0) };
         if mapped == libc::MAP_FAILED {
             Err(nix::errno::Errno::last().into())
         } else {

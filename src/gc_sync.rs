@@ -56,7 +56,7 @@ impl<T> GCSync<T> {
             Err(e) => return Err((CreateError::CreatePipe(e), data)),
         };
 
-        match Mmap::map(page_size::get(), false, true, false) {
+        match Mmap::map(page_size::get(), false, true, false, None) {
             Ok(lock_page) => match UffdBuilder::new()
                 .non_blocking(true)
                 .close_on_exec(true)
