@@ -126,23 +126,25 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
     let (mut page_table, mapping) =
         unsafe { heap.get().mm.remap(&mut prev_mapping, &mut page_table) }.unwrap();
 
-    // Empty the table for later use by next cycle
-    page_table.clear();
-    gc.prev_page_and_temp_mapping = Some((page_table, mapping));
-    gc.registry = Some(registry_frozen.unfreeze());
-
-    heap.get()
-        .gc_state
-        .set(gc)
-        .ok()
-        .expect("GC persistent state somehow is initialized?");
     heap.get().contexts.get_mut().iter().for_each(|x| {
         let mut root_set = x.1.lock();
         let root_set = &mut root_set.root_set;
 
         root_set.map_pointers(&mut |x| {
-            // Lets assume we modifies or fixed the pointer :3
-            x
+            let record = registry_frozen.map_src_to_dest(x.to_ptr().addr())
+                .expect("Cannot find relocation record");
+            // SAFETY: This points to correct address after relocated
+            unsafe { ObjectPtr::new(record as *mut u8) }
         });
     });
+
+    // Empty the table for later use by next cycle
+    page_table.clear();
+    gc.prev_page_and_temp_mapping = Some((page_table, mapping));
+    gc.registry = Some(registry_frozen.unfreeze());
+    heap.get()
+        .gc_state
+        .set(gc)
+        .ok()
+        .expect("GC persistent state somehow is initialized?");
 }

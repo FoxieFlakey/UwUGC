@@ -36,7 +36,6 @@ impl RelocationRecord {
         }
     }
 
-    #[expect(unused)]
     pub fn map_src_to_dest(&self, ptr: usize) -> usize {
         assert!(
             self.get_src_range().contains(&ptr),
@@ -140,7 +139,6 @@ impl FrozenRegistry {
         })
     }
 
-    #[expect(unused)]
     pub fn find_record_for_containing_src(&self, src_ptr: usize) -> Option<&RelocationRecord> {
         self.iterate_records_in_src_range(&Range {
             start: src_ptr,
@@ -149,7 +147,6 @@ impl FrozenRegistry {
         .next()
     }
 
-    #[expect(unused)]
     pub fn map_src_to_dest(&self, ptr: usize) -> Option<usize> {
         self.find_record_for_containing_src(ptr)
             .map(|record| record.map_src_to_dest(ptr))
