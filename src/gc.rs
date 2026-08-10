@@ -134,12 +134,15 @@ pub struct HeapInfo {
 }
 
 #[expect(unused)]
+#[derive(Clone)]
 pub struct HeapInfoLater {
     start: *mut u8,
     used_end: *mut u8,
     size: usize,
 
     // During concurrent phase 2. there may be new objects added, which need compacted back
+    // used_end..later_used_end would be range of where new objects added. Which must be
+    // left alone or unrelocated
     later_used_end: *mut u8,
 }
 
@@ -273,22 +276,21 @@ pub fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) ->
 
     let later_used_end = heap.get().mm.get_page_table().get_top_addr() as *mut u8;
     let copier = args.common.gc.copier.take().unwrap();
-    let heap = heap.get().mm.get_mapping();
-    let heap_ptr = heap.get_ptr();
-    let heap_len = heap.len();
 
     page_table.clear();
     args.common.gc.cached_page_table = Some(page_table);
     args.common.gc.cached_temp_mapping = Some(mapping);
+    
+    let heap = HeapInfoLater {
+        start: args.heap.start,
+        size: args.heap.size,
+        used_end: args.heap.used_end,
+        later_used_end
+    };
     Step4Args {
         common: args.common,
-        copier: copier.start(heap_ptr, heap_len, registry_frozen),
-        heap: HeapInfoLater {
-            start: args.heap.start,
-            size: args.heap.size,
-            used_end: args.heap.used_end,
-            later_used_end
-        }
+        copier: copier.start(heap.clone(), registry_frozen),
+        heap
     }
 }
 
