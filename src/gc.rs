@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    gc::relocation_map::{FrozenRegistry, RegistryBuilder, RelocationRecord},
+    gc::{copier::CopierActive, relocation_map::{RegistryBuilder, RelocationRecord}},
     gc_controller::GCController,
     gc_sync::GCSync,
     mm::{BASE_PAGE_SIZE, Context, PageTable},
@@ -16,12 +16,14 @@ use crate::{
 };
 
 mod relocation_map;
+mod copier;
 
 pub struct PersistentState {
     cached_page_table: Option<PageTable>,
     cached_temp_mapping: Option<Mmap>,
     cached_registry: Option<RegistryBuilder>,
     args: GCArgs,
+    copier: Option<copier::Copier>,
 }
 
 #[derive(Clone)]
@@ -72,7 +74,8 @@ pub fn init<'a>(
                 cached_page_table: Some(PageTable::new(heap_base, nr_pages)),
                 cached_temp_mapping: Some(Mmap::map(len, true, true, true, args.preferred_temp_base).unwrap()),
                 cached_registry: Some(RegistryBuilder::new()),
-                args: args.clone()
+                args: args.clone(),
+                copier: Some(copier::Copier::new()),
             }
         });
 
@@ -247,23 +250,30 @@ pub fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) ->
         });
     });
 
+    let copier = args.common.gc.copier.take().unwrap();
+    let heap = heap.get().mm.get_mapping();
+    let heap_ptr = heap.get_ptr();
+    let heap_len = heap.len();
+
     page_table.clear();
     args.common.gc.cached_page_table = Some(page_table);
     args.common.gc.cached_temp_mapping = Some(mapping);
     Step4Args {
         common: args.common,
-        relocation_registry: registry_frozen,
+        copier: copier.start(heap_ptr, heap_len, registry_frozen),
     }
 }
 
 pub struct Step4Args<'a> {
     common: CommonArgs<'a>,
-    relocation_registry: FrozenRegistry,
+    copier: CopierActive,
 }
 
 /// Step 4: (Concurrent) Relocate
 pub fn step4<'a>(_section_cookie: &mut SectionCookie, mut args: Step4Args<'a>) -> Step5Args<'a> {
-    args.common.gc.cached_registry = Some(args.relocation_registry.unfreeze());
+    let (registry, copier) = args.copier.finish();
+    args.common.gc.cached_registry = Some(registry.unfreeze());
+    args.common.gc.copier = Some(copier);
 
     // nothing, because actual relocation is not implemented yet
     Step5Args {
