@@ -123,6 +123,7 @@ fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Ar
             start: heap.get().mm.get_mapping().get_ptr(),
             used_end: heap.get().mm.get_page_table().get_top_addr() as *mut u8,
             size: heap.get().mm.get_mapping().len(),
+            used_end_page: heap.get().mm.get_page_table().get_used_end_page()
         }
     }
 }
@@ -131,6 +132,7 @@ struct HeapInfo {
     start: *mut u8,
     used_end: *mut u8,
     size: usize,
+    used_end_page: usize
 }
 
 #[expect(unused)]
@@ -139,11 +141,13 @@ struct HeapInfoLater {
     start: *mut u8,
     used_end: *mut u8,
     size: usize,
+    used_end_page: usize,
 
     // During concurrent phase 2. there may be new objects added, which need compacted back
     // used_end..later_used_end would be range of where new objects added. Which must be
     // left alone or unrelocated
     later_used_end: *mut u8,
+    later_used_end_page: usize,
 }
 
 struct Step2Args<'a> {
@@ -237,6 +241,22 @@ struct Step3Args<'a> {
 /// Step 3: (STW) Prepare for relocation and fix root pointer
 fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Step4Args<'a> {
     let mut heap = section_cookie.section("STW wait", |_| args.common.shared.get_exclusive());
+    // This has to be retrieved before remap, as remap replaces
+    // page table
+    let later_used_end = heap.get().mm.get_page_table().get_top_addr() as *mut u8;
+
+    let later_used_start_page = args.heap.used_end_page;
+    let later_used_end_page = heap.get().mm.get_page_table().get_used_end_page();
+
+    // Donate page from one that is used currently
+    let page_table = heap.get().mm.get_page_table();
+    for page in later_used_start_page..later_used_end_page {
+        let page = page_table.get_page(page).lock();
+        let Some(page) = page.as_ref() else { continue; };
+
+        args.page_table.donate_page(page);
+    }
+
     let registry_frozen = args.relocation_registry.freeze();
 
     // SAFETY: For now, we assume all objects are dead
@@ -265,7 +285,7 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
 
             root_set.map_pointers(&mut |x| {
                 let mapped = registry_frozen
-                    .map_src_to_dest(x.to_ptr().addr())
+                    .map_src_to_dest(x.to_ptr().addr() - args.heap.start.addr())
                     .expect("Cannot find relocation record");
                 // SAFETY: This points to correct address after relocated
                 // and relocation registry contains only offsets into heap
@@ -274,7 +294,6 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
         });
     });
 
-    let later_used_end = heap.get().mm.get_page_table().get_top_addr() as *mut u8;
     let copier = args.common.gc.copier.take().unwrap();
 
     page_table.clear();
@@ -285,7 +304,9 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
         start: args.heap.start,
         size: args.heap.size,
         used_end: args.heap.used_end,
-        later_used_end
+        used_end_page: args.heap.used_end_page,
+        later_used_end,
+        later_used_end_page,
     };
     Step4Args {
         common: args.common,

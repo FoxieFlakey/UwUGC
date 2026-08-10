@@ -35,6 +35,24 @@ impl PageTable {
         }
     }
 
+    // Page donation can only does incrementally from current_base_page
+    pub fn donate_page(&mut self, page: &FlexPage) {
+        let page_id = page.start.addr().get() / BASE_PAGE_SIZE;
+
+        if page_id >= *self.current_base_page.get_mut() {
+            *self.current_base_page.get_mut() = page_id + page.nr_pages();
+        } else {
+            panic!("Attempt to donate page out of order")
+        }
+
+        assert!(self.page_table[page_id].get_mut().is_none());
+        *self.page_table[page_id].get_mut() = Some(page.clone());
+    }
+
+    pub fn get_used_end_page(&self) -> usize {
+        self.current_base_page.load(Ordering::Relaxed)
+    }
+
     pub fn get_top_addr(&self) -> usize {
         self.base_addr.addr() + self.current_base_page.load(Ordering::Relaxed) * BASE_PAGE_SIZE
     }
