@@ -1,9 +1,12 @@
 #![feature(current_thread_id)]
+#![feature(duration_millis_float)]
 
 use std::slice;
 
 use crate::{
-    object::ObjectPtr, root_set::{RootSet, RootSetRaw}, state::State
+    object::ObjectPtr,
+    root_set::{RootSet, RootSetRaw},
+    state::State,
 };
 
 mod bitmap;
@@ -14,6 +17,7 @@ mod mm;
 mod mmap;
 mod object;
 mod pipe;
+mod profiler;
 mod root_set;
 mod state;
 
@@ -35,7 +39,10 @@ fn main() {
                 // Reload poiner as needed
                 let set = ctx.get_root_set();
                 let obj = set.as_slice()[0];
-                println!("[Mutator] After safepoint time: 0x{:016x}", obj.map(|x| x.to_ptr().addr()).unwrap_or(0));
+                println!(
+                    "[Mutator] After safepoint time: 0x{:016x}",
+                    obj.map(|x| x.to_ptr().addr()).unwrap_or(0)
+                );
                 drop(set);
 
                 has_slow_pathed = true;
@@ -103,20 +110,12 @@ unsafe impl RootSet for DumbRootSet {
     }
 
     fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr)) {
-        self.as_slice()
-            .iter()
-            .flatten()
-            .for_each(visitor);
+        self.as_slice().iter().flatten().for_each(visitor);
     }
 
     fn map_pointers(&mut self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {
-        self.as_slice_mut()
-            .iter_mut()
-            .flatten()
-            .for_each(|x| {
-                *x = visitor(*x);
-            });
+        self.as_slice_mut().iter_mut().flatten().for_each(|x| {
+            *x = visitor(*x);
+        });
     }
 }
-
-

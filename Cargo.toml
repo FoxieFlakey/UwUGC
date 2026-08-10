@@ -5,6 +5,8 @@ edition = "2024"
 
 [dependencies]
 arbitrary-int = "2.1.1"
+bytesize = "2.7.0"
+indexmap = "2.14.0"
 memfd = "0.6.5"
 nix = { version = "0.31.3", features = ["fs", "poll"] }
 page_size = "0.6.0"

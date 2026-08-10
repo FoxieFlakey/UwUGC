@@ -1,4 +1,9 @@
-use std::{any::Any, marker::PhantomData, ops::{Deref, DerefMut}, sync::Arc};
+use std::{
+    any::Any,
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+    sync::Arc,
+};
 
 use arbitrary_int::u60;
 use parking_lot::{Mutex, MutexGuard};
@@ -112,10 +117,7 @@ where
     //
     // DO NOTE, if you're calee. you dont know what caller might want
     // to keep. SO be VERY careful
-    pub unsafe fn alloc_slow(
-        &mut self,
-        size: usize,
-    ) -> Option<ObjectPtr> {
+    pub unsafe fn alloc_slow(&mut self, size: usize) -> Option<ObjectPtr> {
         // Retry 3 times :3
         for _ in 0..3 {
             let kind =
@@ -145,7 +147,7 @@ where
         RootSetGuard {
             _not_send_sync: PhantomData,
             _phantom: PhantomData,
-            guard: self.shared_data.lock()
+            guard: self.shared_data.lock(),
         }
     }
 }
@@ -157,7 +159,8 @@ pub struct RootSetGuard<'a, R: RootSet> {
 }
 
 impl<'a, R> Deref for RootSetGuard<'a, R>
-    where R: RootSet
+where
+    R: RootSet,
 {
     type Target = R;
 
@@ -168,7 +171,8 @@ impl<'a, R> Deref for RootSetGuard<'a, R>
 }
 
 impl<'a, R> DerefMut for RootSetGuard<'a, R>
-    where R: RootSet
+where
+    R: RootSet,
 {
     fn deref_mut(&mut self) -> &mut Self::Target {
         let as_any = &mut *self.guard.root_set as &mut dyn Any;

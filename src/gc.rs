@@ -1,34 +1,88 @@
-use std::sync::{Arc, atomic::Ordering};
+use std::{
+    io::{LineWriter, stdout},
+    sync::{Arc, atomic::Ordering},
+};
 
 use crate::{
-    gc::relocation_map::{RegistryBuilder, RelocationRecord},
+    gc::relocation_map::{FrozenRegistry, RegistryBuilder, RelocationRecord},
     gc_controller::GCController,
     gc_sync::GCSync,
     mm::{BASE_PAGE_SIZE, Context, PageTable},
     mmap::Mmap,
     object::{MetadataCompressed, ObjectPtr},
+    profiler::{Profiler, SectionCookie},
+    root_set::RootSet,
     state::SharedState,
 };
 
 mod relocation_map;
 
 pub struct PersistentState {
-    prev_page_and_temp_mapping: Option<(PageTable, Mmap)>,
-    registry: Option<RegistryBuilder>,
+    cached_page_table: Option<PageTable>,
+    cached_temp_mapping: Option<Mmap>,
+    cached_registry: Option<RegistryBuilder>,
 }
 
 pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController>) {
-    let mut heap = shared.get_exclusive();
-    let mut gc = heap.get().gc_state.take().unwrap_or_else(|| {
-        // GC may store persistent state like caching few stuffs
-        // or store reusable stuffs to avoid reallocating on each cycle
-        PersistentState {
-            prev_page_and_temp_mapping: None,
-            registry: Some(RegistryBuilder::new()),
-        }
+    let mut profiler = Profiler::new();
+    profiler.start(|scope| {
+        let ret = scope.section("(Conc) Init", |scope| init(scope, shared, controller));
+        let ret = scope.section("(STW ) Step 1", |scope| step1(scope, ret));
+        let ret = scope.section("(Conc) Step 2", |scope| step2(scope, ret));
+        let ret = scope.section("(STW ) Step 3", |scope| step3(scope, ret));
+        let ret = scope.section("(Conc) Step 4", |scope| step4(scope, ret));
+        scope.section("(STW ) Step 5", |scope| step5(scope, ret));
     });
 
-    // Take snapshot of root set (a.k.a the SATB)
+    profiler.report(&mut LineWriter::new(stdout()));
+}
+
+pub struct CommonArgs<'a> {
+    shared: &'a Arc<GCSync<SharedState>>,
+    controller: &'a Arc<GCController>,
+    gc: PersistentState,
+}
+
+/// Step 0: (Concurrent) Initialize cycle
+/// (its STW because PersistentState should not be in SharedState)
+pub fn init<'a>(
+    _section_cookie: &mut SectionCookie,
+    shared: &'a Arc<GCSync<SharedState>>,
+    controller: &'a Arc<GCController>,
+) -> Step1Args<'a> {
+    let gc = shared
+        .get_exclusive()
+        .get()
+        .gc_state
+        .take()
+        .unwrap_or_else(|| {
+            // GC may store persistent state like caching few stuffs
+            // or store reusable stuffs to avoid reallocating on each cycle
+            PersistentState {
+                cached_page_table: None,
+                cached_temp_mapping: None,
+                cached_registry: Some(RegistryBuilder::new()),
+            }
+        });
+
+    Step1Args {
+        common: CommonArgs {
+            controller,
+            shared,
+            gc,
+        },
+    }
+}
+
+pub struct Step1Args<'a> {
+    common: CommonArgs<'a>,
+}
+
+/// Step 1: (STW) Take snapshot of root, and capture some heap states
+pub fn step1<'a>(_section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Args<'a> {
+    let mut heap = args.common.shared.get_exclusive();
+
+    // Take snapshot of root set
     let saved_roots = heap
         .get()
         .contexts
@@ -44,26 +98,41 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
         })
         .collect::<Vec<_>>();
 
-    // Doesnt care any start_gc that occur during first phase
-    controller.clear_request();
+    // Ignore any request that happen during or before root snapshot
+    // and after GC started
+    args.common.controller.clear_request();
 
-    let mapping = heap.get().mm.get_mapping();
-    let (mut page_table, mut prev_mapping) = gc
-        .prev_page_and_temp_mapping
-        .take()
-        .map(|(x, y)| (x, Some(y)))
-        .unwrap_or((
-            PageTable::new(mapping.get_ptr(), mapping.len() / BASE_PAGE_SIZE),
-            None,
-        ));
-    page_table.set_base(mapping.get_ptr());
+    Step2Args {
+        common: args.common,
+        heap_start: heap.get().mm.get_mapping().get_ptr(),
+        used_end: heap.get().mm.get_page_table().get_top_addr() as *mut u8,
+        root: saved_roots,
+        heap_size: heap.get().mm.get_mapping().len(),
+    }
+}
 
-    let heap_start = mapping.get_ptr().addr();
-    let before_gc_heap_end = heap.get().mm.get_page_table().get_top_addr();
-    drop(heap);
+pub struct Step2Args<'a> {
+    common: CommonArgs<'a>,
+    heap_start: *mut u8,
+    used_end: *mut u8,
+    root: Vec<Box<dyn RootSet>>,
+    heap_size: usize,
+}
 
-    let mut registry = gc.registry.take().unwrap();
+/// Step 2: Perform concurrent marking using saved root
+pub fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> Step3Args<'a> {
+    let mut registry = args.common.gc.cached_registry.take().unwrap();
     let mut move_context = Context::new();
+    let page_table = args
+        .common
+        .gc
+        .cached_page_table
+        .take()
+        .map(|mut x| {
+            x.set_base(args.heap_start);
+            x
+        })
+        .unwrap_or_else(|| PageTable::new(args.heap_start, (args.heap_size) / BASE_PAGE_SIZE));
 
     // Mark objects concurrently, note for now the mark bit doesnt
     // get used its assume all dead
@@ -106,45 +175,95 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
         }
     };
 
-    for root in saved_roots {
+    for root in args.root {
         root.iter_pointers(&mut visitor);
     }
 
-    println!("Live count: {live_count}, Total count: {total_count}");
-    let after_gc_heap_end = page_table.get_top_addr();
-    let before_size_mib = (before_gc_heap_end - heap_start) as f32 / 1024.0 / 1024.0;
-    let after_size_mib = (after_gc_heap_end - heap_start) as f32 / 1024.0 / 1024.0;
-    println!(
-        "Compacted to 0x{heap_start:016x}..0x{after_gc_heap_end:016x} ({after_size_mib:6.2} MiB) from 0x{heap_start:016x}..0x{before_gc_heap_end:016x} ({before_size_mib:6.2} MiB)"
-    );
-    let registry_frozen = registry.freeze();
+    let used = args.used_end.addr() - args.heap_start.addr();
+    let compacted = page_table.get_top_addr() - args.heap_start.addr();
+    println!("[GC] Live count: {:9}", live_count);
+    println!("[GC] Compacted from {:#16} to {:#16}", bytesize::mib(u64::try_from(used).unwrap()), bytesize::mib(u64::try_from(compacted).unwrap()));
 
-    let mut heap = shared.get_exclusive();
+    Step3Args {
+        common: args.common,
+        page_table,
+        relocation_registry: registry,
+    }
+}
+
+pub struct Step3Args<'a> {
+    common: CommonArgs<'a>,
+    page_table: PageTable,
+    relocation_registry: RegistryBuilder,
+}
+
+/// Step 3: (STW) Prepare for relocation and fix root pointer
+pub fn step3<'a>(_section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Step4Args<'a> {
+    let mut heap = args.common.shared.get_exclusive();
+    let registry_frozen = args.relocation_registry.freeze();
 
     // SAFETY: For now, we assume all objects are dead
-    let mut page_table = Some(page_table);
-    let (mut page_table, mapping) =
-        unsafe { heap.get().mm.remap(&mut prev_mapping, &mut page_table) }.unwrap();
+    let mut page_table_opt = Some(args.page_table);
+    let (mut page_table, mapping) = unsafe {
+        heap.get()
+            .mm
+            .remap(&mut args.common.gc.cached_temp_mapping, &mut page_table_opt)
+    }
+    .unwrap();
+    assert!(
+        page_table_opt.is_none(),
+        "Expecting remap used the page table"
+    );
 
     heap.get().contexts.get_mut().iter().for_each(|x| {
         let mut root_set = x.1.lock();
         let root_set = &mut root_set.root_set;
 
         root_set.map_pointers(&mut |x| {
-            let record = registry_frozen.map_src_to_dest(x.to_ptr().addr())
+            let record = registry_frozen
+                .map_src_to_dest(x.to_ptr().addr())
                 .expect("Cannot find relocation record");
             // SAFETY: This points to correct address after relocated
             unsafe { ObjectPtr::new(record as *mut u8) }
         });
     });
 
-    // Empty the table for later use by next cycle
     page_table.clear();
-    gc.prev_page_and_temp_mapping = Some((page_table, mapping));
-    gc.registry = Some(registry_frozen.unfreeze());
-    heap.get()
+    args.common.gc.cached_page_table = Some(page_table);
+    args.common.gc.cached_temp_mapping = Some(mapping);
+    Step4Args {
+        common: args.common,
+        relocation_registry: registry_frozen,
+    }
+}
+
+pub struct Step4Args<'a> {
+    common: CommonArgs<'a>,
+    relocation_registry: FrozenRegistry,
+}
+
+/// Step 4: (Concurrent) Relocate
+pub fn step4<'a>(_section_cookie: &mut SectionCookie, mut args: Step4Args<'a>) -> Step5Args<'a> {
+    args.common.gc.cached_registry = Some(args.relocation_registry.unfreeze());
+
+    // nothing, because actual relocation is not implemented yet
+    Step5Args {
+        common: args.common,
+    }
+}
+
+pub struct Step5Args<'a> {
+    common: CommonArgs<'a>,
+}
+
+/// Step 5: (STW) Finalize cycle
+pub fn step5(_section_cookie: &mut SectionCookie, args: Step5Args<'_>) {
+    args.common
+        .shared
+        .get_exclusive()
+        .get()
         .gc_state
-        .set(gc)
+        .set(args.common.gc)
         .ok()
         .expect("GC persistent state somehow is initialized?");
 }
