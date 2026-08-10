@@ -118,19 +118,35 @@ pub fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Ste
 
     Step2Args {
         common: args.common,
-        heap_start: heap.get().mm.get_mapping().get_ptr(),
-        used_end: heap.get().mm.get_page_table().get_top_addr() as *mut u8,
         root: saved_roots,
-        heap_size: heap.get().mm.get_mapping().len(),
+        heap: HeapInfo {
+            start: heap.get().mm.get_mapping().get_ptr(),
+            used_end: heap.get().mm.get_page_table().get_top_addr() as *mut u8,
+            size: heap.get().mm.get_mapping().len(),
+        }
     }
+}
+
+pub struct HeapInfo {
+    start: *mut u8,
+    used_end: *mut u8,
+    size: usize,
+}
+
+#[expect(unused)]
+pub struct HeapInfoLater {
+    start: *mut u8,
+    used_end: *mut u8,
+    size: usize,
+
+    // During concurrent phase 2. there may be new objects added, which need compacted back
+    later_used_end: *mut u8,
 }
 
 pub struct Step2Args<'a> {
     common: CommonArgs<'a>,
-    heap_start: *mut u8,
-    used_end: *mut u8,
     root: Vec<Box<dyn RootSet>>,
-    heap_size: usize,
+    heap: HeapInfo,
 }
 
 /// Step 2: Perform concurrent marking using saved root
@@ -143,10 +159,10 @@ pub fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -
         .cached_page_table
         .take()
         .map(|mut x| {
-            x.set_base(args.heap_start);
+            x.set_base(args.heap.start);
             x
         })
-        .unwrap_or_else(|| PageTable::new(args.heap_start, (args.heap_size) / BASE_PAGE_SIZE));
+        .unwrap_or_else(|| PageTable::new(args.heap.start, (args.heap.size) / BASE_PAGE_SIZE));
 
     // Mark objects concurrently, note for now the mark bit doesnt
     // get used its assume all dead
@@ -179,9 +195,11 @@ pub fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -
                 .unwrap()
                 .0
                 .addr();
+
+            // Registry only contains offsets
             registry.insert(RelocationRecord {
-                src: obj.to_ptr().addr(),
-                dest,
+                src: obj.to_ptr().addr() - args.heap.start.addr(),
+                dest: dest - args.heap.start.addr(),
                 size,
             });
         } else {
@@ -193,8 +211,8 @@ pub fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -
         root.iter_pointers(&mut visitor);
     }
 
-    let used = args.used_end.addr() - args.heap_start.addr();
-    let compacted = page_table.get_top_addr() - args.heap_start.addr();
+    let used = args.heap.used_end.addr() - args.heap.start.addr();
+    let compacted = page_table.get_top_addr() - args.heap.start.addr();
     println!("[GC] Live count: {:9}", live_count);
     println!("[GC] Compacted from {:#16} to {:#16}", bytesize::mib(u64::try_from(used).unwrap()), bytesize::mib(u64::try_from(compacted).unwrap()));
 
@@ -202,6 +220,7 @@ pub fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -
         common: args.common,
         page_table,
         relocation_registry: registry,
+        heap: args.heap,
     }
 }
 
@@ -209,6 +228,7 @@ pub struct Step3Args<'a> {
     common: CommonArgs<'a>,
     page_table: PageTable,
     relocation_registry: RegistryBuilder,
+    heap: HeapInfo,
 }
 
 /// Step 3: (STW) Prepare for relocation and fix root pointer
@@ -241,15 +261,17 @@ pub fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) ->
             let root_set = &mut root_set.root_set;
 
             root_set.map_pointers(&mut |x| {
-                let record = registry_frozen
+                let mapped = registry_frozen
                     .map_src_to_dest(x.to_ptr().addr())
                     .expect("Cannot find relocation record");
                 // SAFETY: This points to correct address after relocated
-                unsafe { ObjectPtr::new(record as *mut u8) }
+                // and relocation registry contains only offsets into heap
+                unsafe { ObjectPtr::new(args.heap.start.wrapping_byte_add(mapped)) }
             });
         });
     });
 
+    let later_used_end = heap.get().mm.get_page_table().get_top_addr() as *mut u8;
     let copier = args.common.gc.copier.take().unwrap();
     let heap = heap.get().mm.get_mapping();
     let heap_ptr = heap.get_ptr();
@@ -261,12 +283,20 @@ pub fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) ->
     Step4Args {
         common: args.common,
         copier: copier.start(heap_ptr, heap_len, registry_frozen),
+        heap: HeapInfoLater {
+            start: args.heap.start,
+            size: args.heap.size,
+            used_end: args.heap.used_end,
+            later_used_end
+        }
     }
 }
 
 pub struct Step4Args<'a> {
     common: CommonArgs<'a>,
     copier: CopierActive,
+    #[expect(unused)]
+    heap: HeapInfoLater,
 }
 
 /// Step 4: (Concurrent) Relocate
