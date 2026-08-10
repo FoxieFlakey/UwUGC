@@ -18,7 +18,6 @@ use crate::{
 };
 
 mod context;
-pub use context::SafepointArgs;
 
 pub struct SharedState {
     pub mm: MM,

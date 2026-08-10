@@ -3,7 +3,7 @@
 use std::slice;
 
 use crate::{
-    object::ObjectPtr, root_set::{RootSet, RootSetRaw}, state::{SafepointArgs, State}
+    object::ObjectPtr, root_set::{RootSet, RootSetRaw}, state::State
 };
 
 mod bitmap;
@@ -23,13 +23,12 @@ fn main() {
     let state = State::new(128 * 1024 * 1024).unwrap();
 
     let mut ctx = state.new_context(8192, DumbRootSet::new);
-    let safepoint_args = SafepointArgs {};
     let obj = ctx
         .alloc_fast(8192)
         .or_else(|| {
             // This comment can be like safepoint'ing stuffs
             // spilling contents and such
-            unsafe { ctx.alloc_slow(8192, &safepoint_args) }
+            unsafe { ctx.alloc_slow(8192) }
         })
         .unwrap();
     let set = ctx.get_root_set();
@@ -45,11 +44,11 @@ fn main() {
             .or_else(|| {
                 // This comment can be like safepoint'ing stuffs
                 // spilling contents and such
-                unsafe { ctx.alloc_slow(8192, &safepoint_args) }
+                unsafe { ctx.alloc_slow(8192) }
             })
             .unwrap();
 
-        unsafe { ctx.safepoint(&safepoint_args) };
+        unsafe { ctx.safepoint() };
     }
 }
 

@@ -23,10 +23,6 @@ pub struct Context<'a, R: RootSet> {
     _phantom: PhantomData<R>,
 }
 
-// Containing all stuffs
-// to perform safepoints
-pub struct SafepointArgs {}
-
 impl<'a, R> Context<'a, R>
 where
     R: RootSet,
@@ -54,7 +50,7 @@ where
     //
     // DO NOTE, if you're calee. you dont know what caller might want
     // to keep. SO be VERY careful
-    pub unsafe fn safepoint(&mut self, _safepoint_args: &SafepointArgs) {
+    pub unsafe fn safepoint(&mut self) {
         self.shared.safepoint();
     }
 
@@ -119,7 +115,6 @@ where
     pub unsafe fn alloc_slow(
         &mut self,
         size: usize,
-        _safepoint_args: &SafepointArgs,
     ) -> Option<ObjectPtr> {
         // Retry 3 times :3
         for _ in 0..3 {
