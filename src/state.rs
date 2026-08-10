@@ -77,10 +77,9 @@ impl State {
             root_set_size.next_multiple_of(page_size::get())
         };
 
-        let root_set = Arc::new(root_set_maker(RootSetRaw::new(root_set_size)));
         let shared_data = Arc::new(Mutex::new(ContextShared {
             mm_context: mm::Context::new(),
-            root_set: root_set.clone(),
+            root_set: Box::new(root_set_maker(RootSetRaw::new(root_set_size))),
         }));
 
         let shared = self.shared.get_shared();
@@ -90,7 +89,7 @@ impl State {
             .lock()
             .insert(thread::current_id(), shared_data.clone());
 
-        Context::new(self, shared, shared_data, root_set)
+        Context::new(self, shared, shared_data)
     }
 
     pub fn new(size: usize) -> Result<State, CreateError> {

@@ -37,6 +37,7 @@ fn main() {
     // Because only this thread or GC thread access this, and it is
     // exclusive to this thread. As long as this thread is not in safepoint
     unsafe { set.as_slice_mut_unsafe()[0] = Some(obj) };
+    drop(set);
 
     loop {
         let _ = ctx

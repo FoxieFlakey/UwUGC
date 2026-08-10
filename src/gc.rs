@@ -36,11 +36,12 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
         .iter()
         .map(|(_, v)| {
             let guard = v.lock();
+            let root_set = &guard.root_set;
 
             // SAFETY: We're in STW nothing is modifying the root set at all
-            let raw_cloned = unsafe { guard.root_set.get_raw().clone() };
+            let raw_cloned = unsafe { root_set.get_raw().clone() };
 
-            guard.root_set.clone_metadata(raw_cloned)
+            root_set.clone_metadata(raw_cloned)
         })
         .collect::<Vec<_>>();
 
@@ -139,7 +140,8 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
         .ok()
         .expect("GC persistent state somehow is initialized?");
     heap.get().contexts.get_mut().iter().for_each(|x| {
-        let root_set = &x.1.lock().root_set;
+        let root_set = x.1.lock();
+        let root_set = &root_set.root_set;
 
         // SAFETY: We're in STW so no mutator is running
         unsafe {

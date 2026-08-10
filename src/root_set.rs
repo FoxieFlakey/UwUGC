@@ -1,4 +1,4 @@
-use std::slice;
+use std::{any::Any, slice};
 
 use crate::{mmap::Mmap, object::ObjectPtr};
 
@@ -10,7 +10,7 @@ use crate::{mmap::Mmap, object::ObjectPtr};
 // for clone and iterate. Its required for safety in GC marking
 // process which assumes implementer of this folllows strict
 // contract
-pub unsafe trait RootSet: Sync + Send {
+pub unsafe trait RootSet: Sync + Send + Any {
     // This must return the root set raw given at creation or clone
     fn get_raw(&self) -> &RootSetRaw;
 

@@ -1,7 +1,7 @@
-use std::{marker::PhantomData, sync::Arc};
+use std::{any::Any, marker::PhantomData, ops::Deref, sync::Arc};
 
 use arbitrary_int::u60;
-use parking_lot::Mutex;
+use parking_lot::{Mutex, MutexGuard};
 
 use crate::{
     gc_sync, mm,
@@ -12,15 +12,15 @@ use crate::{
 
 pub struct ContextShared {
     pub mm_context: mm::Context,
-    pub root_set: Arc<dyn RootSet>,
+    pub root_set: Box<dyn RootSet>,
 }
 
 pub struct Context<'a, R: RootSet> {
     owner: &'a State,
     shared: gc_sync::SharedGuard<'a, SharedState>,
     shared_data: Arc<Mutex<ContextShared>>,
-    root_set_concrete: Arc<R>,
     _not_send_sync: PhantomData<*mut u8>,
+    _phantom: PhantomData<R>,
 }
 
 // Containing all stuffs
@@ -35,13 +35,12 @@ where
         owner: &'a State,
         shared: gc_sync::SharedGuard<'a, SharedState>,
         shared_data: Arc<Mutex<ContextShared>>,
-        root_set_concrete: Arc<R>,
     ) -> Self {
         Self {
             owner,
             shared,
             shared_data,
-            root_set_concrete,
+            _phantom: PhantomData,
             _not_send_sync: PhantomData,
         }
     }
@@ -55,7 +54,7 @@ where
     //
     // DO NOTE, if you're calee. you dont know what caller might want
     // to keep. SO be VERY careful
-    pub unsafe fn safepoint(&self, _safepoint_args: &SafepointArgs) {
+    pub unsafe fn safepoint(&mut self, _safepoint_args: &SafepointArgs) {
         self.shared.safepoint();
     }
 
@@ -147,7 +146,28 @@ where
         None
     }
 
-    pub fn get_root_set(&'a self) -> &'a R {
-        &self.root_set_concrete
+    pub fn get_root_set(&'a self) -> RootSetGuard<'a, R> {
+        RootSetGuard {
+            _not_send_sync: PhantomData,
+            _phantom: PhantomData,
+            guard: self.shared_data.lock()
+        }
+    }
+}
+
+pub struct RootSetGuard<'a, R: RootSet> {
+    guard: MutexGuard<'a, ContextShared>,
+    _phantom: PhantomData<R>,
+    _not_send_sync: PhantomData<*mut u8>,
+}
+
+impl<'a, R> Deref for RootSetGuard<'a, R>
+    where R: RootSet
+{
+    type Target = R;
+
+    fn deref(&self) -> &Self::Target {
+        let as_any = &*self.guard.root_set as &dyn Any;
+        as_any.downcast_ref().unwrap()
     }
 }
