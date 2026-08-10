@@ -44,4 +44,8 @@ impl ObjectPtr {
         // this never escapes "allocation"
         unsafe { self.0.byte_add(size_of::<MetadataCompressed>()) }
     }
+
+    pub(crate) fn to_ptr(&self) -> *mut u8 {
+        self.0
+    }
 }

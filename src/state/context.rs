@@ -147,7 +147,6 @@ where
         None
     }
 
-    #[expect(unused)]
     pub fn get_root_set(&'a self) -> &'a R {
         &self.root_set_concrete
     }

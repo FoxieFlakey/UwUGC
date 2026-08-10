@@ -1,6 +1,6 @@
 use std::slice;
 
-use crate::mmap::Mmap;
+use crate::{mmap::Mmap, object::ObjectPtr};
 
 // # Guarantees
 // the set and len, are always aligned to system page size
@@ -83,24 +83,16 @@ pub unsafe trait RootSet: Sync + Send {
     /// # Safety
     /// Caller must make sure nothing uses the pointers inside RootSet. While
     /// this function is running.
-    unsafe fn map_pointers(&self, visitor: &mut dyn FnMut(*mut u8) -> *mut u8);
+    unsafe fn map_pointers(&self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr);
 
     // This like map_pointers, but less stricter read only operations. This is
     // implemented in term of map_pointers. Implementer should override this
     // if there faster way for read only.
     //
     // # Safety
-    // Caller must make sure nothing uses the pointers inside RootSet. While
+    // Caller must make sure nothing modify the data in RootSet. While
     // this function is running.
-    unsafe fn iter_pointers(&self, visitor: &mut dyn FnMut(*mut u8)) {
-        // SAFETY: Caller already meet the requirements
-        unsafe {
-            self.map_pointers(&mut |x| {
-                visitor(x);
-                x
-            })
-        };
-    }
+    unsafe fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr));
 }
 
 pub struct RootSetRaw {
@@ -144,11 +136,13 @@ impl RootSetRaw {
 }
 
 // Used when there no GC pointers
+#[expect(unused)]
 pub struct NoopRootSet {
     raw: RootSetRaw,
 }
 
 impl NoopRootSet {
+    #[expect(unused)]
     pub fn new(set: RootSetRaw) -> Self {
         Self { raw: set }
     }
@@ -164,5 +158,6 @@ unsafe impl RootSet for NoopRootSet {
     }
 
     // there nothing in here so no-op
-    unsafe fn map_pointers(&self, _: &mut dyn FnMut(*mut u8) -> *mut u8) {}
+    unsafe fn map_pointers(&self, _: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {}
+    unsafe fn iter_pointers(&self, _: &mut dyn FnMut(&ObjectPtr)) {}
 }

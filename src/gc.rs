@@ -69,11 +69,7 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
     // get used its assume all dead
     let mut live_count = 0;
     let mut total_count = 0;
-    let mut visitor = |x| {
-        // SAFETY: The implementer of iter_pointers ensures the
-        // only pointers that given is the same one GC gave
-        let obj = unsafe { ObjectPtr::new(x) };
-
+    let mut visitor = |obj: &ObjectPtr| {
         // Mark the object
         let ret = obj
             .metadata_ref()
@@ -101,7 +97,7 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
                 .0
                 .addr();
             registry.insert(RelocationRecord {
-                src: x.addr(),
+                src: obj.to_ptr().addr(),
                 dest,
                 size,
             });
@@ -144,6 +140,8 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
         .expect("GC persistent state somehow is initialized?");
     heap.get().contexts.get_mut().iter().for_each(|x| {
         let root_set = &x.1.lock().root_set;
+
+        // SAFETY: We're in STW so no mutator is running
         unsafe {
             root_set.map_pointers(&mut |x| {
                 // Lets assume we modifies or fixed the pointer :3
