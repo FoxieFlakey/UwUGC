@@ -38,7 +38,6 @@ impl ObjectPtr {
         }
     }
 
-    #[expect(unused)]
     pub fn data(&self) -> *mut u8 {
         // SAFETY: Object is only valid if its atleast size of MetadataCompressed, so
         // this never escapes "allocation"
