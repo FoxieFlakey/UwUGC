@@ -1,4 +1,4 @@
-use std::{any::Any, marker::PhantomData, ops::Deref, sync::Arc};
+use std::{any::Any, marker::PhantomData, ops::{Deref, DerefMut}, sync::Arc};
 
 use arbitrary_int::u60;
 use parking_lot::{Mutex, MutexGuard};
@@ -164,5 +164,14 @@ impl<'a, R> Deref for RootSetGuard<'a, R>
     fn deref(&self) -> &Self::Target {
         let as_any = &*self.guard.root_set as &dyn Any;
         as_any.downcast_ref().unwrap()
+    }
+}
+
+impl<'a, R> DerefMut for RootSetGuard<'a, R>
+    where R: RootSet
+{
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        let as_any = &mut *self.guard.root_set as &mut dyn Any;
+        as_any.downcast_mut().unwrap()
     }
 }

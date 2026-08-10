@@ -83,7 +83,7 @@ pub unsafe trait RootSet: Sync + Send + Any {
     /// # Safety
     /// Caller must make sure nothing uses the pointers inside RootSet. While
     /// this function is running.
-    unsafe fn map_pointers(&self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr);
+    unsafe fn map_pointers(&mut self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr);
 
     // This like map_pointers, but less stricter read only operations. This is
     // implemented in term of map_pointers. Implementer should override this
@@ -158,6 +158,6 @@ unsafe impl RootSet for NoopRootSet {
     }
 
     // there nothing in here so no-op
-    unsafe fn map_pointers(&self, _: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {}
+    unsafe fn map_pointers(&mut self, _: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {}
     unsafe fn iter_pointers(&self, _: &mut dyn FnMut(&ObjectPtr)) {}
 }

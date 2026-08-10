@@ -140,8 +140,8 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
         .ok()
         .expect("GC persistent state somehow is initialized?");
     heap.get().contexts.get_mut().iter().for_each(|x| {
-        let root_set = x.1.lock();
-        let root_set = &root_set.root_set;
+        let mut root_set = x.1.lock();
+        let root_set = &mut root_set.root_set;
 
         // SAFETY: We're in STW so no mutator is running
         unsafe {

@@ -31,11 +31,9 @@ fn main() {
             unsafe { ctx.alloc_slow(8192) }
         })
         .unwrap();
-    let set = ctx.get_root_set();
+    let mut set = ctx.get_root_set();
 
-    // Because only this thread or GC thread access this, and it is
-    // exclusive to this thread. As long as this thread is not in safepoint
-    unsafe { set.as_slice_mut_unsafe()[0] = Some(obj) };
+    set.as_slice_mut()[0] = Some(obj);
     drop(set);
 
     loop {
@@ -65,17 +63,13 @@ impl DumbRootSet {
         }
     }
 
-    // # Safety
-    // Caller has to ensure there no possibility of &mut exists anywhere else
-    // on the backing memory for ObjectPtr
-    pub unsafe fn as_slice<'a>(&'a self) -> &'a [Option<ObjectPtr>] {
+    // shared reference ensures no mutable reference to the memory
+    pub fn as_slice<'a>(&'a self) -> &'a [Option<ObjectPtr>] {
         unsafe { slice::from_raw_parts(self.raw.get_ptr().cast(), self.len) }
     }
 
-    // # Safety
-    // Caller has to ensure there no possibility of &mut or & exists anywhere else
-    // on the backing memory for ObjectPtr
-    pub unsafe fn as_slice_mut_unsafe<'a>(&'a self) -> &'a mut [Option<ObjectPtr>] {
+    // &mut ensure nothing accesses the memory
+    pub fn as_slice_mut<'a>(&'a mut self) -> &'a mut [Option<ObjectPtr>] {
         unsafe { slice::from_raw_parts_mut(self.raw.get_ptr().cast(), self.len) }
     }
 }
@@ -93,16 +87,14 @@ unsafe impl RootSet for DumbRootSet {
     }
 
     unsafe fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr)) {
-        // SAFETY: Caller made sure there nothing else uses this RootSet
-        unsafe { self.as_slice() }
+        self.as_slice()
             .iter()
             .flatten()
             .for_each(visitor);
     }
 
-    unsafe fn map_pointers(&self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {
-        // SAFETY: Caller made sure there nothing else uses this RootSet
-        unsafe { self.as_slice_mut_unsafe() }
+    unsafe fn map_pointers(&mut self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {
+        self.as_slice_mut()
             .iter_mut()
             .flatten()
             .for_each(|x| {
