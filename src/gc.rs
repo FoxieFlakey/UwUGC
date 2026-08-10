@@ -53,7 +53,7 @@ pub struct CommonArgs<'a> {
 
 /// Step 0: (Concurrent) Initialize cycle
 /// (its STW because PersistentState should not be in SharedState)
-pub fn init<'a>(
+fn init<'a>(
     _section_cookie: &mut SectionCookie,
     shared: &'a Arc<GCSync<SharedState>>,
     controller: &'a Arc<GCController>,
@@ -88,12 +88,12 @@ pub fn init<'a>(
     }
 }
 
-pub struct Step1Args<'a> {
+struct Step1Args<'a> {
     common: CommonArgs<'a>,
 }
 
 /// Step 1: (STW) Take snapshot of root, and capture some heap states
-pub fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Args<'a> {
+fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Args<'a> {
     let mut heap = section_cookie.section("STW wait", |_| args.common.shared.get_exclusive());
 
     // Take snapshot of root set
@@ -127,7 +127,7 @@ pub fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Ste
     }
 }
 
-pub struct HeapInfo {
+struct HeapInfo {
     start: *mut u8,
     used_end: *mut u8,
     size: usize,
@@ -135,7 +135,7 @@ pub struct HeapInfo {
 
 #[expect(unused)]
 #[derive(Clone)]
-pub struct HeapInfoLater {
+struct HeapInfoLater {
     start: *mut u8,
     used_end: *mut u8,
     size: usize,
@@ -146,14 +146,14 @@ pub struct HeapInfoLater {
     later_used_end: *mut u8,
 }
 
-pub struct Step2Args<'a> {
+struct Step2Args<'a> {
     common: CommonArgs<'a>,
     root: Vec<Box<dyn RootSet>>,
     heap: HeapInfo,
 }
 
 /// Step 2: Perform concurrent marking using saved root
-pub fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> Step3Args<'a> {
+fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> Step3Args<'a> {
     let mut registry = args.common.gc.cached_registry.take().unwrap();
     let mut move_context = Context::new();
     let page_table = args
@@ -227,7 +227,7 @@ pub fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -
     }
 }
 
-pub struct Step3Args<'a> {
+struct Step3Args<'a> {
     common: CommonArgs<'a>,
     page_table: PageTable,
     relocation_registry: RegistryBuilder,
@@ -235,7 +235,7 @@ pub struct Step3Args<'a> {
 }
 
 /// Step 3: (STW) Prepare for relocation and fix root pointer
-pub fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Step4Args<'a> {
+fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Step4Args<'a> {
     let mut heap = section_cookie.section("STW wait", |_| args.common.shared.get_exclusive());
     let registry_frozen = args.relocation_registry.freeze();
 
@@ -294,7 +294,7 @@ pub fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) ->
     }
 }
 
-pub struct Step4Args<'a> {
+struct Step4Args<'a> {
     common: CommonArgs<'a>,
     copier: CopierActive,
     #[expect(unused)]
@@ -302,7 +302,7 @@ pub struct Step4Args<'a> {
 }
 
 /// Step 4: (Concurrent) Relocate
-pub fn step4<'a>(_section_cookie: &mut SectionCookie, mut args: Step4Args<'a>) -> Step5Args<'a> {
+fn step4<'a>(_section_cookie: &mut SectionCookie, mut args: Step4Args<'a>) -> Step5Args<'a> {
     let (registry, copier) = args.copier.finish();
     args.common.gc.cached_registry = Some(registry.unfreeze());
     args.common.gc.copier = Some(copier);
@@ -313,12 +313,12 @@ pub fn step4<'a>(_section_cookie: &mut SectionCookie, mut args: Step4Args<'a>) -
     }
 }
 
-pub struct Step5Args<'a> {
+struct Step5Args<'a> {
     common: CommonArgs<'a>,
 }
 
 /// Step 5: (STW) Finalize cycle
-pub fn step5(section_cookie: &mut SectionCookie, args: Step5Args<'_>) {
+fn step5(section_cookie: &mut SectionCookie, args: Step5Args<'_>) {
     let mut heap = section_cookie.section("STW wait", |_| args.common.shared.get_exclusive());
     heap.get()
         .gc_state
