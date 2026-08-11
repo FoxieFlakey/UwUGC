@@ -79,8 +79,6 @@ fn main() {
         // SAFETY: We dont need anything special to save
         unsafe { ctx.safepoint() };
     }
-
-    todo!();
 }
 
 fn get_window<'a>(ctx: &'a DumbRootSet) -> &'a [AtomicPtr<u8>] {
