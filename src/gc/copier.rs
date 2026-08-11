@@ -159,19 +159,31 @@ impl CopierActive {
         }
 
         // Then finally move to final via uffd move
-        unsafe {
-            self.state.uffd.move_memory(
-                buffer.get_ptr().cast(),
-                self.heap
-                    .to_space
-                    .wrapping_byte_add(page.start().addr() - self.page_table.get_base_addr())
-                    .cast(),
-                page.size(),
-                true,
-                true,
-            )
+        let mut src = buffer.get_ptr().cast();
+        let mut dest = self.heap
+            .to_space
+            .wrapping_byte_add(page.start().addr() - self.page_table.get_base_addr())
+            .cast();
+        let mut len = page.size();
+        
+        loop {
+            match unsafe { self.state.uffd.move_memory(src, dest, len, true, true) } {
+                Ok(moved) => {
+                    assert_eq!(len, moved, "short move is not returned as partially move?");
+                    break;
+                }
+
+                Err(userfaultfd::Error::PartiallyCopied(moved)) => {
+                    len -= moved;
+                    src = src.wrapping_byte_add(moved);
+                    dest = dest.wrapping_byte_add(moved);
+                }
+
+                Err(e) => {
+                    panic!("Cannot move pages: {e}");
+                }
+            }
         }
-        .unwrap();
     }
 
     fn resolve_fault(&self, addr: *mut u8, type_manager: &TypeManagerConcrete) {
