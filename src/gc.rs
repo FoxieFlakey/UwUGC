@@ -125,6 +125,9 @@ fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Ar
     // and after GC started
     args.common.controller.clear_request();
 
+    // Lets assume all types are dead
+    heap.get().offset_walker.type_manager.assume_all_dead();
+
     Step2Args {
         common: args.common,
         root: saved_roots,
@@ -318,6 +321,10 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
                 unsafe { ObjectPtr::new(args.heap.start.wrapping_byte_add(mapped)) }
             });
         });
+    });
+
+    section_cookie.section("Wipe dead types", |_| {
+        heap.get().offset_walker.type_manager.wipe_deads()
     });
 
     let copier = args.common.gc.copier.take().unwrap();

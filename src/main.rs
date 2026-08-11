@@ -5,6 +5,7 @@ use std::slice;
 
 use crate::{
     object::ObjectPtr,
+    offset_walker::NoopTypeManager,
     root_set::{RootSet, RootSetRaw},
     state::State,
 };
@@ -16,6 +17,7 @@ mod gc_sync;
 mod mm;
 mod mmap;
 mod object;
+mod offset_walker;
 mod pipe;
 mod profiler;
 mod root_set;
@@ -28,6 +30,7 @@ fn main() {
         128 * 1024 * 1024,
         Some(0x60ef_0000_0000),
         Some(0x60ff_0000_0000),
+        NoopTypeManager,
     )
     .unwrap();
 

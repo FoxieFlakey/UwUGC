@@ -14,6 +14,7 @@ use crate::{
     gc_sync::{self, GCSync},
     mm::{self, MM},
     object::Bit,
+    offset_walker::{OffsetWalker, TypeManager},
     root_set::{RootSet, RootSetRaw},
     state::context::{Context, ContextShared},
 };
@@ -25,6 +26,7 @@ pub struct SharedState {
     pub gc_state: OnceLock<gc::PersistentState>,
     pub contexts: Mutex<HashMap<ThreadId, Arc<Mutex<ContextShared>>>>,
     pub mark_true_bit: Bit,
+    pub offset_walker: OffsetWalker,
 }
 pub struct State {
     controller: Arc<GCController>,
@@ -93,10 +95,11 @@ impl State {
         Context::new(self, shared, shared_data)
     }
 
-    pub fn new(
+    pub fn new<M: TypeManager + 'static>(
         size: usize,
         preferred_heap_base: Option<usize>,
         preferred_temp_base: Option<usize>,
+        descriptor_manager: M,
     ) -> Result<State, CreateError> {
         let shared = Arc::new(
             GCSync::new(SharedState {
@@ -104,6 +107,7 @@ impl State {
                 contexts: Mutex::new(HashMap::new()),
                 gc_state: OnceLock::new(),
                 mark_true_bit: Bit::Bit1,
+                offset_walker: OffsetWalker::new(descriptor_manager),
             })
             .map_err(|x| x.0)?,
         );
