@@ -22,7 +22,6 @@ impl FlexPage {
         self.kind.nr_pages() * BASE_PAGE_SIZE
     }
 
-    #[expect(unused)]
     pub fn nr_pages(&self) -> usize {
         self.kind.nr_pages()
     }

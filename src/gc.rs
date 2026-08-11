@@ -152,6 +152,7 @@ struct HeapInfoLater {
     used_end: *mut u8,
     size: usize,
     used_end_page: usize,
+    compacted_end: *mut u8,
 
     // During concurrent phase 2. there may be new objects added, which need compacted back
     // used_end..later_used_end would be range of where new objects added. Which must be
@@ -178,6 +179,7 @@ fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> St
         .take()
         .map(|mut x| {
             x.set_base(args.heap.start);
+            x.clear();
             x
         })
         .unwrap_or_else(|| PageTable::new(args.heap.start, (args.heap.size) / BASE_PAGE_SIZE));
@@ -240,6 +242,7 @@ fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> St
 
     Step3Args {
         common: args.common,
+        compacted_end: page_table.get_top_addr() as *mut u8,
         page_table,
         relocation_registry: registry,
         heap: args.heap,
@@ -251,6 +254,7 @@ struct Step3Args<'a> {
     page_table: PageTable,
     relocation_registry: RegistryBuilder,
     heap: HeapInfo,
+    compacted_end: *mut u8,
 }
 
 /// Step 3: (STW) Prepare for relocation and fix root pointer
@@ -278,7 +282,7 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
 
     // SAFETY: For now, we assume all objects are dead
     let mut page_table_opt = Some(args.page_table);
-    let (mut page_table, mapping) = unsafe {
+    let (page_table, mapping) = unsafe {
         section_cookie.section("Remap heap", |_| {
             heap.get()
                 .mm
@@ -317,10 +321,7 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     });
 
     let copier = args.common.gc.copier.take().unwrap();
-
-    page_table.clear();
     args.common.gc.cached_page_table = Some(page_table);
-    args.common.gc.cached_temp_mapping = Some(mapping);
 
     let heap = HeapInfoLater {
         start: args.heap.start,
@@ -329,10 +330,17 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
         used_end_page: args.heap.used_end_page,
         later_used_end,
         later_used_end_page,
+        compacted_end: args.compacted_end,
     };
+
+    // SAFETY: We're in STW that mean the heap is unused and available for exclusive access by copier
+    let active_copier = section_cookie.section("Prepare copier", |_| unsafe {
+        copier.start(heap.clone(), registry_frozen, mapping)
+    });
+
     Step4Args {
         common: args.common,
-        copier: copier.start(heap.clone(), registry_frozen),
+        copier: active_copier,
         heap,
     }
 }
@@ -346,8 +354,9 @@ struct Step4Args<'a> {
 
 /// Step 4: (Concurrent) Relocate
 fn step4<'a>(_section_cookie: &mut SectionCookie, mut args: Step4Args<'a>) -> Step5Args<'a> {
-    let (registry, copier) = args.copier.finish();
+    let (registry, copier, temp_mapping) = args.copier.finish();
     args.common.gc.cached_registry = Some(registry.unfreeze());
+    args.common.gc.cached_temp_mapping = Some(temp_mapping);
     args.common.gc.copier = Some(copier);
 
     // nothing, because actual relocation is not implemented yet

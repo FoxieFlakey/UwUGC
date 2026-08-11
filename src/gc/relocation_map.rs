@@ -127,7 +127,6 @@ impl FrozenRegistry {
         })
     }
 
-    #[expect(unused)]
     pub fn get_dest_range(&self) -> Option<Range<usize>> {
         if self.starting_dest.is_none() {
             return None;
@@ -179,7 +178,6 @@ impl FrozenRegistry {
         .take_while(move |record| extractor(record).start < range.end)
     }
 
-    #[expect(unused)]
     pub fn iterate_records_in_dest_range(
         &self,
         dest: &Range<usize>,
