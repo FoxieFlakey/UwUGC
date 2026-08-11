@@ -11,5 +11,6 @@ memfd = "0.6.5"
 nix = { version = "0.31.3", features = ["fs", "poll"] }
 page_size = "0.6.0"
 parking_lot = "0.12.5"
+rayon = "1.12.0"
 thiserror = "2.0.19"
-userfaultfd = { git = "https://github.com/FoxieFlakey/userfaultfd-rs", version = "0.9.0" }
+userfaultfd = { git = "https://github.com/FoxieFlakey/userfaultfd-rs", version = "0.8.1", features = [ "linux6_8" ] }

@@ -1,7 +1,11 @@
 #![feature(current_thread_id)]
 #![feature(duration_millis_float)]
 
-use std::{mem::MaybeUninit, slice, sync::atomic::{AtomicPtr, Ordering}};
+use std::{
+    mem::MaybeUninit,
+    slice,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 
 use crate::{
     object::ObjectPtr,
@@ -27,9 +31,9 @@ mod type_manager;
 // its Java version that ported
 
 const WINDOW_TYPE_ID: u64 = 0;
-const WINDOW_SIZE: usize  =     200_000;
-const MSG_COUNT: usize    =  10_000_000;
-const MSG_SIZE: usize     =        1024;
+const WINDOW_SIZE: usize = 200_000;
+const MSG_COUNT: usize = 10_000_000;
+const MSG_SIZE: usize = 1024;
 
 fn make_message(ctx: &mut Context<'_, DumbRootSet>, n: u8) -> Option<ObjectPtr> {
     ctx.alloc_fast(AllocType::PlainOldData(MSG_SIZE))
@@ -39,7 +43,8 @@ fn make_message(ctx: &mut Context<'_, DumbRootSet>, n: u8) -> Option<ObjectPtr> 
         })
         .inspect(|x| {
             // SAFETY: We allocated MSG_SIZE bytes
-            let slice = unsafe { slice::from_raw_parts_mut(x.data().cast::<MaybeUninit<u8>>(), MSG_SIZE) };
+            let slice =
+                unsafe { slice::from_raw_parts_mut(x.data().cast::<MaybeUninit<u8>>(), MSG_SIZE) };
             slice.fill(MaybeUninit::new(n));
         })
 }
@@ -108,8 +113,7 @@ unsafe impl TypeManager for LatencyTestTypeManager {
         type_id: u64,
         object: ObjectPtr,
         visitor: &mut dyn FnMut(ObjectPtr),
-    ) -> bool
-    {
+    ) -> bool {
         if type_id != WINDOW_TYPE_ID {
             return false;
         }
@@ -135,8 +139,7 @@ unsafe impl TypeManager for LatencyTestTypeManager {
         type_id: u64,
         object: ObjectPtr,
         updater: &mut dyn FnMut(ObjectPtr) -> ObjectPtr,
-    ) -> bool
-    {
+    ) -> bool {
         if type_id != WINDOW_TYPE_ID {
             return false;
         }
