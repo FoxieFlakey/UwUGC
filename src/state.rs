@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     mem::ManuallyDrop,
-    sync::Arc,
+    sync::{Arc, mpsc},
     thread::{self, JoinHandle, ThreadId},
 };
 
@@ -30,11 +30,26 @@ pub struct SharedState {
     // and this would be to-space
     // mm and second_mm are swapped as needed
     // GC may take this out
-    pub second_mm: Option<MM>,
+    //
+    // Queue of second_mm that is usable
+    second_mm: Mutex<mpsc::Receiver<MM>>,
+    second_mm_done: mpsc::Sender<MM>,
     pub contexts: Mutex<HashMap<ThreadId, Arc<Mutex<ContextShared>>>>,
     pub mark_true_bit: Bit,
     pub type_manager: TypeManagerConcrete,
 }
+
+impl SharedState {
+    pub fn deque_cleared_mm(&mut self) -> MM {
+        self.second_mm.get_mut().recv().unwrap()
+    }
+
+    pub fn enqueue_to_be_cleared_mm(&self, mut mm: MM) {
+        mm.clear();
+        self.second_mm_done.send(mm).unwrap();
+    }
+}
+
 pub struct State {
     controller: Arc<GCController>,
     shared: Arc<GCSync<SharedState>>,
@@ -108,10 +123,14 @@ impl State {
         preferred_second_space: Option<usize>,
         descriptor_manager: M,
     ) -> Result<State, CreateError> {
+        let (send, recv) = mpsc::channel();
+        send.send(MM::new(size, preferred_second_space)?).unwrap();
+
         let shared = Arc::new(
             GCSync::new(SharedState {
                 mm: MM::new(size, preferred_primary_base)?,
-                second_mm: Some(MM::new(size, preferred_second_space)?),
+                second_mm: Mutex::new(recv),
+                second_mm_done: send,
                 contexts: Mutex::new(HashMap::new()),
                 mark_true_bit: Bit::Bit1,
                 type_manager: TypeManagerConcrete::new(descriptor_manager),

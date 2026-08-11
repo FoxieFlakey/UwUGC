@@ -122,7 +122,7 @@ fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Ar
     // Lets assume all types are dead
     heap.get().type_manager.type_manager.assume_all_dead();
 
-    let second_mm = heap.get().second_mm.take().unwrap();
+    let second_mm = heap.get().deque_cleared_mm();
     Step2Args {
         common: args.common,
         root: saved_roots,
@@ -315,11 +315,7 @@ struct Step5Args<'a> {
 /// Step 5: (STW) Finalize cycle
 fn step5(_section_cookie: &mut SectionCookie, args: Step5Args<'_>) -> PersistentState {
     let mut heap = args.common.shared.get_exclusive();
-    assert!(
-        heap.get().second_mm.is_none(),
-        "second mm already exists for no reason"
-    );
-    heap.get().second_mm = Some(args.second_mm);
+    heap.get().enqueue_to_be_cleared_mm(args.second_mm);
 
     args.common.gc
 }
