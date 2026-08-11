@@ -121,7 +121,7 @@ impl CopierActive {
             // it cannot happen because work_done bitmap ensure only one thread/do_relocate
             // can modifies destination
             unsafe {
-                std::ptr::copy_nonoverlapping(src_ptr.cast_const(), dest, record.dest);
+                std::ptr::copy_nonoverlapping(src_ptr.cast_const(), dest, record.size);
             };
 
             // Perform pointer fixing
