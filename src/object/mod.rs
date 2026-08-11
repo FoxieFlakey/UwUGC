@@ -34,7 +34,6 @@ impl ObjectPtr {
         match self.metadata_ref().get().payload {
             ObjectKind::NotPlainOldData(_) => unimplemented!(),
             ObjectKind::PlainOldData(size) => size.value().try_into().unwrap(),
-            ObjectKind::RefArray(len) => usize::try_from(len.value()).unwrap() * size_of::<u64>(),
         }
     }
 

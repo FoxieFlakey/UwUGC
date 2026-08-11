@@ -5,7 +5,7 @@ use std::{
     sync::Arc,
 };
 
-use arbitrary_int::u60;
+use arbitrary_int::u61;
 use parking_lot::{Mutex, MutexGuard};
 
 use crate::{
@@ -73,7 +73,7 @@ where
     //
     // <use the object>
     pub fn alloc_fast(&mut self, size: usize) -> Option<ObjectPtr> {
-        let kind = ObjectKind::PlainOldData(u60::try_new(u64::try_from(size).unwrap()).unwrap());
+        let kind = ObjectKind::PlainOldData(u61::try_new(u64::try_from(size).unwrap()).unwrap());
 
         // SAFETY: We're using same mm consistently
         let ret = unsafe {
@@ -121,7 +121,7 @@ where
         // Retry 3 times :3
         for _ in 0..3 {
             let kind =
-                ObjectKind::PlainOldData(u60::try_new(u64::try_from(size).unwrap()).unwrap());
+                ObjectKind::PlainOldData(u61::try_new(u64::try_from(size).unwrap()).unwrap());
             // SAFETY: We're using same mm consistently
             let ret = unsafe {
                 self.shared_data

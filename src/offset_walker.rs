@@ -1,8 +1,3 @@
-use std::{
-    slice,
-    sync::atomic::{AtomicPtr, Ordering},
-};
-
 use arbitrary_int::traits::Integer;
 
 use crate::object::{ObjectKind, ObjectPtr};
@@ -151,19 +146,6 @@ impl OffsetWalker {
                         .iterate_gc_pointers(payload.as_u64(), object, visitor)
                 );
             }
-            ObjectKind::RefArray(len) => {
-                // SAFETY: It is safe, because ref array never mutably accessed
-                let array = unsafe {
-                    slice::from_raw_parts(
-                        object.to_ptr().cast::<AtomicPtr<u8>>(),
-                        usize::try_from(len.value()).unwrap(),
-                    )
-                };
-                for ptr in array {
-                    // SAFETY: Ref array only contains valid object pointers
-                    visitor(unsafe { ObjectPtr::new(ptr.load(Ordering::Relaxed)) });
-                }
-            }
         }
     }
 
@@ -182,18 +164,6 @@ impl OffsetWalker {
                     self.type_manager
                         .update_gc_pointers(payload.as_u64(), object, updater)
                 );
-            }
-            ObjectKind::RefArray(len) => {
-                let array = unsafe {
-                    slice::from_raw_parts_mut(
-                        object.to_ptr().cast::<*mut u8>(),
-                        usize::try_from(len.value()).unwrap(),
-                    )
-                };
-                for ptr in array {
-                    // SAFETY: Ref array only contains valid object pointers
-                    *ptr = updater(unsafe { ObjectPtr::new(*ptr) }).to_ptr();
-                }
             }
         }
     }
