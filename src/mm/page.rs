@@ -18,6 +18,10 @@ impl FlexPage {
         }
     }
 
+    pub fn start(&self) -> *mut u8 {
+        self.start.as_ptr()
+    }
+
     pub fn size(&self) -> usize {
         self.kind.nr_pages() * BASE_PAGE_SIZE
     }
@@ -51,6 +55,7 @@ impl FlexPage {
 }
 
 pub const BASE_PAGE_SIZE: usize = 2 * 1024 * 1024;
+pub const BASE_PAGE_SHIFT: u32 = 21;
 
 #[derive(Clone, Copy)]
 pub enum FlexPageKind {

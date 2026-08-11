@@ -1,8 +1,7 @@
-use std::slice;
+use std::{slice, sync::atomic::Ordering};
 
 use crate::{
-    gc::{HeapInfoLater, relocation_map::FrozenRegistry},
-    mmap::Mmap,
+    bitmap::AtomicBitmap, gc::{HeapInfoLater, relocation_map::FrozenRegistry}, mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, PageTable}, mmap::Mmap
 };
 
 pub struct Copier {}
@@ -21,44 +20,122 @@ impl Copier {
         heap: HeapInfoLater,
         reloc_registry: FrozenRegistry,
         from_mapping: Mmap,
+        compacted_page_table: PageTable,
     ) -> CopierActive {
         // Do dumb copying, leaving "later used" unmoved
         // later update to use userfaultfd
 
-        // SAFETY: We own the mapping
-        let src_slice =
-            unsafe { slice::from_raw_parts(from_mapping.get_ptr(), from_mapping.len()) };
-        // SAFETY: Caller make sure the destination heap is untouched
-        let dest_slice = unsafe {
-            slice::from_raw_parts_mut(heap.start, heap.compacted_end.addr() - heap.start.addr())
-        };
-
-        for record in reloc_registry
-            .iterate_records_in_dest_range(&reloc_registry.get_dest_range().unwrap_or(0..0))
-        {
-            let src = &src_slice[record.src..record.src + record.size];
-            let dest = &mut dest_slice[record.dest..record.dest + record.size];
-            dest.copy_from_slice(src);
-        }
-
-        CopierActive {
+        let active = CopierActive {
             state: self,
             reloc_registry,
+            work_done: AtomicBitmap::new(compacted_page_table.nr_pages()),
             heap,
             from_mapping,
+            zero_page_start: compacted_page_table.get_used_end_page(),
+            page_table: compacted_page_table,
+        };
+
+        // Pretend we faulted entire space from start of heap to end
+        // on each two pages
+        for i in 0.. {
+            let fault_addr = active.heap.start.wrapping_byte_add(i * 8192);
+            if fault_addr >= active.heap.start.wrapping_byte_add(active.heap.size) {
+                // Faulted entire heap
+                break;
+            }
+
+            active.resolve_fault(fault_addr);
         }
+
+        active
     }
 }
 
 pub struct CopierActive {
     state: Copier,
     reloc_registry: FrozenRegistry,
-    #[expect(unused)]
     heap: HeapInfoLater,
     from_mapping: Mmap,
+
+    // Each index correspond to one page base page processed.
+    work_done: AtomicBitmap,
+
+    // Page index where zero paging begins (no relocating necessary
+    // just UFFDIO_ZEROPAGE)
+    zero_page_start: usize,
+
+    // TODO: Maybe optimize memory bit better to use bitmap? of where
+    // is valid start page
+    page_table: PageTable,
 }
 
 impl CopierActive {
+    fn do_zeropage(&self, page_id: usize) {
+        if self.work_done.set(page_id, true, Ordering::Relaxed) {
+            // Have zeropaged this page. Pretend its spurious page faults
+            return;
+        }
+
+        let start = self.heap.start.wrapping_byte_add(page_id * BASE_PAGE_SIZE);
+        let len = BASE_PAGE_SIZE;
+
+        // SAFETY: Only one thread and one do_relocate that can update a single page
+        // via atomic bit map on work_done
+        let dest_slice = unsafe { slice::from_raw_parts_mut(start, len) };
+        dest_slice.fill(0);
+    }
+
+    fn do_relocate(&self, page_id: usize, page: &FlexPage) {
+        if self.work_done.set(page_id, true, Ordering::Relaxed) {
+            // Have relocated to this page. Pretend its spurious page faults
+            return;
+        }
+
+        let start = page.start();
+        let end = start.wrapping_byte_add(page.size());
+        let len = page.size();
+
+        let start_offset = start.addr() - self.heap.start.addr();
+        let end_offset = end.addr() - self.heap.start.addr();
+
+        // SAFETY: We own the mapping
+        let src_slice =
+            unsafe { slice::from_raw_parts(self.from_mapping.get_ptr(), self.from_mapping.len()) };
+
+        // SAFETY: Only one thread and one do_relocate that can update a single page
+        // via atomic bit map on work_done
+        let dest_slice = unsafe {
+            slice::from_raw_parts_mut(start, len)
+        };
+        
+        // An offset from actual heap start, so dest_slice[0] mean heap.start + dest_offset
+        let dest_offset = start.addr() - self.heap.start.addr();
+
+        for record in self.reloc_registry
+            .iterate_records_in_dest_range(&(start_offset..end_offset))
+        {
+            let src = &src_slice[record.src..record.src + record.size];
+            let dest = &mut dest_slice[record.dest - dest_offset..(record.dest + record.size) - dest_offset];
+            dest.copy_from_slice(src);
+        }
+    }
+
+    fn resolve_fault(&self, addr: *mut u8) {
+        let page_id = (addr.addr() - self.heap.start.addr()) >> BASE_PAGE_SHIFT;
+        if page_id >= self.zero_page_start {
+            self.do_zeropage(page_id);
+            return;
+        }
+
+        let Some(page_id) = self.page_table.resolve_to_page(addr) else {
+            self.do_zeropage(page_id);
+            return;
+        };
+
+        let page = self.page_table.get_page(page_id).lock();
+        self.do_relocate(page_id, page.as_ref().unwrap());
+    }
+
     pub fn finish(self) -> (FrozenRegistry, Copier, Mmap) {
         (self.reloc_registry, self.state, self.from_mapping)
     }

@@ -5,7 +5,7 @@ use std::{
 
 use parking_lot::Mutex;
 
-use crate::mm::{BASE_PAGE_SIZE, FlexPage, FlexPageKind};
+use crate::mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, FlexPageKind};
 
 pub struct PageTable {
     base_addr: *mut u8,
@@ -32,6 +32,59 @@ impl PageTable {
             current_base_page: AtomicUsize::new(0),
             medium_buffer_page: Mutex::new(None),
             page_table,
+        }
+    }
+
+    // Pointer here would duplicate existing one, up to caller to ensure its safety
+    // on derefencing. It is sound because PageTable does not derefs the pointers
+    pub fn clone(&mut self) -> Self {
+        Self {
+            base_addr: self.base_addr,
+            current_base_page: AtomicUsize::new(*self.current_base_page.get_mut()),
+            nr_pages: self.nr_pages,
+            page_table: self.page_table
+                .iter_mut()
+                .map(|x| Mutex::new(x.get_mut().clone()))
+                .collect::<Vec<_>>(),
+            medium_buffer_page: Mutex::new(self.medium_buffer_page.get_mut().clone())
+        }
+    }
+
+    // Returns None, if there no corresponding page
+    pub fn resolve_to_page(&self, addr: *mut u8) -> Option<usize> {
+        if addr < self.base_addr {
+            return None;
+        }
+        
+        let page_id = (addr.addr() - self.base_addr.addr()) >> BASE_PAGE_SHIFT;
+        if page_id >= self.get_used_end_page() {
+            // Resolved to page that is after the end of use. Guarantee that nobody
+            // using it
+            return None;
+        }
+
+        // now we go backward till find Some() which is the page we're looking for
+        let mut current = page_id;
+        loop {
+            let page = self.page_table[current].lock();
+            if let Some(page) = page.as_ref() {
+                let start = page.start.as_ptr();
+                let end = start.wrapping_byte_add(page.used());
+                
+                if addr >= start && addr < end {
+                    // We found page where its belong
+                    return Some(current);
+                }
+                
+                return None;
+            }
+
+            if current == 0 {
+                // Cannot find any page. Looked till index 0
+                // and page at index 0 is None
+                return None
+            }
+            current -= 1;
         }
     }
 

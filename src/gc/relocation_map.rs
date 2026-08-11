@@ -127,6 +127,7 @@ impl FrozenRegistry {
         })
     }
 
+    #[expect(unused)]
     pub fn get_dest_range(&self) -> Option<Range<usize>> {
         if self.starting_dest.is_none() {
             return None;
