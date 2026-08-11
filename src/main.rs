@@ -62,7 +62,7 @@ fn main() {
     println!("Hello, world!");
 
     let state = State::new(
-        500 * 1024 * 1024,
+        512 * 1024 * 1024,
         Some(0x60ef_0000_0000),
         Some(0x60ff_0000_0000),
         LatencyTestTypeManager,
