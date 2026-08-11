@@ -160,12 +160,13 @@ impl CopierActive {
 
         // Then finally move to final via uffd move
         let mut src = buffer.get_ptr().cast();
-        let mut dest = self.heap
+        let mut dest = self
+            .heap
             .to_space
             .wrapping_byte_add(page.start().addr() - self.page_table.get_base_addr())
             .cast();
         let mut len = page.size();
-        
+
         loop {
             match unsafe { self.state.uffd.move_memory(src, dest, len, true, true) } {
                 Ok(moved) => {
