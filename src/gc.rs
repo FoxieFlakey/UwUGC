@@ -135,7 +135,7 @@ fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Ar
     args.common.controller.clear_request();
 
     // Lets assume all types are dead
-    heap.get().offset_walker.type_manager.assume_all_dead();
+    heap.get().type_manager.type_manager.assume_all_dead();
 
     Step2Args {
         common: args.common,
@@ -282,7 +282,7 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     });
 
     section_cookie.section("Wipe dead types", |_| {
-        heap.get().offset_walker.type_manager.wipe_deads()
+        heap.get().type_manager.type_manager.wipe_deads()
     });
 
     let copier = args.common.gc.copier.take().unwrap();

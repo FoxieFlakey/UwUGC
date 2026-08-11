@@ -38,7 +38,7 @@ impl Marker {
         let mut live_count = 0;
         let mut total_count = 0;
 
-        let type_manager = &heap.offset_walker;
+        let type_manager = &heap.type_manager;
         let mut visitor = |obj: &ObjectPtr| {
             // Mark the object
             let ret =

@@ -25,7 +25,7 @@ pub struct SharedState {
     pub mm: MM,
     pub contexts: Mutex<HashMap<ThreadId, Arc<Mutex<ContextShared>>>>,
     pub mark_true_bit: Bit,
-    pub offset_walker: TypeManagerConcrete,
+    pub type_manager: TypeManagerConcrete,
 }
 pub struct State {
     controller: Arc<GCController>,
@@ -105,7 +105,7 @@ impl State {
                 mm: MM::new(size, preferred_heap_base)?,
                 contexts: Mutex::new(HashMap::new()),
                 mark_true_bit: Bit::Bit1,
-                offset_walker: TypeManagerConcrete::new(descriptor_manager),
+                type_manager: TypeManagerConcrete::new(descriptor_manager),
             })
             .map_err(|x| x.0)?,
         );
