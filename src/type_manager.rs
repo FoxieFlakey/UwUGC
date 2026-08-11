@@ -124,18 +124,18 @@ unsafe impl TypeManager for NoopTypeManager {
     fn wipe_deads(&mut self) {}
 }
 
-pub struct OffsetWalker {
+pub struct TypeManagerConcrete {
     pub type_manager: Box<dyn TypeManager>,
 }
 
-#[expect(unused)]
-impl OffsetWalker {
+impl TypeManagerConcrete {
     pub fn new<M: TypeManager + 'static>(manager: M) -> Self {
         Self {
             type_manager: Box::new(manager),
         }
     }
 
+    #[expect(unused)]
     pub fn iterate_gc_pointers(&self, object: ObjectPtr, visitor: &mut dyn FnMut(ObjectPtr)) {
         match object.metadata().payload {
             ObjectKind::PlainOldData(_) => (),
@@ -161,6 +161,7 @@ impl OffsetWalker {
     // # Safety
     // caller must make sure object is exclusive owned and its
     // safe from GC accessing part of it.
+    #[expect(unused)]
     pub unsafe fn update_gc_pointers(
         &self,
         object: ObjectPtr,
