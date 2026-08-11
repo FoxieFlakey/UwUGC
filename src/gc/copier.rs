@@ -1,4 +1,7 @@
-use std::{slice, sync::atomic::Ordering};
+use std::sync::atomic::Ordering;
+
+use rayon::{ThreadPool, ThreadPoolBuilder};
+use userfaultfd::{Uffd, UffdBuilder};
 
 use crate::{
     bitmap::AtomicBitmap,
@@ -9,11 +12,26 @@ use crate::{
     type_manager::TypeManagerConcrete,
 };
 
-pub struct Copier {}
+pub struct Copier {
+    uffd: Uffd,
+    worker_pool: ThreadPool,
+}
 
 impl Copier {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            worker_pool: ThreadPoolBuilder::new()
+                .num_threads(4)
+                .thread_name(|x| format!("UFFDWorker-{x:02}"))
+                .build()
+                .unwrap(),
+            uffd: UffdBuilder::new()
+                .close_on_exec(true)
+                .non_blocking(false)
+                .user_mode_only(true)
+                .create()
+                .unwrap(),
+        }
     }
 
     // note, heap_len may be larger than last byte in compacted form
@@ -26,12 +44,12 @@ impl Copier {
         reloc_registry: FrozenRegistry,
         from_mapping: Mmap,
         compacted_page_table: PageTable,
-        type_manager: &TypeManagerConcrete,
+        _type_manager: &TypeManagerConcrete,
     ) -> CopierActive {
-        // Do dumb copying, leaving "later used" unmoved
-        // later update to use userfaultfd
+        // Activate UFFD
+        self.uffd.register(heap.start.cast(), heap.size).unwrap();
 
-        let active = CopierActive {
+        CopierActive {
             state: self,
             reloc_registry,
             work_done: AtomicBitmap::new(compacted_page_table.nr_pages()),
@@ -39,20 +57,7 @@ impl Copier {
             from_mapping,
             zero_page_start: compacted_page_table.get_used_end_page(),
             page_table: compacted_page_table,
-        };
-
-        // Pretend we faulted entire space from start of heap to end
-        for i in 0.. {
-            let fault_addr = active.heap.start.wrapping_byte_add(i * BASE_PAGE_SIZE);
-            if fault_addr >= active.heap.start.wrapping_byte_add(active.heap.size) {
-                // Faulted entire heap
-                break;
-            }
-
-            active.resolve_fault(fault_addr, type_manager);
         }
-
-        active
     }
 }
 
@@ -74,6 +79,8 @@ pub struct CopierActive {
     page_table: PageTable,
 }
 
+unsafe impl Sync for CopierActive {}
+
 impl CopierActive {
     fn do_zeropage(&self, page_id: usize) {
         if self.work_done.set(page_id, true, Ordering::Relaxed) {
@@ -84,10 +91,7 @@ impl CopierActive {
         let start = self.heap.start.wrapping_byte_add(page_id * BASE_PAGE_SIZE);
         let len = BASE_PAGE_SIZE;
 
-        // SAFETY: Only one thread and one do_relocate that can update a single page
-        // via atomic bit map on work_done
-        let dest_slice = unsafe { slice::from_raw_parts_mut(start, len) };
-        dest_slice.fill(0);
+        unsafe { self.state.uffd.zeropage(start.cast(), len, true) }.unwrap();
     }
 
     fn do_relocate(&self, page_id: usize, page: &FlexPage, type_manager: &TypeManagerConcrete) {
@@ -96,12 +100,16 @@ impl CopierActive {
             return;
         }
 
+        let buffer = Mmap::map(page.size(), true, true, true, None).unwrap();
+
         let start = page.start();
         let end = start.wrapping_byte_add(page.size());
 
         let start_offset = start.addr() - self.heap.start.addr();
         let end_offset = end.addr() - self.heap.start.addr();
         let page_range = start_offset..end_offset;
+
+        let dest_page_offset = start.addr() - self.heap.start.addr();
 
         for record in self
             .reloc_registry
@@ -114,7 +122,9 @@ impl CopierActive {
             assert!(page_range.contains(&(dest_range.end - 1)));
 
             let src_ptr = self.from_mapping.get_ptr().wrapping_add(record.src);
-            let dest = self.heap.start.wrapping_byte_add(record.dest);
+            let dest = buffer
+                .get_ptr()
+                .wrapping_byte_add(record.dest - dest_page_offset);
 
             // SAFETY: Already make sure destination is not being written by other
             // it cannot happen because work_done bitmap ensure only one thread/do_relocate
@@ -142,6 +152,18 @@ impl CopierActive {
             // bitmap prevent concurrent writes
             unsafe { type_manager.update_gc_pointers(object, &mut updater) };
         }
+
+        // Then finally move to final via uffd move
+        unsafe {
+            self.state.uffd.move_memory(
+                buffer.get_ptr().cast(),
+                page.start().cast(),
+                page.size(),
+                true,
+                true,
+            )
+        }
+        .unwrap();
     }
 
     fn resolve_fault(&self, addr: *mut u8, type_manager: &TypeManagerConcrete) {
@@ -160,7 +182,31 @@ impl CopierActive {
         self.do_relocate(page_id, page.as_ref().unwrap(), type_manager);
     }
 
-    pub fn finish(self) -> (FrozenRegistry, Copier, Mmap) {
+    pub fn finish(self, type_manager: &TypeManagerConcrete) -> (FrozenRegistry, Copier, Mmap) {
+        self.state.worker_pool.scope_fifo(|s| {
+            for id in 0..self.heap.compacted_end_page {
+                let page = self.page_table.get_page(id).lock();
+                if page.is_none() {
+                    continue;
+                }
+
+                struct SyncPtr(*mut u8);
+                unsafe impl Send for SyncPtr {}
+
+                let addr = SyncPtr(page.as_ref().unwrap().start());
+                let self_borrow = &self;
+                s.spawn_fifo(move |_| {
+                    let addr = addr;
+                    self_borrow.resolve_fault(addr.0, type_manager);
+                });
+            }
+        });
+
+        // Deactivate UFFD
+        self.state
+            .uffd
+            .unregister(self.heap.start.cast(), self.heap.size)
+            .unwrap();
         (self.reloc_registry, self.state, self.from_mapping)
     }
 }

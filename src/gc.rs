@@ -162,6 +162,7 @@ struct HeapInfoLater {
     size: usize,
     used_end_page: usize,
     compacted_end: *mut u8,
+    compacted_end_page: usize,
 
     // During concurrent phase 2. there may be new objects added, which need compacted back
     // used_end..later_used_end would be range of where new objects added. Which must be
@@ -237,6 +238,7 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     }
 
     let registry_frozen = args.relocation_registry.freeze();
+    let compacted_end_page = page_table.get_used_end_page();
 
     // SAFETY: For now, we assume all objects are dead
     let mut page_table_opt = Some(args.page_table);
@@ -293,6 +295,7 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
         later_used_end,
         later_used_end_page,
         compacted_end: args.compacted_end,
+        compacted_end_page,
     };
 
     // SAFETY: We're in STW that mean the heap is unused and available for exclusive access by copier
@@ -322,7 +325,9 @@ struct Step4Args<'a> {
 
 /// Step 4: (Concurrent) Relocate
 fn step4<'a>(_section_cookie: &mut SectionCookie, mut args: Step4Args<'a>) -> Step5Args<'a> {
-    let (registry, copier, temp_mapping) = args.copier.finish();
+    let heap = args.common.shared.get_shared();
+
+    let (registry, copier, temp_mapping) = args.copier.finish(&heap.get().type_manager);
     args.common.gc.cached_registry = Some(registry.unfreeze());
     args.common.gc.cached_temp_mapping = Some(temp_mapping);
     args.common.gc.copier = Some(copier);
