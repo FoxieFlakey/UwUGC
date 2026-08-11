@@ -97,6 +97,7 @@ impl CopierActive {
 
         let start_offset = start.addr() - self.heap.start.addr();
         let end_offset = end.addr() - self.heap.start.addr();
+        let page_range = start_offset..end_offset;
 
         // SAFETY: We own the mapping
         let src_slice =
@@ -114,6 +115,12 @@ impl CopierActive {
         for record in self.reloc_registry
             .iterate_records_in_dest_range(&(start_offset..end_offset))
         {
+            // Make sure that record fully in the page. By page design and allocator
+            // it has to be fully in page. No object split between 2 pages
+            let dest_range = record.get_dest_range();
+            assert!(page_range.contains(&dest_range.start));
+            assert!(page_range.contains(&(dest_range.end - 1)));
+
             let src = &src_slice[record.src..record.src + record.size];
             let dest = &mut dest_slice[record.dest - dest_offset..(record.dest + record.size) - dest_offset];
             dest.copy_from_slice(src);
