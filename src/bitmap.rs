@@ -8,15 +8,17 @@ pub struct AtomicBitmap {
 #[expect(unused)]
 impl AtomicBitmap {
     pub fn new(mut len: usize) -> Self {
-        len = len.div_ceil(usize::BITS.try_into().unwrap());
+        let len_words = len.div_ceil(usize::BITS.try_into().unwrap());
 
         let mut mem = Vec::new();
-        mem.resize_with(len, Default::default);
+        mem.resize_with(len_words, Default::default);
         Self { mem, len }
     }
 
     pub fn get(&self, idx: usize, order: Ordering) -> bool {
-        if idx > self.len {}
+        if idx >= self.len {
+            panic!("out of index bound, len is {} but index is {idx}", self.len);
+        }
 
         let (word, mask) = Self::calc_bit_pos(idx);
         self.mem[word].load(order) & mask != 0
@@ -53,6 +55,10 @@ impl AtomicBitmap {
     where
         F: FnMut(bool) -> bool,
     {
+        if idx >= self.len {
+            panic!("out of index bound, len is {} but index is {idx}", self.len);
+        }
+
         let (word, mask) = Self::calc_bit_pos(idx);
         self.mem[word].update(set_order, fetch_order, |x| {
             if func(x & mask != 0) {
