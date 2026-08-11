@@ -42,9 +42,8 @@ impl Copier {
         };
 
         // Pretend we faulted entire space from start of heap to end
-        // on each two pages
         for i in 0.. {
-            let fault_addr = active.heap.start.wrapping_byte_add(i * 8192);
+            let fault_addr = active.heap.start.wrapping_byte_add(i * BASE_PAGE_SIZE);
             if fault_addr >= active.heap.start.wrapping_byte_add(active.heap.size) {
                 // Faulted entire heap
                 break;
