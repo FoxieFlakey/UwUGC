@@ -12,7 +12,7 @@ use crate::{
     gc_sync::GCSync,
     mm::{BASE_PAGE_SIZE, Context, PageTable},
     mmap::Mmap,
-    object::{Bit, MetadataCompressed, ObjectPtr},
+    object::{Bit, ObjectPtr},
     profiler::{Profiler, SectionCookie},
     root_set::RootSet,
     state::SharedState,
@@ -191,6 +191,9 @@ fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> St
     // get used its assume all dead
     let mut live_count = 0;
     let mut total_count = 0;
+
+    let heap = args.common.shared.get_shared();
+    let type_manager = &heap.get().offset_walker;
     let mut visitor = |obj: &ObjectPtr| {
         // Mark the object
         let ret = obj
@@ -211,7 +214,7 @@ fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> St
             // recusrively
             live_count += 1;
 
-            let size = obj.size() + size_of::<MetadataCompressed>();
+            let size = type_manager.get_size(obj);
 
             // SAFETY: We use same page table consistently
             let dest = unsafe { move_context.alloc_from_page_table(&page_table, size) }

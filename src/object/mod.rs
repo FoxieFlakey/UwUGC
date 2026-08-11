@@ -20,7 +20,6 @@ impl ObjectPtr {
         Self(ptr)
     }
 
-    #[expect(unused)]
     pub(crate) fn metadata(&self) -> Metadata {
         self.metadata_ref().get()
     }
@@ -28,13 +27,6 @@ impl ObjectPtr {
     pub(crate) fn metadata_ref(&self) -> &MetadataCompressed {
         // SAFETY: We can make sure the pointer points to MetadataCompresed
         unsafe { self.0.cast::<MetadataCompressed>().as_ref_unchecked() }
-    }
-
-    pub fn size(&self) -> usize {
-        match self.metadata_ref().get().payload {
-            ObjectKind::NotPlainOldData(_) => unimplemented!(),
-            ObjectKind::PlainOldData(size) => size.value().try_into().unwrap(),
-        }
     }
 
     pub fn data(&self) -> *mut u8 {

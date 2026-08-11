@@ -1,6 +1,6 @@
 use arbitrary_int::traits::Integer;
 
-use crate::object::{ObjectKind, ObjectPtr};
+use crate::object::{MetadataCompressed, ObjectKind, ObjectPtr};
 
 // A trait user of GC implements to teach GC
 // where offsets to each pointer GC need to
@@ -91,17 +91,16 @@ pub unsafe trait TypeManager: Send + Sync {
         updater: &mut dyn FnMut(ObjectPtr) -> ObjectPtr,
     ) -> bool;
 
-    // Get length of type_id
+    // Get size of type_id. Excluding metadata
     // Returns None if type_id unknown else Some(length)
-    #[expect(unused)]
-    fn get_length(&self, type_id: u64) -> Option<usize>;
+    fn get_size(&self, type_id: u64) -> Option<usize>;
 }
 
 pub struct NoopTypeManager;
 
 unsafe impl TypeManager for NoopTypeManager {
     fn assume_all_dead(&mut self) {}
-    fn get_length(&self, _: u64) -> Option<usize> {
+    fn get_size(&self, _: u64) -> Option<usize> {
         None
     }
 
@@ -147,6 +146,16 @@ impl OffsetWalker {
                 );
             }
         }
+    }
+
+    // Get size of object including header
+    pub fn get_size(&self, object: &ObjectPtr) -> usize {
+        (match object.metadata().payload {
+            ObjectKind::PlainOldData(x) => x.as_usize(),
+            ObjectKind::NotPlainOldData(type_id) => {
+                self.type_manager.get_size(type_id.as_u64()).unwrap()
+            }
+        }) + size_of::<MetadataCompressed>()
     }
 
     // # Safety
