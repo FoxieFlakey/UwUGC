@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     mem::ManuallyDrop,
-    sync::{Arc, OnceLock},
+    sync::Arc,
     thread::{self, JoinHandle, ThreadId},
 };
 
@@ -23,7 +23,6 @@ mod context;
 
 pub struct SharedState {
     pub mm: MM,
-    pub gc_state: OnceLock<gc::PersistentState>,
     pub contexts: Mutex<HashMap<ThreadId, Arc<Mutex<ContextShared>>>>,
     pub mark_true_bit: Bit,
     pub offset_walker: TypeManagerConcrete,
@@ -105,7 +104,6 @@ impl State {
             GCSync::new(SharedState {
                 mm: MM::new(size, preferred_heap_base)?,
                 contexts: Mutex::new(HashMap::new()),
-                gc_state: OnceLock::new(),
                 mark_true_bit: Bit::Bit1,
                 offset_walker: TypeManagerConcrete::new(descriptor_manager),
             })
@@ -130,6 +128,7 @@ impl State {
 fn gc_thread(shared: Arc<GCSync<SharedState>>, controller: Arc<GCController>, gc_args: GCArgs) {
     println!("[GC] Started");
 
+    let mut gc_state = None;
     controller.do_looper(|| {
         println!("[GC] Flushing contexts");
         // Flushing necessary because each mm context keep track
@@ -147,7 +146,7 @@ fn gc_thread(shared: Arc<GCSync<SharedState>>, controller: Arc<GCController>, gc
             });
 
         println!("[GC] Cycle start");
-        gc::do_cycle(&shared, &controller, &gc_args);
+        gc_state = Some(gc::do_cycle(&shared, &controller, &gc_args, gc_state.take()));
         println!("[GC] Cycle end");
     });
 

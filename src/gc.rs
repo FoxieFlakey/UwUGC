@@ -1,6 +1,5 @@
 use std::{
-    io::{LineWriter, stdout},
-    sync::{Arc, atomic::Ordering},
+    io::{LineWriter, stdout}, sync::{Arc, atomic::Ordering}
 };
 
 use crate::{
@@ -35,18 +34,20 @@ pub struct GCArgs {
     pub preferred_temp_base: Option<usize>,
 }
 
-pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController>, args: &GCArgs) {
+pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController>, args: &GCArgs, state: Option<PersistentState>) -> PersistentState {
     let mut profiler = Profiler::new();
-    profiler.start(|scope| {
-        let ret = scope.section("(Conc) Init", |scope| init(scope, shared, controller, args));
+    let ret = profiler.start(|scope| {
+        let ret = scope.section("(Conc) Init", |scope| init(scope, shared, controller, args, state));
         let ret = scope.section("(STW ) Step 1", |scope| step1(scope, ret));
         let ret = scope.section("(Conc) Step 2", |scope| step2(scope, ret));
         let ret = scope.section("(STW ) Step 3", |scope| step3(scope, ret));
         let ret = scope.section("(Conc) Step 4", |scope| step4(scope, ret));
-        scope.section("(STW ) Step 5", |scope| step5(scope, ret));
+        scope.section("(STW ) Step 5", |scope| step5(scope, ret))
     });
 
     profiler.report(&mut LineWriter::new(stdout()));
+    
+    ret
 }
 
 pub struct CommonArgs<'a> {
@@ -62,12 +63,13 @@ fn init<'a>(
     shared: &'a Arc<GCSync<SharedState>>,
     controller: &'a Arc<GCController>,
     args: &GCArgs,
+    persisent_state: Option<PersistentState>
 ) -> Step1Args<'a> {
     let mut heap = shared.get_exclusive();
     let len = heap.get().mm.get_mapping().len();
     let heap_base = heap.get().mm.get_mapping().get_ptr();
     let nr_pages = heap.get().mm.get_page_table().nr_pages();
-    let gc = heap.get().gc_state.take().unwrap_or_else(|| {
+    let gc = persisent_state.unwrap_or_else(|| {
         // GC may store persistent state like caching few stuffs
         // or store reusable stuffs to avoid reallocating on each cycle
         PersistentState {
@@ -385,11 +387,6 @@ struct Step5Args<'a> {
 }
 
 /// Step 5: (STW) Finalize cycle
-fn step5(section_cookie: &mut SectionCookie, args: Step5Args<'_>) {
-    let mut heap = section_cookie.section("STW wait", |_| args.common.shared.get_exclusive());
-    heap.get()
-        .gc_state
-        .set(args.common.gc)
-        .ok()
-        .expect("GC persistent state somehow is initialized?");
+fn step5(_section_cookie: &mut SectionCookie, args: Step5Args<'_>) -> PersistentState {
+    args.common.gc
 }
