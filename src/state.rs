@@ -14,9 +14,9 @@ use crate::{
     gc_sync::{self, GCSync},
     mm::{self, MM},
     object::Bit,
-    type_manager::{TypeManagerConcrete, TypeManager},
     root_set::{RootSet, RootSetRaw},
     state::context::{Context, ContextShared},
+    type_manager::{TypeManager, TypeManagerConcrete},
 };
 
 mod context;
@@ -146,7 +146,12 @@ fn gc_thread(shared: Arc<GCSync<SharedState>>, controller: Arc<GCController>, gc
             });
 
         println!("[GC] Cycle start");
-        gc_state = Some(gc::do_cycle(&shared, &controller, &gc_args, gc_state.take()));
+        gc_state = Some(gc::do_cycle(
+            &shared,
+            &controller,
+            &gc_args,
+            gc_state.take(),
+        ));
         println!("[GC] Cycle end");
     });
 

@@ -1,30 +1,29 @@
 use std::{
-    io::{LineWriter, stdout}, sync::{Arc, atomic::Ordering}
+    io::{LineWriter, stdout},
+    sync::Arc,
 };
 
 use crate::{
-    gc::{
-        copier::CopierActive,
-        relocation_map::{RegistryBuilder, RelocationRecord},
-    },
+    gc::{copier::CopierActive, marker::Marker, relocation_map::RegistryBuilder},
     gc_controller::GCController,
     gc_sync::GCSync,
-    mm::{BASE_PAGE_SIZE, Context, PageTable},
+    mm::{BASE_PAGE_SIZE, PageTable},
     mmap::Mmap,
     object::{Bit, ObjectPtr},
     profiler::{Profiler, SectionCookie},
     root_set::RootSet,
     state::SharedState,
 };
-use humansize::{BINARY, FormatSize};
 
 mod copier;
+mod marker;
 mod relocation_map;
 
 pub struct PersistentState {
     cached_page_table: Option<PageTable>,
     cached_temp_mapping: Option<Mmap>,
     cached_registry: Option<RegistryBuilder>,
+    cached_marker: Option<Marker>,
     args: GCArgs,
     copier: Option<copier::Copier>,
 }
@@ -34,10 +33,17 @@ pub struct GCArgs {
     pub preferred_temp_base: Option<usize>,
 }
 
-pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController>, args: &GCArgs, state: Option<PersistentState>) -> PersistentState {
+pub fn do_cycle(
+    shared: &Arc<GCSync<SharedState>>,
+    controller: &Arc<GCController>,
+    args: &GCArgs,
+    state: Option<PersistentState>,
+) -> PersistentState {
     let mut profiler = Profiler::new();
     let ret = profiler.start(|scope| {
-        let ret = scope.section("(Conc) Init", |scope| init(scope, shared, controller, args, state));
+        let ret = scope.section("(Conc) Init", |scope| {
+            init(scope, shared, controller, args, state)
+        });
         let ret = scope.section("(STW ) Step 1", |scope| step1(scope, ret));
         let ret = scope.section("(Conc) Step 2", |scope| step2(scope, ret));
         let ret = scope.section("(STW ) Step 3", |scope| step3(scope, ret));
@@ -46,7 +52,7 @@ pub fn do_cycle(shared: &Arc<GCSync<SharedState>>, controller: &Arc<GCController
     });
 
     profiler.report(&mut LineWriter::new(stdout()));
-    
+
     ret
 }
 
@@ -63,7 +69,7 @@ fn init<'a>(
     shared: &'a Arc<GCSync<SharedState>>,
     controller: &'a Arc<GCController>,
     args: &GCArgs,
-    persisent_state: Option<PersistentState>
+    persisent_state: Option<PersistentState>,
 ) -> Step1Args<'a> {
     let mut heap = shared.get_exclusive();
     let len = heap.get().mm.get_mapping().len();
@@ -78,6 +84,7 @@ fn init<'a>(
                 Mmap::map(len, true, true, true, args.preferred_temp_base).unwrap(),
             ),
             cached_registry: Some(RegistryBuilder::new()),
+            cached_marker: Some(Marker::new()),
             args: args.clone(),
             copier: Some(copier::Copier::new()),
         }
@@ -175,79 +182,25 @@ struct Step2Args<'a> {
 
 /// Step 2: Perform concurrent marking using saved root
 fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> Step3Args<'a> {
-    let mut registry = args.common.gc.cached_registry.take().unwrap();
-    let mut move_context = Context::new();
+    let registry = args.common.gc.cached_registry.take().unwrap();
     let page_table = args
         .common
         .gc
         .cached_page_table
         .take()
-        .map(|mut x| {
-            x.set_base(args.heap.start);
-            x.clear();
-            x
-        })
         .unwrap_or_else(|| PageTable::new(args.heap.start, (args.heap.size) / BASE_PAGE_SIZE));
 
-    // Mark objects concurrently, note for now the mark bit doesnt
-    // get used its assume all dead
-    let mut live_count = 0;
-    let mut total_count = 0;
-
-    let heap = args.common.shared.get_shared();
-    let type_manager = &heap.get().offset_walker;
-    let mut visitor = |obj: &ObjectPtr| {
-        // Mark the object
-        let ret = obj
-            .metadata_ref()
-            .try_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
-                if x.is_marked == args.mark_true_bit {
-                    None
-                } else {
-                    x.is_marked = args.mark_true_bit;
-                    Some(x)
-                }
-            });
-
-        total_count += 1;
-        if ret.is_ok() {
-            // This just first marked.
-            // TODO: push object to mark stack to be continued
-            // recusrively
-            live_count += 1;
-
-            let size = type_manager.get_size(obj);
-
-            // SAFETY: We use same page table consistently
-            let dest = unsafe { move_context.alloc_from_page_table(&page_table, size) }
-                .unwrap()
-                .0
-                .addr();
-
-            // Registry only contains offsets
-            registry.insert(RelocationRecord {
-                src: obj.to_ptr().addr() - args.heap.start.addr(),
-                dest: dest - args.heap.start.addr(),
-                size,
-            });
-        } else {
-            // Already marked this, either a while ago, or another thread
-        }
-    };
-
-    for root in args.root {
-        root.iter_pointers(&mut visitor);
-    }
-
-    let used = args.heap.used_end.addr() - args.heap.start.addr();
-    let compacted = page_table.get_top_addr() - args.heap.start.addr();
-    println!("[GC] Live count: {:9}", live_count);
-    println!(
-        "[GC] Compacted from {:10} to {:10}",
-        used.format_size(BINARY),
-        compacted.format_size(BINARY)
+    let heap_guard = args.common.shared.get_shared();
+    let (marker, page_table, registry) = args.common.gc.cached_marker.take().unwrap().start(
+        args.root,
+        page_table,
+        registry,
+        heap_guard.get(),
+        &args.heap,
+        args.mark_true_bit,
     );
 
+    args.common.gc.cached_marker = Some(marker);
     Step3Args {
         common: args.common,
         compacted_end: page_table.get_top_addr() as *mut u8,

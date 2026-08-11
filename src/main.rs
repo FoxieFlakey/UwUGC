@@ -5,9 +5,9 @@ use std::slice;
 
 use crate::{
     object::ObjectPtr,
-    type_manager::NoopTypeManager,
     root_set::{RootSet, RootSetRaw},
     state::State,
+    type_manager::NoopTypeManager,
 };
 
 mod bitmap;
@@ -17,11 +17,11 @@ mod gc_sync;
 mod mm;
 mod mmap;
 mod object;
-mod type_manager;
 mod pipe;
 mod profiler;
 mod root_set;
 mod state;
+mod type_manager;
 
 fn main() {
     println!("Hello, world!");
