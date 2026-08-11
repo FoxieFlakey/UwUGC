@@ -88,7 +88,10 @@ impl PageTable {
 
     // Page donation can only does incrementally from current_base_page
     pub fn donate_page(&mut self, page: &FlexPage) {
-        let page_id = page.start.addr().get() / BASE_PAGE_SIZE;
+        let page_id = page.start.addr().get() / BASE_PAGE_SIZE - self.base_addr.addr();
+        if page_id > self.nr_pages {
+            panic!("Attempt to donate page that represent space outside of current space");
+        }
 
         if page_id >= *self.current_base_page.get_mut() {
             *self.current_base_page.get_mut() = page_id + page.nr_pages();
