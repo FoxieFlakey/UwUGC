@@ -27,14 +27,13 @@ impl Marker {
     pub fn start(
         mut self,
         roots: Vec<Box<dyn RootSet + 'static>>,
-        mut page_table: PageTable,
+        page_table: &mut PageTable,
         mut registry: RegistryBuilder,
         heap: &SharedState,
         heap_info: &HeapInfo,
         mark_true_bit: Bit,
-    ) -> (Self, PageTable, RegistryBuilder) {
+    ) -> (Self, RegistryBuilder) {
         page_table.clear();
-        page_table.set_base(heap_info.start);
         let mut move_context = Context::new();
 
         // Mark objects concurrently, note for now the mark bit doesnt
@@ -79,7 +78,7 @@ impl Marker {
                     // Registry only contains offsets
                     registry.insert(RelocationRecord {
                         src: obj.to_ptr().addr() - heap_info.start.addr(),
-                        dest: dest - heap_info.start.addr(),
+                        dest: dest - heap_info.to_space.addr(),
                         size,
                     });
 
@@ -98,7 +97,7 @@ impl Marker {
         }
 
         let used = heap_info.used_end.addr() - heap_info.start.addr();
-        let compacted = page_table.get_top_addr() - heap_info.start.addr();
+        let compacted = page_table.get_top_addr() - page_table.get_base_addr();
         println!("[GC] Live count: {:9}", live_count);
         println!(
             "[GC] Compacted from {:10} to {:10}",
@@ -106,6 +105,6 @@ impl Marker {
             compacted.format_size(BINARY)
         );
 
-        (self, page_table, registry)
+        (self, registry)
     }
 }

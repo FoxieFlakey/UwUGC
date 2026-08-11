@@ -24,7 +24,13 @@ mod context;
 pub use context::{AllocType, Context, ContextShared, RootSetGuard};
 
 pub struct SharedState {
+    // This would be from-space
     pub mm: MM,
+
+    // and this would be to-space
+    // mm and second_mm are swapped as needed
+    // GC may take this out
+    pub second_mm: Option<MM>,
     pub contexts: Mutex<HashMap<ThreadId, Arc<Mutex<ContextShared>>>>,
     pub mark_true_bit: Bit,
     pub type_manager: TypeManagerConcrete,
@@ -98,13 +104,14 @@ impl State {
 
     pub fn new<M: TypeManager + 'static>(
         size: usize,
-        preferred_heap_base: Option<usize>,
-        preferred_temp_base: Option<usize>,
+        preferred_primary_base: Option<usize>,
+        preferred_second_space: Option<usize>,
         descriptor_manager: M,
     ) -> Result<State, CreateError> {
         let shared = Arc::new(
             GCSync::new(SharedState {
-                mm: MM::new(size, preferred_heap_base)?,
+                mm: MM::new(size, preferred_primary_base)?,
+                second_mm: Some(MM::new(size, preferred_second_space)?),
                 contexts: Mutex::new(HashMap::new()),
                 mark_true_bit: Bit::Bit1,
                 type_manager: TypeManagerConcrete::new(descriptor_manager),
@@ -113,9 +120,7 @@ impl State {
         );
         let controller = Arc::new(GCController::new());
 
-        let gc_args = GCArgs {
-            preferred_temp_base,
-        };
+        let gc_args = GCArgs {};
 
         Ok(State {
             shared: shared.clone(),

@@ -1,7 +1,4 @@
-use std::{
-    ptr::NonNull,
-    sync::atomic::{AtomicUsize, Ordering},
-};
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use parking_lot::Mutex;
 
@@ -166,19 +163,6 @@ impl PageTable {
         &self.page_table[idx]
     }
 
-    pub fn set_base(&mut self, new_base: *mut u8) {
-        let old_base = self.base_addr;
-        for page in self.page_table.iter_mut() {
-            let Some(page) = page.get_mut().as_mut() else {
-                continue;
-            };
-            page.start =
-                NonNull::new(new_base.wrapping_byte_add(page.start.addr().get() - old_base.addr()))
-                    .unwrap();
-        }
-        self.base_addr = new_base;
-    }
-
     // Return page index where its allocated. Caller "owns" the range of memory
     // represented. But whether that range is valid to be dereferenced depends
     // on where you got the base_addr pointer from. This PageTable memory keep
@@ -200,5 +184,9 @@ impl PageTable {
         ));
 
         Some(page_index)
+    }
+
+    pub fn get_base_addr(&self) -> usize {
+        self.base_addr.addr()
     }
 }

@@ -6,7 +6,7 @@ use userfaultfd::{Uffd, UffdBuilder};
 use crate::{
     bitmap::AtomicBitmap,
     gc::{HeapInfoLater, relocation_map::FrozenRegistry},
-    mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, PageTable},
+    mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, MM, PageTable},
     mmap::Mmap,
     object::ObjectPtr,
     type_manager::TypeManagerConcrete,
@@ -42,19 +42,19 @@ impl Copier {
         self,
         heap: HeapInfoLater,
         reloc_registry: FrozenRegistry,
-        from_mapping: Mmap,
+        from_mm: MM,
         compacted_page_table: PageTable,
         _type_manager: &TypeManagerConcrete,
     ) -> CopierActive {
-        // Activate UFFD
-        self.uffd.register(heap.start.cast(), heap.size).unwrap();
+        // Activate UFFD on to-space
+        self.uffd.register(heap.to_space.cast(), heap.size).unwrap();
 
         CopierActive {
             state: self,
             reloc_registry,
             work_done: AtomicBitmap::new(compacted_page_table.nr_pages()),
             heap,
-            from_mapping,
+            from_mm,
             zero_page_start: compacted_page_table.get_used_end_page(),
             page_table: compacted_page_table,
         }
@@ -65,7 +65,7 @@ pub struct CopierActive {
     state: Copier,
     reloc_registry: FrozenRegistry,
     heap: HeapInfoLater,
-    from_mapping: Mmap,
+    from_mm: MM,
 
     // Each index correspond to one page base page processed.
     work_done: AtomicBitmap,
@@ -74,6 +74,7 @@ pub struct CopierActive {
     // just UFFDIO_ZEROPAGE)
     zero_page_start: usize,
 
+    // PageTable here is in from-space not to-space
     // TODO: Maybe optimize memory bit better to use bitmap? of where
     // is valid start page
     page_table: PageTable,
@@ -105,11 +106,11 @@ impl CopierActive {
         let start = page.start();
         let end = start.wrapping_byte_add(page.size());
 
-        let start_offset = start.addr() - self.heap.start.addr();
-        let end_offset = end.addr() - self.heap.start.addr();
+        let start_offset = start.addr() - self.heap.to_space.addr();
+        let end_offset = end.addr() - self.heap.to_space.addr();
         let page_range = start_offset..end_offset;
 
-        let dest_page_offset = start.addr() - self.heap.start.addr();
+        let dest_page_offset = start.addr() - self.heap.to_space.addr();
 
         for record in self
             .reloc_registry
@@ -121,7 +122,11 @@ impl CopierActive {
             assert!(page_range.contains(&dest_range.start));
             assert!(page_range.contains(&(dest_range.end - 1)));
 
-            let src_ptr = self.from_mapping.get_ptr().wrapping_add(record.src);
+            let src_ptr = self
+                .from_mm
+                .get_mapping()
+                .get_ptr()
+                .wrapping_add(record.src);
             let dest = buffer
                 .get_ptr()
                 .wrapping_byte_add(record.dest - dest_page_offset);
@@ -145,7 +150,7 @@ impl CopierActive {
                     .expect("Cant find relocation record");
 
                 // SAFETY: Each record is valid at object boundry
-                unsafe { ObjectPtr::new(self.heap.start.wrapping_byte_add(mapped)) }
+                unsafe { ObjectPtr::new(self.heap.to_space.wrapping_byte_add(mapped)) }
             };
 
             // SAFETY: We have exclusive control over destination, work_done
@@ -157,7 +162,10 @@ impl CopierActive {
         unsafe {
             self.state.uffd.move_memory(
                 buffer.get_ptr().cast(),
-                page.start().cast(),
+                self.heap
+                    .to_space
+                    .wrapping_byte_add(page.start().addr() - self.page_table.get_base_addr())
+                    .cast(),
                 page.size(),
                 true,
                 true,
@@ -167,7 +175,7 @@ impl CopierActive {
     }
 
     fn resolve_fault(&self, addr: *mut u8, type_manager: &TypeManagerConcrete) {
-        let page_id = (addr.addr() - self.heap.start.addr()) >> BASE_PAGE_SHIFT;
+        let page_id = (addr.addr() - self.heap.to_space.addr()) >> BASE_PAGE_SHIFT;
         if page_id >= self.zero_page_start {
             self.do_zeropage(page_id);
             return;
@@ -182,9 +190,9 @@ impl CopierActive {
         self.do_relocate(page_id, page.as_ref().unwrap(), type_manager);
     }
 
-    pub fn finish(self, type_manager: &TypeManagerConcrete) -> (FrozenRegistry, Copier, Mmap) {
+    pub fn finish(self, type_manager: &TypeManagerConcrete) -> (FrozenRegistry, Copier, MM) {
         self.state.worker_pool.scope_fifo(|s| {
-            for id in 0..self.heap.compacted_end_page {
+            for id in 0..self.page_table.nr_pages() {
                 let page = self.page_table.get_page(id).lock();
                 if page.is_none() {
                     continue;
@@ -205,8 +213,8 @@ impl CopierActive {
         // Deactivate UFFD
         self.state
             .uffd
-            .unregister(self.heap.start.cast(), self.heap.size)
+            .unregister(self.heap.to_space.cast(), self.heap.size)
             .unwrap();
-        (self.reloc_registry, self.state, self.from_mapping)
+        (self.reloc_registry, self.state, self.from_mm)
     }
 }

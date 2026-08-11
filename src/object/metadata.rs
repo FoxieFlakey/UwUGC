@@ -1,5 +1,6 @@
 use arbitrary_int::prelude::*;
 use std::{
+    fmt::Display,
     ops::Not,
     sync::atomic::{AtomicU64, Ordering},
 };
@@ -29,6 +30,15 @@ pub enum MetadataEnum {
 pub enum Bit {
     Bit0,
     Bit1,
+}
+
+impl Display for Bit {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Bit::Bit0 => write!(f, "Bit0"),
+            Bit::Bit1 => write!(f, "Bit1"),
+        }
+    }
 }
 
 impl Not for Bit {

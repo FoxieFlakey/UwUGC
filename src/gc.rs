@@ -1,5 +1,6 @@
 use std::{
     io::{LineWriter, stdout},
+    mem,
     sync::Arc,
 };
 
@@ -7,8 +8,7 @@ use crate::{
     gc::{copier::CopierActive, marker::Marker, relocation_map::RegistryBuilder},
     gc_controller::GCController,
     gc_sync::GCSync,
-    mm::{BASE_PAGE_SIZE, PageTable},
-    mmap::Mmap,
+    mm::MM,
     object::{Bit, ObjectPtr},
     profiler::{Profiler, SectionCookie},
     root_set::RootSet,
@@ -20,18 +20,15 @@ mod marker;
 mod relocation_map;
 
 pub struct PersistentState {
-    cached_page_table: Option<PageTable>,
-    cached_temp_mapping: Option<Mmap>,
     cached_registry: Option<RegistryBuilder>,
     cached_marker: Option<Marker>,
+    #[expect(unused)]
     args: GCArgs,
     copier: Option<copier::Copier>,
 }
 
 #[derive(Clone)]
-pub struct GCArgs {
-    pub preferred_temp_base: Option<usize>,
-}
+pub struct GCArgs {}
 
 pub fn do_cycle(
     shared: &Arc<GCSync<SharedState>>,
@@ -63,7 +60,6 @@ pub struct CommonArgs<'a> {
 }
 
 /// Step 0: (Concurrent) Initialize cycle
-/// (its STW because PersistentState should not be in SharedState)
 fn init<'a>(
     _section_cookie: &mut SectionCookie,
     shared: &'a Arc<GCSync<SharedState>>,
@@ -71,18 +67,10 @@ fn init<'a>(
     args: &GCArgs,
     persisent_state: Option<PersistentState>,
 ) -> Step1Args<'a> {
-    let mut heap = shared.get_exclusive();
-    let len = heap.get().mm.get_mapping().len();
-    let heap_base = heap.get().mm.get_mapping().get_ptr();
-    let nr_pages = heap.get().mm.get_page_table().nr_pages();
     let gc = persisent_state.unwrap_or_else(|| {
         // GC may store persistent state like caching few stuffs
         // or store reusable stuffs to avoid reallocating on each cycle
         PersistentState {
-            cached_page_table: Some(PageTable::new(heap_base, nr_pages)),
-            cached_temp_mapping: Some(
-                Mmap::map(len, true, true, true, args.preferred_temp_base).unwrap(),
-            ),
             cached_registry: Some(RegistryBuilder::new()),
             cached_marker: Some(Marker::new()),
             args: args.clone(),
@@ -134,6 +122,7 @@ fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Ar
     // Lets assume all types are dead
     heap.get().type_manager.type_manager.assume_all_dead();
 
+    let second_mm = heap.get().second_mm.take().unwrap();
     Step2Args {
         common: args.common,
         root: saved_roots,
@@ -142,8 +131,10 @@ fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Ar
             used_end: heap.get().mm.get_page_table().get_top_addr() as *mut u8,
             size: heap.get().mm.get_mapping().len(),
             used_end_page: heap.get().mm.get_page_table().get_used_end_page(),
+            to_space: second_mm.get_mapping().get_ptr(),
         },
         mark_true_bit,
+        second_mm: second_mm,
     }
 }
 
@@ -152,6 +143,7 @@ struct HeapInfo {
     used_end: *mut u8,
     size: usize,
     used_end_page: usize,
+    to_space: *mut u8,
 }
 
 #[expect(unused)]
@@ -159,6 +151,7 @@ struct HeapInfo {
 struct HeapInfoLater {
     start: *mut u8,
     used_end: *mut u8,
+    to_space: *mut u8,
     size: usize,
     used_end_page: usize,
     compacted_end: *mut u8,
@@ -176,20 +169,16 @@ struct Step2Args<'a> {
     root: Vec<Box<dyn RootSet>>,
     heap: HeapInfo,
     mark_true_bit: Bit,
+    second_mm: MM,
 }
 
 /// Step 2: Perform concurrent marking using saved root
 fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> Step3Args<'a> {
     let registry = args.common.gc.cached_registry.take().unwrap();
-    let page_table = args
-        .common
-        .gc
-        .cached_page_table
-        .take()
-        .unwrap_or_else(|| PageTable::new(args.heap.start, (args.heap.size) / BASE_PAGE_SIZE));
+    let page_table = args.second_mm.get_page_table_mut();
 
     let heap_guard = args.common.shared.get_shared();
-    let (marker, page_table, registry) = args.common.gc.cached_marker.take().unwrap().start(
+    let (marker, registry) = args.common.gc.cached_marker.take().unwrap().start(
         args.root,
         page_table,
         registry,
@@ -202,7 +191,7 @@ fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> St
     Step3Args {
         common: args.common,
         compacted_end: page_table.get_top_addr() as *mut u8,
-        page_table,
+        second_mm: args.second_mm,
         relocation_registry: registry,
         heap: args.heap,
     }
@@ -210,7 +199,7 @@ fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> St
 
 struct Step3Args<'a> {
     common: CommonArgs<'a>,
-    page_table: PageTable,
+    second_mm: MM,
     relocation_registry: RegistryBuilder,
     heap: HeapInfo,
     compacted_end: *mut u8,
@@ -234,35 +223,11 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
             continue;
         };
 
-        args.page_table.donate_page(page);
+        args.second_mm.get_page_table_mut().donate_page(page);
     }
 
     let registry_frozen = args.relocation_registry.freeze();
     let compacted_end_page = page_table.get_used_end_page();
-
-    // SAFETY: For now, we assume all objects are dead
-    let mut page_table_opt = Some(args.page_table);
-    let (page_table, mapping) = unsafe {
-        section_cookie.section("Remap heap", |_| {
-            heap.get()
-                .mm
-                .remap(&mut args.common.gc.cached_temp_mapping, &mut page_table_opt)
-        })
-    }
-    .unwrap();
-    assert!(
-        page_table_opt.is_none(),
-        "Expecting remap used the page table"
-    );
-
-    if let Some(preferred_temp_base) = args.common.gc.args.preferred_temp_base {
-        assert_eq!(
-            mapping.get_ptr().addr(),
-            preferred_temp_base,
-            "kernel moved the remap target! should have been 0x{preferred_temp_base:16} but moved to 0x{:16}",
-            mapping.get_ptr().addr()
-        );
-    }
 
     section_cookie.section("Fix root", |_| {
         heap.get().contexts.get_mut().iter().for_each(|x| {
@@ -275,7 +240,7 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
                     .expect("Cannot find relocation record");
                 // SAFETY: This points to correct address after relocated
                 // and relocation registry contains only offsets into heap
-                unsafe { ObjectPtr::new(args.heap.start.wrapping_byte_add(mapped)) }
+                unsafe { ObjectPtr::new(args.heap.to_space.wrapping_byte_add(mapped)) }
             });
         });
     });
@@ -285,7 +250,6 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     });
 
     let copier = args.common.gc.copier.take().unwrap();
-    args.common.gc.cached_page_table = Some(page_table);
 
     let heap_info = HeapInfoLater {
         start: args.heap.start,
@@ -296,14 +260,17 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
         later_used_end_page,
         compacted_end: args.compacted_end,
         compacted_end_page,
+        to_space: args.heap.to_space,
     };
+
+    let from_space = mem::replace(&mut heap.get().mm, args.second_mm);
 
     // SAFETY: We're in STW that mean the heap is unused and available for exclusive access by copier
     let active_copier = section_cookie.section("Prepare copier", |_| unsafe {
         copier.start(
             heap_info.clone(),
             registry_frozen,
-            mapping,
+            from_space,
             heap.get().mm.get_page_table_cloned(),
             &heap.get().type_manager,
         )
@@ -324,25 +291,35 @@ struct Step4Args<'a> {
 }
 
 /// Step 4: (Concurrent) Relocate
-fn step4<'a>(_section_cookie: &mut SectionCookie, mut args: Step4Args<'a>) -> Step5Args<'a> {
+fn step4<'a>(section_cookie: &mut SectionCookie, mut args: Step4Args<'a>) -> Step5Args<'a> {
     let heap = args.common.shared.get_shared();
 
-    let (registry, copier, temp_mapping) = args.copier.finish(&heap.get().type_manager);
+    let (registry, copier, mut second_mm) = args.copier.finish(&heap.get().type_manager);
     args.common.gc.cached_registry = Some(registry.unfreeze());
-    args.common.gc.cached_temp_mapping = Some(temp_mapping);
     args.common.gc.copier = Some(copier);
+
+    section_cookie.section("Clearing from-space", |_| second_mm.clear());
 
     // nothing, because actual relocation is not implemented yet
     Step5Args {
         common: args.common,
+        second_mm,
     }
 }
 
 struct Step5Args<'a> {
     common: CommonArgs<'a>,
+    second_mm: MM,
 }
 
 /// Step 5: (STW) Finalize cycle
 fn step5(_section_cookie: &mut SectionCookie, args: Step5Args<'_>) -> PersistentState {
+    let mut heap = args.common.shared.get_exclusive();
+    assert!(
+        heap.get().second_mm.is_none(),
+        "second mm already exists for no reason"
+    );
+    heap.get().second_mm = Some(args.second_mm);
+
     args.common.gc
 }
