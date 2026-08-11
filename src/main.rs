@@ -5,7 +5,7 @@ use std::slice;
 
 use crate::{
     object::ObjectPtr,
-    offset_walker::NoopTypeManager,
+    type_manager::NoopTypeManager,
     root_set::{RootSet, RootSetRaw},
     state::State,
 };
@@ -17,7 +17,7 @@ mod gc_sync;
 mod mm;
 mod mmap;
 mod object;
-mod offset_walker;
+mod type_manager;
 mod pipe;
 mod profiler;
 mod root_set;

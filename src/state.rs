@@ -14,7 +14,7 @@ use crate::{
     gc_sync::{self, GCSync},
     mm::{self, MM},
     object::Bit,
-    offset_walker::{OffsetWalker, TypeManager},
+    type_manager::{OffsetWalker, TypeManager},
     root_set::{RootSet, RootSetRaw},
     state::context::{Context, ContextShared},
 };
