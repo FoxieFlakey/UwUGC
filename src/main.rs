@@ -28,7 +28,8 @@ fn main() {
         128 * 1024 * 1024,
         Some(0x60ef_0000_0000),
         Some(0x60ff_0000_0000),
-    ).unwrap();
+    )
+    .unwrap();
 
     let mut ctx = state.new_context(8192, DumbRootSet::new);
     let mut has_slow_pathed = false;

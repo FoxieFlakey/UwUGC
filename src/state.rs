@@ -13,9 +13,9 @@ use crate::{
     gc_controller::GCController,
     gc_sync::{self, GCSync},
     mm::{self, MM},
+    object::Bit,
     root_set::{RootSet, RootSetRaw},
     state::context::{Context, ContextShared},
-    object::Bit
 };
 
 mod context;
@@ -93,7 +93,11 @@ impl State {
         Context::new(self, shared, shared_data)
     }
 
-    pub fn new(size: usize, preferred_heap_base: Option<usize>, preferred_temp_base: Option<usize>) -> Result<State, CreateError> {
+    pub fn new(
+        size: usize,
+        preferred_heap_base: Option<usize>,
+        preferred_temp_base: Option<usize>,
+    ) -> Result<State, CreateError> {
         let shared = Arc::new(
             GCSync::new(SharedState {
                 mm: MM::new(size, preferred_heap_base)?,
@@ -106,13 +110,15 @@ impl State {
         let controller = Arc::new(GCController::new());
 
         let gc_args = GCArgs {
-            preferred_temp_base
+            preferred_temp_base,
         };
 
         Ok(State {
             shared: shared.clone(),
             controller: controller.clone(),
-            gc_thread: ManuallyDrop::new(thread::spawn(move || gc_thread(shared, controller, gc_args))),
+            gc_thread: ManuallyDrop::new(thread::spawn(move || {
+                gc_thread(shared, controller, gc_args)
+            })),
         })
     }
 }

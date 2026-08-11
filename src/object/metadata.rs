@@ -1,5 +1,8 @@
 use arbitrary_int::prelude::*;
-use std::{ops::Not, sync::atomic::{AtomicU64, Ordering}};
+use std::{
+    ops::Not,
+    sync::atomic::{AtomicU64, Ordering},
+};
 
 #[repr(transparent)]
 pub struct Metadata {
@@ -26,7 +29,7 @@ pub enum MetadataEnum {
 #[derive(Clone, Copy, PartialEq, Eq)]
 pub enum Bit {
     Bit0,
-    Bit1
+    Bit1,
 }
 
 impl Not for Bit {
@@ -133,7 +136,11 @@ impl Metadata {
         };
 
         MetadataExpanded {
-            is_marked: if (v & MARK_BIT) != 0 { Bit::Bit1 } else { Bit::Bit0 },
+            is_marked: if (v & MARK_BIT) != 0 {
+                Bit::Bit1
+            } else {
+                Bit::Bit0
+            },
             write_barrier_activated: (v & WRITE_BARRIER_BIT) != 0,
             payload,
         }

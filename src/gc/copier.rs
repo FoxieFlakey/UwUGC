@@ -1,7 +1,6 @@
 use crate::gc::{HeapInfoLater, relocation_map::FrozenRegistry};
 
-pub struct Copier {
-}
+pub struct Copier {}
 
 impl Copier {
     pub fn new() -> Self {
@@ -31,6 +30,3 @@ impl CopierActive {
         (self.reloc_registry, self.state)
     }
 }
-
-
-

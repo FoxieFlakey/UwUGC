@@ -4,7 +4,10 @@ use std::{
 };
 
 use crate::{
-    gc::{copier::CopierActive, relocation_map::{RegistryBuilder, RelocationRecord}},
+    gc::{
+        copier::CopierActive,
+        relocation_map::{RegistryBuilder, RelocationRecord},
+    },
     gc_controller::GCController,
     gc_sync::GCSync,
     mm::{BASE_PAGE_SIZE, Context, PageTable},
@@ -16,8 +19,8 @@ use crate::{
 };
 use humansize::{BINARY, FormatSize};
 
-mod relocation_map;
 mod copier;
+mod relocation_map;
 
 pub struct PersistentState {
     cached_page_table: Option<PageTable>,
@@ -64,21 +67,19 @@ fn init<'a>(
     let len = heap.get().mm.get_mapping().len();
     let heap_base = heap.get().mm.get_mapping().get_ptr();
     let nr_pages = heap.get().mm.get_page_table().nr_pages();
-    let gc = heap
-        .get()
-        .gc_state
-        .take()
-        .unwrap_or_else(|| {
-            // GC may store persistent state like caching few stuffs
-            // or store reusable stuffs to avoid reallocating on each cycle
-            PersistentState {
-                cached_page_table: Some(PageTable::new(heap_base, nr_pages)),
-                cached_temp_mapping: Some(Mmap::map(len, true, true, true, args.preferred_temp_base).unwrap()),
-                cached_registry: Some(RegistryBuilder::new()),
-                args: args.clone(),
-                copier: Some(copier::Copier::new()),
-            }
-        });
+    let gc = heap.get().gc_state.take().unwrap_or_else(|| {
+        // GC may store persistent state like caching few stuffs
+        // or store reusable stuffs to avoid reallocating on each cycle
+        PersistentState {
+            cached_page_table: Some(PageTable::new(heap_base, nr_pages)),
+            cached_temp_mapping: Some(
+                Mmap::map(len, true, true, true, args.preferred_temp_base).unwrap(),
+            ),
+            cached_registry: Some(RegistryBuilder::new()),
+            args: args.clone(),
+            copier: Some(copier::Copier::new()),
+        }
+    });
 
     Step1Args {
         common: CommonArgs {
@@ -131,7 +132,7 @@ fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Ar
             start: heap.get().mm.get_mapping().get_ptr(),
             used_end: heap.get().mm.get_page_table().get_top_addr() as *mut u8,
             size: heap.get().mm.get_mapping().len(),
-            used_end_page: heap.get().mm.get_page_table().get_used_end_page()
+            used_end_page: heap.get().mm.get_page_table().get_used_end_page(),
         },
         mark_true_bit,
     }
@@ -141,7 +142,7 @@ struct HeapInfo {
     start: *mut u8,
     used_end: *mut u8,
     size: usize,
-    used_end_page: usize
+    used_end_page: usize,
 }
 
 #[expect(unused)]
@@ -231,7 +232,11 @@ fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> St
     let used = args.heap.used_end.addr() - args.heap.start.addr();
     let compacted = page_table.get_top_addr() - args.heap.start.addr();
     println!("[GC] Live count: {:9}", live_count);
-    println!("[GC] Compacted from {:10} to {:10}", used.format_size(BINARY), compacted.format_size(BINARY));
+    println!(
+        "[GC] Compacted from {:10} to {:10}",
+        used.format_size(BINARY),
+        compacted.format_size(BINARY)
+    );
 
     Step3Args {
         common: args.common,
@@ -262,7 +267,9 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     let page_table = heap.get().mm.get_page_table();
     for page in later_used_start_page..later_used_end_page {
         let page = page_table.get_page(page).lock();
-        let Some(page) = page.as_ref() else { continue; };
+        let Some(page) = page.as_ref() else {
+            continue;
+        };
 
         args.page_table.donate_page(page);
     }
@@ -285,7 +292,12 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     );
 
     if let Some(preferred_temp_base) = args.common.gc.args.preferred_temp_base {
-        assert_eq!(mapping.get_ptr().addr(), preferred_temp_base, "kernel moved the remap target! should have been 0x{preferred_temp_base:16} but moved to 0x{:16}", mapping.get_ptr().addr());
+        assert_eq!(
+            mapping.get_ptr().addr(),
+            preferred_temp_base,
+            "kernel moved the remap target! should have been 0x{preferred_temp_base:16} but moved to 0x{:16}",
+            mapping.get_ptr().addr()
+        );
     }
 
     section_cookie.section("Fix root", |_| {
@@ -309,7 +321,7 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     page_table.clear();
     args.common.gc.cached_page_table = Some(page_table);
     args.common.gc.cached_temp_mapping = Some(mapping);
-    
+
     let heap = HeapInfoLater {
         start: args.heap.start,
         size: args.heap.size,
@@ -321,7 +333,7 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     Step4Args {
         common: args.common,
         copier: copier.start(heap.clone(), registry_frozen),
-        heap
+        heap,
     }
 }
 

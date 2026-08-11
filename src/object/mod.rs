@@ -1,7 +1,7 @@
 mod metadata;
 
 pub use metadata::{
-    Metadata as MetadataCompressed, MetadataEnum as ObjectKind, MetadataExpanded as Metadata, Bit
+    Bit, Metadata as MetadataCompressed, MetadataEnum as ObjectKind, MetadataExpanded as Metadata,
 };
 
 // A pointer to object
