@@ -83,16 +83,16 @@ where
                 .alloc(&self.shared.get().mm, size)
         };
 
-        ret.map(|x| unsafe { Self::init_object(x.0, kind) })
+        ret.map(|x| unsafe { Self::init_object(self, x.0, kind) })
     }
 
     // # Safety
     // caller has to ensure 'ptr' is atleast MetadataCompressed size and
     // has valid metadata which include the sizing and aligned to be
     // 64-bit on both size and alignment of pointer
-    unsafe fn init_object(ptr: *mut u8, kind: ObjectKind) -> ObjectPtr {
+    unsafe fn init_object(&self, ptr: *mut u8, kind: ObjectKind) -> ObjectPtr {
         let meta = Metadata {
-            is_marked: false,
+            is_marked: !self.shared.get().mark_true_bit,
             payload: kind,
             write_barrier_activated: false,
         };
@@ -131,7 +131,7 @@ where
             };
 
             if ret.is_some() {
-                return ret.map(|x| unsafe { Self::init_object(x.0, kind) });
+                return ret.map(|x| unsafe { Self::init_object(self, x.0, kind) });
             }
 
             self.shared.unguarded(|| {

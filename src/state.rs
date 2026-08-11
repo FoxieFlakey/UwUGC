@@ -15,6 +15,7 @@ use crate::{
     mm::{self, MM},
     root_set::{RootSet, RootSetRaw},
     state::context::{Context, ContextShared},
+    object::Bit
 };
 
 mod context;
@@ -23,6 +24,7 @@ pub struct SharedState {
     pub mm: MM,
     pub gc_state: OnceLock<gc::PersistentState>,
     pub contexts: Mutex<HashMap<ThreadId, Arc<Mutex<ContextShared>>>>,
+    pub mark_true_bit: Bit,
 }
 pub struct State {
     controller: Arc<GCController>,
@@ -97,6 +99,7 @@ impl State {
                 mm: MM::new(size, preferred_heap_base)?,
                 contexts: Mutex::new(HashMap::new()),
                 gc_state: OnceLock::new(),
+                mark_true_bit: Bit::Bit1,
             })
             .map_err(|x| x.0)?,
         );

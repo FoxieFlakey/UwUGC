@@ -9,7 +9,7 @@ use crate::{
     gc_sync::GCSync,
     mm::{BASE_PAGE_SIZE, Context, PageTable},
     mmap::Mmap,
-    object::{MetadataCompressed, ObjectPtr},
+    object::{Bit, MetadataCompressed, ObjectPtr},
     profiler::{Profiler, SectionCookie},
     root_set::RootSet,
     state::SharedState,
@@ -96,6 +96,13 @@ struct Step1Args<'a> {
 /// Step 1: (STW) Take snapshot of root, and capture some heap states
 fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Args<'a> {
     let mut heap = section_cookie.section("STW wait", |_| args.common.shared.get_exclusive());
+    let mark_true_bit = heap.get().mark_true_bit;
+
+    // Flip the bit meaning
+    match mark_true_bit {
+        Bit::Bit0 => heap.get().mark_true_bit = Bit::Bit1,
+        Bit::Bit1 => heap.get().mark_true_bit = Bit::Bit0,
+    }
 
     // Take snapshot of root set
     let saved_roots = heap
@@ -125,7 +132,8 @@ fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Ar
             used_end: heap.get().mm.get_page_table().get_top_addr() as *mut u8,
             size: heap.get().mm.get_mapping().len(),
             used_end_page: heap.get().mm.get_page_table().get_used_end_page()
-        }
+        },
+        mark_true_bit,
     }
 }
 
@@ -155,6 +163,7 @@ struct Step2Args<'a> {
     common: CommonArgs<'a>,
     root: Vec<Box<dyn RootSet>>,
     heap: HeapInfo,
+    mark_true_bit: Bit,
 }
 
 /// Step 2: Perform concurrent marking using saved root
@@ -181,10 +190,10 @@ fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> St
         let ret = obj
             .metadata_ref()
             .try_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
-                if x.is_marked {
+                if x.is_marked == args.mark_true_bit {
                     None
                 } else {
-                    x.is_marked = true;
+                    x.is_marked = args.mark_true_bit;
                     Some(x)
                 }
             });

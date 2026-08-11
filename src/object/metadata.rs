@@ -1,5 +1,5 @@
 use arbitrary_int::prelude::*;
-use std::sync::atomic::{AtomicU64, Ordering};
+use std::{ops::Not, sync::atomic::{AtomicU64, Ordering}};
 
 #[repr(transparent)]
 pub struct Metadata {
@@ -17,8 +17,31 @@ pub enum MetadataEnum {
     RefArray(u60),
 }
 
+// Neither is true nor false as bit can be flipped.
+// Meaning of Bit0 might be true for one part and other part
+// means false.
+//
+// Internally Bit1 is treated as true for purpose of
+// encoding it to compressed metadata
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub enum Bit {
+    Bit0,
+    Bit1
+}
+
+impl Not for Bit {
+    type Output = Bit;
+
+    fn not(self) -> Self::Output {
+        match self {
+            Bit::Bit0 => Bit::Bit1,
+            Bit::Bit1 => Bit::Bit0,
+        }
+    }
+}
+
 pub struct MetadataExpanded {
-    pub is_marked: bool,
+    pub is_marked: Bit,
     pub write_barrier_activated: bool,
     pub payload: MetadataEnum,
 }
@@ -84,7 +107,7 @@ impl Metadata {
             MetadataEnum::RefArray(len) => (len.value() << 4) | 0b100,
         };
 
-        if data.is_marked {
+        if data.is_marked == Bit::Bit1 {
             v |= MARK_BIT;
         }
 
@@ -110,7 +133,7 @@ impl Metadata {
         };
 
         MetadataExpanded {
-            is_marked: (v & MARK_BIT) != 0,
+            is_marked: if (v & MARK_BIT) != 0 { Bit::Bit1 } else { Bit::Bit0 },
             write_barrier_activated: (v & WRITE_BARRIER_BIT) != 0,
             payload,
         }
