@@ -6,7 +6,7 @@ use std::slice;
 use crate::{
     object::ObjectPtr,
     root_set::{RootSet, RootSetRaw},
-    state::State,
+    state::{AllocType, State},
     type_manager::NoopTypeManager,
 };
 
@@ -38,7 +38,7 @@ fn main() {
     let mut has_slow_pathed = false;
     loop {
         let _ = ctx
-            .alloc_fast(8192)
+            .alloc_fast(AllocType::PlainOldData(8192))
             .or_else(|| {
                 let set = ctx.get_root_set();
                 let obj = set.as_slice()[0];
@@ -50,7 +50,7 @@ fn main() {
 
                 // This comment can be like safepoint'ing stuffs
                 // spilling contents and such
-                let ret = unsafe { ctx.alloc_slow(8192) };
+                let ret = unsafe { ctx.alloc_slow(AllocType::PlainOldData(8192)) };
 
                 // Reload poiner as needed
                 let set = ctx.get_root_set();
@@ -69,11 +69,11 @@ fn main() {
         if has_slow_pathed {
             has_slow_pathed = false;
             let obj = ctx
-                .alloc_fast(50 * 1024 * 1024)
+                .alloc_fast(AllocType::PlainOldData(50 * 1024 * 1024))
                 .or_else(|| {
                     // This comment can be like safepoint'ing stuffs
                     // spilling contents and such
-                    unsafe { ctx.alloc_slow(50 * 1024 * 1024) }
+                    unsafe { ctx.alloc_slow(AllocType::PlainOldData(50 * 1024 * 1024)) }
                 })
                 .unwrap();
             let mut set = ctx.get_root_set();

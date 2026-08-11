@@ -28,6 +28,17 @@ pub struct Context<'a, R: RootSet> {
     _phantom: PhantomData<R>,
 }
 
+#[derive(Clone, Copy)]
+pub enum AllocType {
+    // type id that gets passed to type manager
+    #[expect(unused)]
+    Typed(u64),
+
+    // Size in bytes, this implies drop code will
+    // not be run
+    PlainOldData(usize)
+}
+
 impl<'a, R> Context<'a, R>
 where
     R: RootSet,
@@ -72,18 +83,37 @@ where
     // }
     //
     // <use the object>
-    pub fn alloc_fast(&mut self, size: usize) -> Option<ObjectPtr> {
-        let kind = ObjectKind::PlainOldData(u61::try_new(u64::try_from(size).unwrap()).unwrap());
+    pub fn alloc_fast(&mut self, ty: AllocType) -> Option<ObjectPtr> {
+        let kind = self.to_obj_kind(ty);
 
         // SAFETY: We're using same mm consistently
         let ret = unsafe {
             self.shared_data
                 .lock()
                 .mm_context
-                .alloc(&self.shared.get().mm, size)
+                .alloc(&self.shared.get().mm, self.get_size_of_alloc(ty))
         };
 
         ret.map(|x| unsafe { Self::init_object(self, x.0, kind) })
+    }
+
+    fn to_obj_kind(&self, ty: AllocType) -> ObjectKind {
+        match ty {
+            AllocType::PlainOldData(x) => ObjectKind::PlainOldData(u61::try_new(u64::try_from(x).unwrap()).unwrap()),
+            AllocType::Typed(x) => ObjectKind::NotPlainOldData(u61::try_new(x).unwrap())
+        }
+    }
+
+    fn get_size_of_alloc(&self, ty: AllocType) -> usize {
+        (match ty {
+            AllocType::PlainOldData(x) => x,
+            AllocType::Typed(x) => self.shared
+                .get()
+                .type_manager
+                .type_manager
+                .get_size(x)
+                .unwrap()
+        }) + size_of::<MetadataCompressed>()
     }
 
     // # Safety
@@ -117,17 +147,16 @@ where
     //
     // DO NOTE, if you're calee. you dont know what caller might want
     // to keep. SO be VERY careful
-    pub unsafe fn alloc_slow(&mut self, size: usize) -> Option<ObjectPtr> {
+    pub unsafe fn alloc_slow(&mut self, ty: AllocType) -> Option<ObjectPtr> {
         // Retry 3 times :3
         for _ in 0..3 {
-            let kind =
-                ObjectKind::PlainOldData(u61::try_new(u64::try_from(size).unwrap()).unwrap());
+            let kind = self.to_obj_kind(ty);
             // SAFETY: We're using same mm consistently
             let ret = unsafe {
                 self.shared_data
                     .lock()
                     .mm_context
-                    .alloc(&self.shared.get().mm, size)
+                    .alloc(&self.shared.get().mm, self.get_size_of_alloc(ty))
             };
 
             if ret.is_some() {

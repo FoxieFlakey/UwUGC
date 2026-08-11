@@ -15,11 +15,13 @@ use crate::{
     mm::{self, MM},
     object::Bit,
     root_set::{RootSet, RootSetRaw},
-    state::context::{Context, ContextShared},
     type_manager::{TypeManager, TypeManagerConcrete},
 };
 
 mod context;
+
+#[expect(unused)]
+pub use context::{AllocType, Context, ContextShared, RootSetGuard};
 
 pub struct SharedState {
     pub mm: MM,
