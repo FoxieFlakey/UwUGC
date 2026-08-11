@@ -13,15 +13,19 @@ use crate::{
     state::SharedState,
 };
 
-pub struct Marker {}
+pub struct Marker {
+    mark_stack: Vec<ObjectPtr>,
+}
 
 impl Marker {
     pub fn new() -> Self {
-        Self {}
+        Self {
+            mark_stack: Vec::new(),
+        }
     }
 
     pub fn start(
-        self,
+        mut self,
         roots: Vec<Box<dyn RootSet + 'static>>,
         mut page_table: PageTable,
         mut registry: RegistryBuilder,
@@ -40,41 +44,52 @@ impl Marker {
 
         let type_manager = &heap.type_manager;
         let mut visitor = |obj: &ObjectPtr| {
-            // Mark the object
-            let ret =
-                obj.metadata_ref()
-                    .try_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
-                        if x.is_marked == mark_true_bit {
-                            None
-                        } else {
-                            x.is_marked = mark_true_bit;
-                            Some(x)
-                        }
+            self.mark_stack.push(*obj);
+
+            loop {
+                let Some(obj) = self.mark_stack.pop() else {
+                    break;
+                };
+
+                // Mark the object
+                let ret =
+                    obj.metadata_ref()
+                        .try_update(Ordering::Relaxed, Ordering::Relaxed, |mut x| {
+                            if x.is_marked == mark_true_bit {
+                                None
+                            } else {
+                                x.is_marked = mark_true_bit;
+                                Some(x)
+                            }
+                        });
+
+                total_count += 1;
+                if ret.is_ok() {
+                    // This just first marked.
+                    live_count += 1;
+
+                    let size = type_manager.get_size(&obj);
+
+                    // SAFETY: We use same page table consistently
+                    let dest = unsafe { move_context.alloc_from_page_table(&page_table, size) }
+                        .unwrap()
+                        .0
+                        .addr();
+
+                    // Registry only contains offsets
+                    registry.insert(RelocationRecord {
+                        src: obj.to_ptr().addr() - heap_info.start.addr(),
+                        dest: dest - heap_info.start.addr(),
+                        size,
                     });
 
-            total_count += 1;
-            if ret.is_ok() {
-                // This just first marked.
-                // TODO: push object to mark stack to be continued
-                // recusrively
-                live_count += 1;
-
-                let size = type_manager.get_size(obj);
-
-                // SAFETY: We use same page table consistently
-                let dest = unsafe { move_context.alloc_from_page_table(&page_table, size) }
-                    .unwrap()
-                    .0
-                    .addr();
-
-                // Registry only contains offsets
-                registry.insert(RelocationRecord {
-                    src: obj.to_ptr().addr() - heap_info.start.addr(),
-                    dest: dest - heap_info.start.addr(),
-                    size,
-                });
-            } else {
-                // Already marked this, either a while ago, or another thread
+                    // Iterate the object to see if there new objects to be pushed
+                    // to the stack
+                    heap.type_manager
+                        .iterate_gc_pointers(obj, &mut |obj| self.mark_stack.push(obj));
+                } else {
+                    // Already marked this, either a while ago, or another thread
+                }
             }
         };
 

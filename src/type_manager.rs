@@ -135,7 +135,6 @@ impl TypeManagerConcrete {
         }
     }
 
-    #[expect(unused)]
     pub fn iterate_gc_pointers(&self, object: ObjectPtr, visitor: &mut dyn FnMut(ObjectPtr)) {
         match object.metadata().payload {
             ObjectKind::PlainOldData(_) => (),
