@@ -14,6 +14,7 @@ use crate::{
     root_set::RootSet,
     state::SharedState,
 };
+use humansize::{BINARY, FormatSize};
 
 mod relocation_map;
 mod copier;
@@ -221,7 +222,7 @@ fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> St
     let used = args.heap.used_end.addr() - args.heap.start.addr();
     let compacted = page_table.get_top_addr() - args.heap.start.addr();
     println!("[GC] Live count: {:9}", live_count);
-    println!("[GC] Compacted from {:#16} to {:#16}", bytesize::mib(u64::try_from(used).unwrap()), bytesize::mib(u64::try_from(compacted).unwrap()));
+    println!("[GC] Compacted from {:10} to {:10}", used.format_size(BINARY), compacted.format_size(BINARY));
 
     Step3Args {
         common: args.common,
