@@ -109,10 +109,7 @@ fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Ar
     let mark_true_bit = heap.get().mark_true_bit;
 
     // Flip the bit meaning
-    match mark_true_bit {
-        Bit::Bit0 => heap.get().mark_true_bit = Bit::Bit1,
-        Bit::Bit1 => heap.get().mark_true_bit = Bit::Bit0,
-    }
+    heap.get().mark_true_bit = !mark_true_bit;
 
     // Take snapshot of root set
     let saved_roots = heap

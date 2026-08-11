@@ -58,6 +58,7 @@ Bottom 4 bits. so only 60 bits payload available
 const MARK_BIT: u64 = 0b001;
 const WRITE_BARRIER_BIT: u64 = 0b010;
 const OBJECT_TYPE_MASK: u64 = 0b100;
+const OBJECT_TYPE_SHIFT: u64 = 2;
 const PAYLOAD_SHIFT: u64 = 3;
 
 impl Metadata {
@@ -104,7 +105,7 @@ impl Metadata {
     fn encode(data: MetadataExpanded) -> u64 {
         let mut v = match data.payload {
             MetadataEnum::PlainOldData(len) => (len.value() << PAYLOAD_SHIFT) | 0b000,
-            MetadataEnum::NotPlainOldData(desc) => (desc.value() << PAYLOAD_SHIFT) | 0b010,
+            MetadataEnum::NotPlainOldData(desc) => (desc.value() << PAYLOAD_SHIFT) | 0b100,
         };
 
         if data.is_marked == Bit::Bit1 {
@@ -122,9 +123,9 @@ impl Metadata {
         let kind = v & OBJECT_TYPE_MASK;
         let payload = u61::extract_u64(v, PAYLOAD_SHIFT as usize);
 
-        let payload = match kind {
-            0b00 | 0b01 => MetadataEnum::PlainOldData(payload),
-            0b10 | 0b11 => MetadataEnum::NotPlainOldData(payload),
+        let payload = match kind >> OBJECT_TYPE_SHIFT {
+            0b0 => MetadataEnum::PlainOldData(payload),
+            0b1 => MetadataEnum::NotPlainOldData(payload),
 
             // This however can be the "descriptor" type one day
             // to store descriptor itself

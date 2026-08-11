@@ -31,7 +31,6 @@ pub struct Context<'a, R: RootSet> {
 #[derive(Clone, Copy)]
 pub enum AllocType {
     // type id that gets passed to type manager
-    #[expect(unused)]
     Typed(u64),
 
     // Size in bytes, this implies drop code will
