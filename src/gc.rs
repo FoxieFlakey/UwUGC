@@ -335,7 +335,12 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
 
     // SAFETY: We're in STW that mean the heap is unused and available for exclusive access by copier
     let active_copier = section_cookie.section("Prepare copier", |_| unsafe {
-        copier.start(heap_info.clone(), registry_frozen, mapping, heap.get().mm.get_page_table_cloned())
+        copier.start(
+            heap_info.clone(),
+            registry_frozen,
+            mapping,
+            heap.get().mm.get_page_table_cloned(),
+        )
     });
 
     Step4Args {

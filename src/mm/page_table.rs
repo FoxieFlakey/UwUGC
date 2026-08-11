@@ -42,11 +42,12 @@ impl PageTable {
             base_addr: self.base_addr,
             current_base_page: AtomicUsize::new(*self.current_base_page.get_mut()),
             nr_pages: self.nr_pages,
-            page_table: self.page_table
+            page_table: self
+                .page_table
                 .iter_mut()
                 .map(|x| Mutex::new(x.get_mut().clone()))
                 .collect::<Vec<_>>(),
-            medium_buffer_page: Mutex::new(self.medium_buffer_page.get_mut().clone())
+            medium_buffer_page: Mutex::new(self.medium_buffer_page.get_mut().clone()),
         }
     }
 
@@ -55,7 +56,7 @@ impl PageTable {
         if addr < self.base_addr {
             return None;
         }
-        
+
         let page_id = (addr.addr() - self.base_addr.addr()) >> BASE_PAGE_SHIFT;
         if page_id >= self.get_used_end_page() {
             // Resolved to page that is after the end of use. Guarantee that nobody
@@ -70,19 +71,19 @@ impl PageTable {
             if let Some(page) = page.as_ref() {
                 let start = page.start.as_ptr();
                 let end = start.wrapping_byte_add(page.used());
-                
+
                 if addr >= start && addr < end {
                     // We found page where its belong
                     return Some(current);
                 }
-                
+
                 return None;
             }
 
             if current == 0 {
                 // Cannot find any page. Looked till index 0
                 // and page at index 0 is None
-                return None
+                return None;
             }
             current -= 1;
         }

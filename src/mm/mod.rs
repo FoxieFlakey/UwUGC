@@ -8,7 +8,7 @@ mod page;
 mod page_table;
 
 pub use context::Context;
-pub use page::{BASE_PAGE_SIZE, BASE_PAGE_SHIFT, FlexPage, FlexPageKind};
+pub use page::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, FlexPageKind};
 
 pub use page_table::PageTable;
 
@@ -47,7 +47,7 @@ impl MM {
     pub fn get_page_table_cloned(&mut self) -> PageTable {
         self.page_table.clone()
     }
-    
+
     pub fn get_page_table(&self) -> &PageTable {
         &self.page_table
     }
