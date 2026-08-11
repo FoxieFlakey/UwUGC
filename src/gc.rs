@@ -305,6 +305,7 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
             registry_frozen,
             mapping,
             heap.get().mm.get_page_table_cloned(),
+            &heap.get().type_manager,
         )
     });
 

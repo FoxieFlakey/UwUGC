@@ -36,7 +36,7 @@ pub enum AllocType {
 
     // Size in bytes, this implies drop code will
     // not be run
-    PlainOldData(usize)
+    PlainOldData(usize),
 }
 
 impl<'a, R> Context<'a, R>
@@ -99,20 +99,23 @@ where
 
     fn to_obj_kind(&self, ty: AllocType) -> ObjectKind {
         match ty {
-            AllocType::PlainOldData(x) => ObjectKind::PlainOldData(u61::try_new(u64::try_from(x).unwrap()).unwrap()),
-            AllocType::Typed(x) => ObjectKind::NotPlainOldData(u61::try_new(x).unwrap())
+            AllocType::PlainOldData(x) => {
+                ObjectKind::PlainOldData(u61::try_new(u64::try_from(x).unwrap()).unwrap())
+            }
+            AllocType::Typed(x) => ObjectKind::NotPlainOldData(u61::try_new(x).unwrap()),
         }
     }
 
     fn get_size_of_alloc(&self, ty: AllocType) -> usize {
         (match ty {
             AllocType::PlainOldData(x) => x,
-            AllocType::Typed(x) => self.shared
+            AllocType::Typed(x) => self
+                .shared
                 .get()
                 .type_manager
                 .type_manager
                 .get_size(x)
-                .unwrap()
+                .unwrap(),
         }) + size_of::<MetadataCompressed>()
     }
 

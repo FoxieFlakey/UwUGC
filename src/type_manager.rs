@@ -160,7 +160,6 @@ impl TypeManagerConcrete {
     // # Safety
     // caller must make sure object is exclusive owned and its
     // safe from GC accessing part of it.
-    #[expect(unused)]
     pub unsafe fn update_gc_pointers(
         &self,
         object: ObjectPtr,

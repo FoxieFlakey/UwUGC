@@ -5,7 +5,8 @@ use crate::{
     gc::{HeapInfoLater, relocation_map::FrozenRegistry},
     mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, PageTable},
     mmap::Mmap,
-    object::MetadataCompressed,
+    object::ObjectPtr,
+    type_manager::TypeManagerConcrete,
 };
 
 pub struct Copier {}
@@ -25,6 +26,7 @@ impl Copier {
         reloc_registry: FrozenRegistry,
         from_mapping: Mmap,
         compacted_page_table: PageTable,
+        type_manager: &TypeManagerConcrete,
     ) -> CopierActive {
         // Do dumb copying, leaving "later used" unmoved
         // later update to use userfaultfd
@@ -48,7 +50,7 @@ impl Copier {
                 break;
             }
 
-            active.resolve_fault(fault_addr);
+            active.resolve_fault(fault_addr, type_manager);
         }
 
         active
@@ -89,7 +91,7 @@ impl CopierActive {
         dest_slice.fill(0);
     }
 
-    fn do_relocate(&self, page_id: usize, page: &FlexPage) {
+    fn do_relocate(&self, page_id: usize, page: &FlexPage, type_manager: &TypeManagerConcrete) {
         if self.work_done.set(page_id, true, Ordering::Relaxed) {
             // Have relocated to this page. Pretend its spurious page faults
             return;
@@ -125,14 +127,25 @@ impl CopierActive {
             // Perform pointer fixing
             // SAFETY: Each record in relocation map correspond to one valid object
             // so after copying, the dest always points to object header
-            #[expect(unused)]
-            let object_header = unsafe { dest.cast::<MetadataCompressed>().as_mut_unchecked() };
+            let object = unsafe { ObjectPtr::new(dest) };
 
-            // TODO: Actually fix the pointer
+            let mut updater = |x: ObjectPtr| -> ObjectPtr {
+                let mapped = self
+                    .reloc_registry
+                    .map_src_to_dest(x.to_ptr().addr() - self.heap.start.addr())
+                    .expect("Cant find relocation record");
+
+                // SAFETY: Each record is valid at object boundry
+                unsafe { ObjectPtr::new(self.heap.start.wrapping_byte_add(mapped)) }
+            };
+
+            // SAFETY: We have exclusive control over destination, work_done
+            // bitmap prevent concurrent writes
+            unsafe { type_manager.update_gc_pointers(object, &mut updater) };
         }
     }
 
-    fn resolve_fault(&self, addr: *mut u8) {
+    fn resolve_fault(&self, addr: *mut u8, type_manager: &TypeManagerConcrete) {
         let page_id = (addr.addr() - self.heap.start.addr()) >> BASE_PAGE_SHIFT;
         if page_id >= self.zero_page_start {
             self.do_zeropage(page_id);
@@ -145,7 +158,7 @@ impl CopierActive {
         };
 
         let page = self.page_table.get_page(page_id).lock();
-        self.do_relocate(page_id, page.as_ref().unwrap());
+        self.do_relocate(page_id, page.as_ref().unwrap(), type_manager);
     }
 
     pub fn finish(self) -> (FrozenRegistry, Copier, Mmap) {
