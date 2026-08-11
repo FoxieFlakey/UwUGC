@@ -1,7 +1,11 @@
 use std::{slice, sync::atomic::Ordering};
 
 use crate::{
-    bitmap::AtomicBitmap, gc::{HeapInfoLater, relocation_map::FrozenRegistry}, mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, PageTable}, mmap::Mmap
+    bitmap::AtomicBitmap,
+    gc::{HeapInfoLater, relocation_map::FrozenRegistry},
+    mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, PageTable},
+    mmap::Mmap,
+    object::MetadataCompressed,
 };
 
 pub struct Copier {}
@@ -93,26 +97,13 @@ impl CopierActive {
 
         let start = page.start();
         let end = start.wrapping_byte_add(page.size());
-        let len = page.size();
 
         let start_offset = start.addr() - self.heap.start.addr();
         let end_offset = end.addr() - self.heap.start.addr();
         let page_range = start_offset..end_offset;
 
-        // SAFETY: We own the mapping
-        let src_slice =
-            unsafe { slice::from_raw_parts(self.from_mapping.get_ptr(), self.from_mapping.len()) };
-
-        // SAFETY: Only one thread and one do_relocate that can update a single page
-        // via atomic bit map on work_done
-        let dest_slice = unsafe {
-            slice::from_raw_parts_mut(start, len)
-        };
-        
-        // An offset from actual heap start, so dest_slice[0] mean heap.start + dest_offset
-        let dest_offset = start.addr() - self.heap.start.addr();
-
-        for record in self.reloc_registry
+        for record in self
+            .reloc_registry
             .iterate_records_in_dest_range(&(start_offset..end_offset))
         {
             // Make sure that record fully in the page. By page design and allocator
@@ -121,9 +112,23 @@ impl CopierActive {
             assert!(page_range.contains(&dest_range.start));
             assert!(page_range.contains(&(dest_range.end - 1)));
 
-            let src = &src_slice[record.src..record.src + record.size];
-            let dest = &mut dest_slice[record.dest - dest_offset..(record.dest + record.size) - dest_offset];
-            dest.copy_from_slice(src);
+            let src_ptr = self.from_mapping.get_ptr().wrapping_add(record.src);
+            let dest = self.heap.start.wrapping_byte_add(record.dest);
+
+            // SAFETY: Already make sure destination is not being written by other
+            // it cannot happen because work_done bitmap ensure only one thread/do_relocate
+            // can modifies destination
+            unsafe {
+                std::ptr::copy_nonoverlapping(src_ptr.cast_const(), dest, record.dest);
+            };
+
+            // Perform pointer fixing
+            // SAFETY: Each record in relocation map correspond to one valid object
+            // so after copying, the dest always points to object header
+            #[expect(unused)]
+            let object_header = unsafe { dest.cast::<MetadataCompressed>().as_mut_unchecked() };
+
+            // TODO: Actually fix the pointer
         }
     }
 
