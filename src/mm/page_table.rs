@@ -67,7 +67,7 @@ impl PageTable {
             let page = self.page_table[current].lock();
             if let Some(page) = page.as_ref() {
                 let start = page.start.as_ptr();
-                let end = start.wrapping_byte_add(page.used());
+                let end = start.wrapping_byte_add(page.size());
 
                 if addr >= start && addr < end {
                     // We found page where its belong
