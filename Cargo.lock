@@ -502,7 +502,7 @@ checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 [[package]]
 name = "userfaultfd"
 version = "0.8.1"
-source = "git+https://github.com/FoxieFlakey/userfaultfd-rs#44ef14472294d26529912d0f37d5274ca2c3a021"
+source = "git+https://github.com/FoxieFlakey/userfaultfd-rs#5d69ff1a815f000440dd69cb34ce41a461740dc2"
 dependencies = [
  "bitflags",
  "cfg-if",
@@ -515,7 +515,7 @@ dependencies = [
 [[package]]
 name = "userfaultfd-sys"
 version = "0.5.0"
-source = "git+https://github.com/FoxieFlakey/userfaultfd-rs#44ef14472294d26529912d0f37d5274ca2c3a021"
+source = "git+https://github.com/FoxieFlakey/userfaultfd-rs#5d69ff1a815f000440dd69cb34ce41a461740dc2"
 dependencies = [
  "bindgen",
  "cc",
