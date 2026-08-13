@@ -1,5 +1,6 @@
-use std::sync::atomic::Ordering;
+use std::{os::fd::AsFd, sync::atomic::Ordering};
 
+use nix::poll::{PollFd, PollFlags, PollTimeout, poll};
 use rayon::{ThreadPool, ThreadPoolBuilder};
 use userfaultfd::{Uffd, UffdBuilder};
 
@@ -9,12 +10,15 @@ use crate::{
     mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, MM, PageTable},
     mmap::Mmap,
     object::ObjectPtr,
+    pipe::Pipe,
     type_manager::TypeManagerConcrete,
 };
 
 pub struct Copier {
     uffd: Uffd,
     worker_pool: ThreadPool,
+    uffd_pool: ThreadPool,
+    pipe: Pipe<u8>,
 }
 
 impl Copier {
@@ -22,15 +26,21 @@ impl Copier {
         Self {
             worker_pool: ThreadPoolBuilder::new()
                 .num_threads(4)
-                .thread_name(|x| format!("UFFDWorker-{x:02}"))
+                .thread_name(|x| format!("Worker-{x:02}"))
+                .build()
+                .unwrap(),
+            uffd_pool: ThreadPoolBuilder::new()
+                .num_threads(4)
+                .thread_name(|x| format!("UFFD-{x:02}"))
                 .build()
                 .unwrap(),
             uffd: UffdBuilder::new()
                 .close_on_exec(true)
-                .non_blocking(false)
+                .non_blocking(true)
                 .user_mode_only(true)
                 .create()
                 .unwrap(),
+            pipe: Pipe::new().unwrap(),
         }
     }
 
@@ -89,7 +99,7 @@ impl CopierActive {
             return;
         }
 
-        let start = self.heap.start.wrapping_byte_add(page_id * BASE_PAGE_SIZE);
+        let start = (self.page_table.get_base_addr() as *mut u8).wrapping_byte_add(page_id * BASE_PAGE_SIZE);
         let len = BASE_PAGE_SIZE;
 
         unsafe { self.state.uffd.zeropage(start.cast(), len, true) }.unwrap();
@@ -204,23 +214,75 @@ impl CopierActive {
     }
 
     pub fn finish(self, type_manager: &TypeManagerConcrete) -> (FrozenRegistry, Copier, MM) {
-        self.state.worker_pool.scope_fifo(|s| {
-            for id in 0..self.page_table.nr_pages() {
-                let page = self.page_table.get_page(id).lock();
-                if page.is_none() {
-                    continue;
+        struct SyncPtr(*mut u8);
+        unsafe impl Send for SyncPtr {}
+
+        self.state.worker_pool.in_place_scope_fifo(|s| {
+            // Spawn job that eagerly tries to relocate
+            s.spawn_fifo(|s| {
+                for id in 0..self.page_table.nr_pages() {
+                    let page = self.page_table.get_page(id).lock();
+                    if page.is_none() {
+                        continue;
+                    }
+
+                    let addr = SyncPtr(page.as_ref().unwrap().start());
+                    let self_borrow = &self;
+                    s.spawn_fifo(move |_| {
+                        let addr = addr;
+                        self_borrow.resolve_fault(addr.0, type_manager);
+                    });
                 }
 
-                struct SyncPtr(*mut u8);
-                unsafe impl Send for SyncPtr {}
+                // Pipe isnt coped to handle ZST types currently use u8
+                // indicates that all pages is relocated
+                self.state.pipe.write(0).unwrap();
+            });
 
-                let addr = SyncPtr(page.as_ref().unwrap().start());
-                let self_borrow = &self;
-                s.spawn_fifo(move |_| {
-                    let addr = addr;
-                    self_borrow.resolve_fault(addr.0, type_manager);
-                });
-            }
+            // Userfaultfd handling loop
+            self.state.uffd_pool.in_place_scope_fifo(|s| {
+                loop {
+                    let mut pollfd = [
+                        PollFd::new(self.state.uffd.as_fd(), PollFlags::POLLIN),
+                        PollFd::new(self.state.pipe.get_read_fd(), PollFlags::POLLIN),
+                    ];
+
+                    poll(&mut pollfd, PollTimeout::NONE).unwrap();
+
+                    if !pollfd[0].revents().unwrap().is_empty() {
+                        if let Some(event) = self.state.uffd.read_event().unwrap() {
+                            match event {
+                                userfaultfd::Event::Pagefault {
+                                    kind: userfaultfd::FaultKind::Missing,
+                                    addr,
+                                    ..
+                                } => {
+                                    // Dispatch userfaultfd handling
+                                    let addr = SyncPtr(addr.cast());
+                                    let self_borrow = &self;
+                                    s.spawn_fifo(move |_| {
+                                        let addr = addr;
+                                        self_borrow.resolve_fault(addr.0, type_manager)
+                                    });
+                                }
+
+                                _ => unimplemented!(),
+                            }
+                        }
+                    }
+
+                    if !pollfd[1].revents().unwrap().is_empty() {
+                        // Bulk updating threads are done, lets finish
+                        // copying
+                        self.state.pipe.read().unwrap();
+                        break;
+                    }
+                }
+            });
+
+            // While there UFFD event lets exhaust them
+            // dont act on it because worker already used all of them up
+            while let Some(_) = self.state.uffd.read_event().unwrap() {}
         });
 
         // Deactivate UFFD
