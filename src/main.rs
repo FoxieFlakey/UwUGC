@@ -23,6 +23,7 @@ mod mmap;
 mod object;
 mod pipe;
 mod profiler;
+mod quirks;
 mod root_set;
 mod state;
 mod type_manager;
@@ -73,7 +74,7 @@ fn main() {
     let window = ctx.alloc_fast(AllocType::Typed(WINDOW_TYPE_ID)).unwrap();
     ctx.get_root_set().as_slice_mut()[0] = Some(window);
 
-    for id in 0..MSG_COUNT {
+    for id in 0.. {
         push_message(&mut ctx, id);
 
         // SAFETY: We dont need anything special to save

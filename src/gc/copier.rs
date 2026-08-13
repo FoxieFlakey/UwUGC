@@ -5,13 +5,7 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 use userfaultfd::{Uffd, UffdBuilder};
 
 use crate::{
-    bitmap::AtomicBitmap,
-    gc::{HeapInfoLater, relocation_map::FrozenRegistry},
-    mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, MM, PageTable},
-    mmap::Mmap,
-    object::ObjectPtr,
-    pipe::Pipe,
-    type_manager::TypeManagerConcrete,
+    bitmap::AtomicBitmap, gc::{HeapInfoLater, relocation_map::FrozenRegistry}, mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, MM, PageTable}, mmap::Mmap, object::ObjectPtr, pipe::Pipe, quirks, type_manager::TypeManagerConcrete
 };
 
 pub struct Copier {
@@ -184,7 +178,13 @@ impl CopierActive {
                     break;
                 }
 
-                Err(userfaultfd::Error::PartiallyCopied(moved)) => {
+                Err(userfaultfd::Error::PartiallyCopied(mut moved)) => {
+                    quirks::uffd_try_fix_moved(dest, &mut moved, len);
+                    if moved == len {
+                        // All pages actually moved. But kernel under-reporting
+                        break;
+                    }
+
                     len -= moved;
                     src = src.wrapping_byte_add(moved);
                     dest = dest.wrapping_byte_add(moved);
