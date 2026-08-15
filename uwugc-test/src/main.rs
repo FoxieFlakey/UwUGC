@@ -34,7 +34,7 @@ fn push_message(ctx: &mut Context<'_, DumbRootSet>, id: usize) {
     let root = ctx.get_root_set();
     let window = get_window(&root);
 
-    window[id % WINDOW_SIZE].store(message.to_ptr(), Ordering::Relaxed);
+    window[id % WINDOW_SIZE].store(message.into_raw(), Ordering::Relaxed);
 }
 
 fn main() {
@@ -105,7 +105,7 @@ unsafe impl TypeManager for LatencyTestTypeManager {
             }
 
             // SAFETY: We only ever store valid object pointer in this array
-            visitor(unsafe { ObjectPtr::new(ptr) });
+            visitor(unsafe { ObjectPtr::from_raw(ptr) });
         }
 
         true
@@ -132,8 +132,8 @@ unsafe impl TypeManager for LatencyTestTypeManager {
             }
 
             // SAFETY: We only ever store valid object pointer in this array
-            let updated = updater(unsafe { ObjectPtr::new(ptr_loaded) });
-            ptr.store(updated.to_ptr(), Ordering::Relaxed);
+            let updated = updater(unsafe { ObjectPtr::from_raw(ptr_loaded) });
+            ptr.store(updated.into_raw(), Ordering::Relaxed);
         }
 
         true

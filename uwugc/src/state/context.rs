@@ -136,7 +136,7 @@ where
         };
 
         // SAFETY: We have initialized the object to be valid object and has correct alignment and size
-        unsafe { ObjectPtr::new(ptr) }
+        unsafe { ObjectPtr::from_raw(ptr) }
     }
 
     // This is like alloc_fast, but this may start GC/be blocked. So

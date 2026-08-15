@@ -145,16 +145,16 @@ impl CopierActive {
             // Perform pointer fixing
             // SAFETY: Each record in relocation map correspond to one valid object
             // so after copying, the dest always points to object header
-            let object = unsafe { ObjectPtr::new(dest) };
+            let object = unsafe { ObjectPtr::from_raw(dest) };
 
             let mut updater = |x: ObjectPtr| -> ObjectPtr {
                 let mapped = self
                     .reloc_registry
-                    .map_src_to_dest(x.to_ptr().addr() - self.heap.start.addr())
+                    .map_src_to_dest(x.into_raw().addr() - self.heap.start.addr())
                     .expect("Cant find relocation record");
 
                 // SAFETY: Each record is valid at object boundry
-                unsafe { ObjectPtr::new(self.heap.to_space.wrapping_byte_add(mapped)) }
+                unsafe { ObjectPtr::from_raw(self.heap.to_space.wrapping_byte_add(mapped)) }
             };
 
             // SAFETY: We have exclusive control over destination, work_done

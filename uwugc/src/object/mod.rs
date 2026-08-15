@@ -16,7 +16,7 @@ impl ObjectPtr {
     // # Safety
     // Caller must make sure that pointer is valid object atleast sized MetadataCompressed
     // and contains valid metadata
-    pub unsafe fn new(ptr: *mut u8) -> Self {
+    pub unsafe fn from_raw(ptr: *mut u8) -> Self {
         Self(ptr)
     }
 
@@ -35,7 +35,7 @@ impl ObjectPtr {
         unsafe { self.0.byte_add(size_of::<MetadataCompressed>()) }
     }
 
-    pub fn to_ptr(&self) -> *mut u8 {
+    pub fn into_raw(self) -> *mut u8 {
         self.0
     }
 }
