@@ -1,32 +1,10 @@
-#![feature(current_thread_id)]
-#![feature(duration_millis_float)]
-
 use std::{
     mem::MaybeUninit,
     slice,
     sync::atomic::{AtomicPtr, Ordering},
 };
 
-use crate::{
-    object::ObjectPtr,
-    root_set::{RootSet, RootSetRaw},
-    state::{AllocType, Context, State},
-    type_manager::TypeManager,
-};
-
-mod bitmap;
-mod gc;
-mod gc_controller;
-mod gc_sync;
-mod mm;
-mod mmap;
-mod object;
-mod pipe;
-mod profiler;
-mod quirks;
-mod root_set;
-mod state;
-mod type_manager;
+use uwugc::{AllocType, Context, ObjectPtr, RootSet, RootSetRaw, TypeManager, UwUGC};
 
 // Ported from https://github.com/WillSewell/gc-latency-experiment/blob/f67121ec8a741201414c76d5ba85f9304c774acc/c/main.c
 // its Java version that ported
@@ -62,7 +40,7 @@ fn push_message(ctx: &mut Context<'_, DumbRootSet>, id: usize) {
 fn main() {
     println!("Hello, world!");
 
-    let state = State::new(
+    let state = UwUGC::new(
         512 * 1024 * 1024,
         Some(0x60ef_0000_0000),
         Some(0x60ff_0000_0000),

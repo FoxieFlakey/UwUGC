@@ -12,7 +12,6 @@ use crate::{mmap::Mmap, object::ObjectPtr};
 // contract
 pub unsafe trait RootSet: Sync + Send + Any {
     // This must return the root set raw given at creation or clone
-    #[expect(unused)]
     fn get_raw(&self) -> &RootSetRaw;
 
     // This must return the root set raw given at creation or clone
@@ -129,33 +128,3 @@ impl RootSetRaw {
     }
 }
 
-// Used when there no GC pointers
-#[expect(unused)]
-pub struct NoopRootSet {
-    raw: RootSetRaw,
-}
-
-impl NoopRootSet {
-    #[expect(unused)]
-    pub fn new(set: RootSetRaw) -> Self {
-        Self { raw: set }
-    }
-}
-
-unsafe impl RootSet for NoopRootSet {
-    fn clone_metadata(&self, set: RootSetRaw) -> Box<dyn RootSet> {
-        Box::new(Self::new(set))
-    }
-
-    fn get_raw(&self) -> &RootSetRaw {
-        &self.raw
-    }
-
-    fn get_raw_mut(&mut self) -> &mut RootSetRaw {
-        &mut self.raw
-    }
-
-    // there nothing in here so no-op
-    fn map_pointers(&mut self, _: &mut dyn FnMut(ObjectPtr) -> ObjectPtr) {}
-    fn iter_pointers(&self, _: &mut dyn FnMut(&ObjectPtr)) {}
-}

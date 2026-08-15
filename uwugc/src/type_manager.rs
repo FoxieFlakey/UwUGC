@@ -46,7 +46,6 @@ pub unsafe trait TypeManager: Send + Sync {
     // Returns true if type_id is exists and marked
     // else false if not
     #[must_use = "The type_id might not exists"]
-    #[expect(unused)]
     fn set_alive(&self, type_id: u64) -> bool;
 
     // Actually start wiping the dead type_ids
@@ -94,34 +93,6 @@ pub unsafe trait TypeManager: Send + Sync {
     // Get size of type_id. Excluding metadata
     // Returns None if type_id unknown else Some(length)
     fn get_size(&self, type_id: u64) -> Option<usize>;
-}
-
-pub struct NoopTypeManager;
-
-unsafe impl TypeManager for NoopTypeManager {
-    fn assume_all_dead(&mut self) {}
-    fn get_size(&self, _: u64) -> Option<usize> {
-        None
-    }
-
-    fn set_alive(&self, _: u64) -> bool {
-        false
-    }
-
-    fn iterate_gc_pointers(&self, _: u64, _: ObjectPtr, _: &mut dyn FnMut(ObjectPtr)) -> bool {
-        false
-    }
-
-    fn update_gc_pointers(
-        &self,
-        _: u64,
-        _: ObjectPtr,
-        _: &mut dyn FnMut(ObjectPtr) -> ObjectPtr,
-    ) -> bool {
-        false
-    }
-
-    fn wipe_deads(&mut self) {}
 }
 
 pub struct TypeManagerConcrete {
