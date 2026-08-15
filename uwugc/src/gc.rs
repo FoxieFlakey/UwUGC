@@ -236,11 +236,12 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
 
             root_set.map_pointers(&mut |x| {
                 let mapped = registry_frozen
-                    .map_src_to_dest(x.into_raw().addr() - args.heap.start.addr())
+                    .map_src_to_dest(x.into_raw().addr().get() - args.heap.start.addr())
                     .expect("Cannot find relocation record");
                 // SAFETY: This points to correct address after relocated
                 // and relocation registry contains only offsets into heap
                 unsafe { ObjectPtr::from_raw(args.heap.to_space.wrapping_byte_add(mapped)) }
+                    .unwrap()
             });
         });
     });

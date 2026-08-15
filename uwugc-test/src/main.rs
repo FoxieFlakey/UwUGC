@@ -1,7 +1,5 @@
 use std::{
-    mem::MaybeUninit,
-    slice,
-    sync::atomic::{AtomicPtr, Ordering},
+    mem::MaybeUninit, ptr::NonNull, slice, sync::atomic::{AtomicPtr, Ordering}
 };
 
 use uwugc::{AllocType, Context, ObjectPtr, RootSet, RootSetRaw, TypeManager, UwUGC};
@@ -23,7 +21,7 @@ fn make_message(ctx: &mut Context<'_, DumbRootSet>, n: u8) -> Option<ObjectPtr> 
         .inspect(|x| {
             // SAFETY: We allocated MSG_SIZE bytes
             let slice =
-                unsafe { slice::from_raw_parts_mut(x.data().cast::<MaybeUninit<u8>>(), MSG_SIZE) };
+                unsafe { slice::from_raw_parts_mut(x.data().cast::<MaybeUninit<u8>>().as_ptr(), MSG_SIZE) };
             slice.fill(MaybeUninit::new(n));
         })
 }
@@ -34,7 +32,7 @@ fn push_message(ctx: &mut Context<'_, DumbRootSet>, id: usize) {
     let root = ctx.get_root_set();
     let window = get_window(&root);
 
-    window[id % WINDOW_SIZE].store(message.into_raw(), Ordering::Relaxed);
+    window[id % WINDOW_SIZE].store(message.into_raw().as_ptr(), Ordering::Relaxed);
 }
 
 fn main() {
@@ -61,7 +59,7 @@ fn main() {
 }
 
 fn get_window<'a>(ctx: &'a DumbRootSet) -> &'a [AtomicPtr<u8>] {
-    let data = ctx.as_slice()[0].unwrap().data().cast::<AtomicPtr<u8>>();
+    let data = ctx.as_slice()[0].unwrap().data().as_ptr().cast::<AtomicPtr<u8>>();
 
     // SAFETY: the type ID is corect
     unsafe { slice::from_raw_parts(data, WINDOW_SIZE) }
@@ -94,18 +92,16 @@ unsafe impl TypeManager for LatencyTestTypeManager {
         if type_id != WINDOW_TYPE_ID {
             return false;
         }
-        let data = object.data().cast::<AtomicPtr<u8>>();
+        let data = object.data().as_ptr().cast::<AtomicPtr<u8>>();
 
         // SAFETY: the type ID is corect
         let slice = unsafe { slice::from_raw_parts(data, WINDOW_SIZE) };
         for ptr in slice {
-            let ptr = ptr.load(Ordering::Relaxed);
-            if ptr.is_null() {
-                continue;
+            if let Some(ptr) = NonNull::new(ptr.load(Ordering::Relaxed)) {
+                // SAFETY: We only ever store valid object pointer in this array
+                visitor(unsafe { ObjectPtr::from_nonnull(ptr) });
             }
 
-            // SAFETY: We only ever store valid object pointer in this array
-            visitor(unsafe { ObjectPtr::from_raw(ptr) });
         }
 
         true
@@ -121,19 +117,16 @@ unsafe impl TypeManager for LatencyTestTypeManager {
             return false;
         }
 
-        let data = object.data().cast::<AtomicPtr<u8>>();
+        let data = object.data().cast::<AtomicPtr<u8>>().as_ptr();
 
         // SAFETY: the type ID is corect
         let slice = unsafe { slice::from_raw_parts(data, WINDOW_SIZE) };
         for ptr in slice {
-            let ptr_loaded = ptr.load(Ordering::Relaxed);
-            if ptr_loaded.is_null() {
-                continue;
+            if let Some(ptr_loaded) = NonNull::new(ptr.load(Ordering::Relaxed)) {
+                // SAFETY: We only ever store valid object pointer in this array
+                let updated = updater(unsafe { ObjectPtr::from_nonnull(ptr_loaded) });
+                ptr.store(updated.into_raw().as_ptr(), Ordering::Relaxed);
             }
-
-            // SAFETY: We only ever store valid object pointer in this array
-            let updated = updater(unsafe { ObjectPtr::from_raw(ptr_loaded) });
-            ptr.store(updated.into_raw(), Ordering::Relaxed);
         }
 
         true

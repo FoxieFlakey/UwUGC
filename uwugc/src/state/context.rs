@@ -1,8 +1,5 @@
 use std::{
-    any::Any,
-    marker::PhantomData,
-    ops::{Deref, DerefMut},
-    sync::Arc,
+    any::Any, marker::PhantomData, ops::{Deref, DerefMut}, sync::Arc
 };
 
 use arbitrary_int::u61;
@@ -136,7 +133,7 @@ where
         };
 
         // SAFETY: We have initialized the object to be valid object and has correct alignment and size
-        unsafe { ObjectPtr::from_raw(ptr) }
+        unsafe { ObjectPtr::from_raw(ptr) }.unwrap()
     }
 
     // This is like alloc_fast, but this may start GC/be blocked. So

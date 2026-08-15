@@ -77,7 +77,7 @@ impl Marker {
 
                     // Registry only contains offsets
                     registry.insert(RelocationRecord {
-                        src: obj.into_raw().addr() - heap_info.start.addr(),
+                        src: obj.into_raw().addr().get() - heap_info.start.addr(),
                         dest: dest - heap_info.to_space.addr(),
                         size,
                     });
