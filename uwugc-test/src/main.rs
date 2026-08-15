@@ -1,10 +1,10 @@
 use std::{
-    mem::MaybeUninit, ptr::NonNull, slice, sync::atomic::{AtomicPtr, Ordering}
+    mem::MaybeUninit, ptr::NonNull, slice, sync::atomic::{AtomicPtr, Ordering}, time::Instant
 };
 
 use uwugc::{AllocType, Context, ObjectPtr, RootSet, RootSetRaw, TypeManager, UwUGC};
 
-// Ported from https://github.com/WillSewell/gc-latency-experiment/blob/f67121ec8a741201414c76d5ba85f9304c774acc/c/main.c
+// Ported from https://github.com/WillSewell/gc-latency-experiment/blob/f67121ec8a741201414c76d5ba85f9304c774acc/java/Main.java
 // its Java version that ported
 
 const WINDOW_TYPE_ID: u64 = 0;
@@ -50,11 +50,28 @@ fn main() {
     let window = ctx.alloc_fast(AllocType::Typed(WINDOW_TYPE_ID)).unwrap();
     ctx.get_root_set().as_slice_mut()[0] = Some(window);
 
-    for id in 0.. {
+    let mut worst = None;
+
+    for id in 0..MSG_COUNT {
+        let start = Instant::now();
         push_message(&mut ctx, id);
+        let elapsed = start.elapsed();
+        if let Some(worst) = worst.as_mut() {
+            if elapsed > *worst {
+                *worst = elapsed;
+            }
+        } else {
+            worst = Some(elapsed);
+        }
 
         // SAFETY: We dont need anything special to save
         unsafe { ctx.safepoint() };
+    }
+
+    if let Some(worst) = worst {
+        println!("Worst push time: {:6.2} ms", worst.as_millis() as f64);
+    } else {
+        println!("Nothing is ran");
     }
 }
 
