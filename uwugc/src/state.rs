@@ -50,13 +50,13 @@ impl SharedState {
     }
 }
 
-pub struct State {
+pub struct UwUGC {
     controller: Arc<GCController>,
     shared: Arc<GCSync<SharedState>>,
     gc_thread: ManuallyDrop<JoinHandle<()>>,
 }
 
-impl Drop for State {
+impl Drop for UwUGC {
     fn drop(&mut self) {
         self.controller.shutdown();
         // WE want to wait the GC thread
@@ -83,7 +83,7 @@ pub enum CreateError {
     ),
 }
 
-impl State {
+impl UwUGC {
     // There has to be only one context per thread!
     // or else there contexts that "cant" be parked
     // or safepoint'ed so GC can be deadlocked
@@ -122,7 +122,7 @@ impl State {
         preferred_primary_base: Option<usize>,
         preferred_second_space: Option<usize>,
         descriptor_manager: M,
-    ) -> Result<State, CreateError> {
+    ) -> Result<UwUGC, CreateError> {
         let (send, recv) = mpsc::channel();
         send.send(MM::new(size, preferred_second_space)?).unwrap();
 
@@ -141,7 +141,7 @@ impl State {
 
         let gc_args = GCArgs {};
 
-        Ok(State {
+        Ok(UwUGC {
             shared: shared.clone(),
             controller: controller.clone(),
             gc_thread: ManuallyDrop::new(thread::spawn(move || {

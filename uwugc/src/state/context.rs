@@ -12,7 +12,7 @@ use crate::{
     gc_sync, mm,
     object::{Metadata, MetadataCompressed, ObjectKind, ObjectPtr},
     root_set::RootSet,
-    state::{SharedState, State},
+    state::{SharedState, UwUGC},
 };
 
 pub struct ContextShared {
@@ -21,7 +21,7 @@ pub struct ContextShared {
 }
 
 pub struct Context<'a, R: RootSet> {
-    owner: &'a State,
+    owner: &'a UwUGC,
     shared: gc_sync::SharedGuard<'a, SharedState>,
     shared_data: Arc<Mutex<ContextShared>>,
     _not_send_sync: PhantomData<*mut u8>,
@@ -43,7 +43,7 @@ where
     R: RootSet,
 {
     pub(crate) fn new(
-        owner: &'a State,
+        owner: &'a UwUGC,
         shared: gc_sync::SharedGuard<'a, SharedState>,
         shared_data: Arc<Mutex<ContextShared>>,
     ) -> Self {
