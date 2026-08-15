@@ -1,16 +1,5 @@
-[package]
-name = "uwugc"
-version = "0.1.0"
-edition = "2024"
-
-[dependencies]
-arbitrary-int = "2.1.1"
-humansize = { version = "2.1.3", features = ["impl_style"] }
-indexmap = "2.14.0"
-memfd = "0.6.5"
-nix = { version = "0.31.3", features = ["fs", "poll"] }
-page_size = "0.6.0"
-parking_lot = "0.12.5"
-rayon = "1.12.0"
-thiserror = "2.0.19"
-userfaultfd = { git = "https://github.com/FoxieFlakey/userfaultfd-rs", version = "0.8.1", features = [ "linux6_8" ] }
+[workspace]
+resolver = "2"
+members = [
+  "uwugc",
+]
