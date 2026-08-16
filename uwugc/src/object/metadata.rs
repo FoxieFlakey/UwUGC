@@ -74,7 +74,7 @@ const PAYLOAD_SHIFT: u64 = 3;
 impl Metadata {
     pub fn new(data: MetadataExpanded) -> Metadata {
         Metadata {
-            word: AtomicU64::new(Self::encode(data)),
+            word: AtomicU64::new(Self::encode_word(data)),
         }
     }
 
@@ -89,10 +89,10 @@ impl Metadata {
         F: FnMut(MetadataExpanded) -> MetadataExpanded,
     {
         let ret = self.word.update(set_order, fetch_order, |x| {
-            Self::encode(func(Self::decode(x)))
+            Self::encode_word(func(self.decode(x)))
         });
 
-        Self::decode(ret)
+        self.decode(ret)
     }
 
     pub fn try_update<F>(
@@ -106,13 +106,13 @@ impl Metadata {
     {
         self.word
             .try_update(set_order, fetch_order, |x| {
-                Some(Self::encode(func(Self::decode(x))?))
+                Some(Self::encode_word(func(self.decode(x))?))
             })
-            .map(Self::decode)
-            .map_err(Self::decode)
+            .map(|x| self.decode(x))
+            .map_err(|x| self.decode(x))
     }
 
-    fn encode(data: MetadataExpanded) -> u64 {
+    fn encode_word(data: MetadataExpanded) -> u64 {
         let mut v = match data.payload {
             MetadataEnum::PlainOldData(len) => (len.value() << PAYLOAD_SHIFT) | 0b000,
             MetadataEnum::NotPlainOldData(desc) => (desc.value() << PAYLOAD_SHIFT) | 0b100,
@@ -129,7 +129,7 @@ impl Metadata {
         v
     }
 
-    fn decode(v: u64) -> MetadataExpanded {
+    fn decode(&self, v: u64) -> MetadataExpanded {
         let kind = v & OBJECT_TYPE_MASK;
         let payload = u61::extract_u64(v, PAYLOAD_SHIFT as usize);
 
@@ -154,6 +154,6 @@ impl Metadata {
     }
 
     pub fn get(&self) -> MetadataExpanded {
-        Self::decode(self.word.load(Ordering::Relaxed))
+        self.decode(self.word.load(Ordering::Relaxed))
     }
 }
