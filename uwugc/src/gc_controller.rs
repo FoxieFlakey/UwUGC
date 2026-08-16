@@ -33,12 +33,6 @@ impl GCController {
         self.condvar.notify_all();
     }
 
-    #[expect(unused)]
-    pub fn start_cycle(&self) {
-        self.state.lock().is_requested = true;
-        self.condvar.notify_all();
-    }
-
     pub fn start_and_wait_cycle(&self) {
         let mut state = self.state.lock();
         let cur_count = state.finished_count;

@@ -73,11 +73,6 @@ impl RegistryBuilder {
         }
     }
 
-    #[expect(unused)]
-    pub fn get_latest_free_dest(&self) -> Option<usize> {
-        self.data.latest_free_dest
-    }
-
     pub fn insert(&mut self, record: RelocationRecord) {
         if let Some(x) = self.data.latest_free_dest {
             if record.dest >= x {
@@ -115,30 +110,6 @@ impl RegistryBuilder {
 }
 
 impl FrozenRegistry {
-    #[expect(unused)]
-    pub fn get_src_range(&self) -> Option<Range<usize>> {
-        if self.starting_src.is_none() {
-            return None;
-        }
-
-        Some(Range {
-            start: self.starting_src.unwrap(),
-            end: self.latest_free_src.unwrap(),
-        })
-    }
-
-    #[expect(unused)]
-    pub fn get_dest_range(&self) -> Option<Range<usize>> {
-        if self.starting_dest.is_none() {
-            return None;
-        }
-
-        Some(Range {
-            start: self.starting_dest.unwrap(),
-            end: self.latest_free_dest.unwrap(),
-        })
-    }
-
     pub fn find_record_for_containing_src(&self, src_ptr: usize) -> Option<&RelocationRecord> {
         self.iterate_records_in_src_range(&Range {
             start: src_ptr,

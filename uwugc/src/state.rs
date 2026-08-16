@@ -9,7 +9,7 @@ use parking_lot::Mutex;
 use thiserror::Error;
 
 use crate::{
-    gc::{self, GCArgs},
+    gc,
     gc_controller::GCController,
     gc_sync::{self, GCSync},
     mm::{self, MM},
@@ -20,7 +20,6 @@ use crate::{
 
 mod context;
 
-#[expect(unused)]
 pub use context::{AllocType, Context, ContextShared, RootSetGuard};
 
 pub struct SharedState {
@@ -154,19 +153,17 @@ impl UwUGC {
         );
         let controller = Arc::new(GCController::new());
 
-        let gc_args = GCArgs {};
-
         Ok(UwUGC {
             shared: shared.clone(),
             controller: controller.clone(),
             gc_thread: ManuallyDrop::new(thread::spawn(move || {
-                gc_thread(shared, controller, gc_args)
+                gc_thread(shared, controller)
             })),
         })
     }
 }
 
-fn gc_thread(shared: Arc<GCSync<SharedState>>, controller: Arc<GCController>, gc_args: GCArgs) {
+fn gc_thread(shared: Arc<GCSync<SharedState>>, controller: Arc<GCController>) {
     println!("[GC] Started");
 
     let mut gc_state = None;
@@ -190,7 +187,6 @@ fn gc_thread(shared: Arc<GCSync<SharedState>>, controller: Arc<GCController>, gc
         gc_state = Some(gc::do_cycle(
             &shared,
             &controller,
-            &gc_args,
             gc_state.take(),
         ));
         println!("[GC] Cycle end");

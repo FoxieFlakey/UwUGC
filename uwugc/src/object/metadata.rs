@@ -78,23 +78,6 @@ impl Metadata {
         }
     }
 
-    #[expect(unused)]
-    pub fn update<F>(
-        &self,
-        set_order: Ordering,
-        fetch_order: Ordering,
-        mut func: F,
-    ) -> MetadataExpanded
-    where
-        F: FnMut(MetadataExpanded) -> MetadataExpanded,
-    {
-        let ret = self.word.update(set_order, fetch_order, |x| {
-            Self::encode_word(func(self.decode(x)))
-        });
-
-        self.decode(ret)
-    }
-
     pub fn try_update<F>(
         &self,
         set_order: Ordering,

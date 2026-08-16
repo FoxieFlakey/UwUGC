@@ -74,14 +74,6 @@ impl Profiler {
         cookie.section.total = end - start;
         ret
     }
-
-    #[expect(unused)]
-    pub fn reset(&mut self) {
-        self.iter_section_recursive_mut(|x, _, _| {
-            x.this = Duration::ZERO;
-            x.total = Duration::ZERO;
-        });
-    }
 }
 
 const ADVANCE_MODE: bool = false;

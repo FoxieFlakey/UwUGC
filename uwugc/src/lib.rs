@@ -21,4 +21,5 @@ pub use root_set::RootSetRaw;
 pub use state::AllocType;
 pub use state::Context;
 pub use state::UwUGC;
+pub use state::RootSetGuard;
 pub use type_manager::TypeManager;

@@ -22,24 +22,18 @@ mod relocation_map;
 pub struct PersistentState {
     cached_registry: Option<RegistryBuilder>,
     cached_marker: Option<Marker>,
-    #[expect(unused)]
-    args: GCArgs,
     copier: Option<copier::Copier>,
 }
-
-#[derive(Clone)]
-pub struct GCArgs {}
 
 pub fn do_cycle(
     shared: &Arc<GCSync<SharedState>>,
     controller: &Arc<GCController>,
-    args: &GCArgs,
     state: Option<PersistentState>,
 ) -> PersistentState {
     let mut profiler = Profiler::new();
     let ret = profiler.start(|scope| {
         let ret = scope.section("(Conc) Init", |scope| {
-            init(scope, shared, controller, args, state)
+            init(scope, shared, controller, state)
         });
         let ret = scope.section("(STW ) Step 1", |scope| step1(scope, ret));
         let ret = scope.section("(Conc) Step 2", |scope| step2(scope, ret));
@@ -64,7 +58,6 @@ fn init<'a>(
     _section_cookie: &mut SectionCookie,
     shared: &'a Arc<GCSync<SharedState>>,
     controller: &'a Arc<GCController>,
-    args: &GCArgs,
     persisent_state: Option<PersistentState>,
 ) -> Step1Args<'a> {
     let gc = persisent_state.unwrap_or_else(|| {
@@ -73,7 +66,6 @@ fn init<'a>(
         PersistentState {
             cached_registry: Some(RegistryBuilder::new()),
             cached_marker: Some(Marker::new()),
-            args: args.clone(),
             copier: Some(copier::Copier::new()),
         }
     });
@@ -146,22 +138,11 @@ struct HeapInfo {
     to_space: *mut u8,
 }
 
-#[expect(unused)]
 #[derive(Clone)]
 struct HeapInfoLater {
     start: *mut u8,
-    used_end: *mut u8,
     to_space: *mut u8,
     size: usize,
-    used_end_page: usize,
-    compacted_end: *mut u8,
-    compacted_end_page: usize,
-
-    // During concurrent phase 2. there may be new objects added, which need compacted back
-    // used_end..later_used_end would be range of where new objects added. Which must be
-    // left alone or unrelocated
-    later_used_end: *mut u8,
-    later_used_end_page: usize,
 }
 
 struct Step2Args<'a> {
@@ -190,7 +171,6 @@ fn step2<'a>(_section_cookie: &mut SectionCookie, mut args: Step2Args<'a>) -> St
     args.common.gc.cached_marker = Some(marker);
     Step3Args {
         common: args.common,
-        compacted_end: page_table.get_top_addr() as *mut u8,
         second_mm: args.second_mm,
         relocation_registry: registry,
         heap: args.heap,
@@ -202,16 +182,11 @@ struct Step3Args<'a> {
     second_mm: MM,
     relocation_registry: RegistryBuilder,
     heap: HeapInfo,
-    compacted_end: *mut u8,
 }
 
 /// Step 3: (STW) Prepare for relocation and fix root pointer
 fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Step4Args<'a> {
     let mut heap = section_cookie.section("STW wait", |_| args.common.shared.get_exclusive());
-    // This has to be retrieved before remap, as remap replaces
-    // page table
-    let later_used_end = heap.get().mm.get_page_table().get_top_addr() as *mut u8;
-
     let later_used_start_page = args.heap.used_end_page;
     let later_used_end_page = heap.get().mm.get_page_table().get_used_end_page();
 
@@ -227,7 +202,6 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     }
 
     let registry_frozen = args.relocation_registry.freeze();
-    let compacted_end_page = page_table.get_used_end_page();
 
     section_cookie.section("Fix root", |_| {
         heap.get().contexts.get_mut().iter().for_each(|x| {
@@ -255,12 +229,6 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     let heap_info = HeapInfoLater {
         start: args.heap.start,
         size: args.heap.size,
-        used_end: args.heap.used_end,
-        used_end_page: args.heap.used_end_page,
-        later_used_end,
-        later_used_end_page,
-        compacted_end: args.compacted_end,
-        compacted_end_page,
         to_space: args.heap.to_space,
     };
 
@@ -280,15 +248,12 @@ fn step3<'a>(section_cookie: &mut SectionCookie, mut args: Step3Args<'a>) -> Ste
     Step4Args {
         common: args.common,
         copier: active_copier,
-        heap: heap_info,
     }
 }
 
 struct Step4Args<'a> {
     common: CommonArgs<'a>,
     copier: CopierActive,
-    #[expect(unused)]
-    heap: HeapInfoLater,
 }
 
 /// Step 4: (Concurrent) Relocate

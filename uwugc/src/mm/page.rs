@@ -38,11 +38,6 @@ impl FlexPage {
         self.size() - self.used()
     }
 
-    #[expect(unused)]
-    pub fn kind(&self) -> FlexPageKind {
-        self.kind
-    }
-
     pub fn alloc(&mut self, size: usize) -> Option<*mut u8> {
         if self.free() >= size {
             let ret = self.start.as_ptr().wrapping_byte_add(self.used_bytes);
