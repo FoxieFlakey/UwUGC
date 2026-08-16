@@ -1,6 +1,7 @@
 use uwugc::{ObjectPtr, TypeManager, UwUGC};
 
 mod gclatencytest;
+mod dumbrootset;
 
 fn main() {
     let mut state = UwUGC::new(
