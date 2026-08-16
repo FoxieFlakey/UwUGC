@@ -46,7 +46,7 @@ pub fn run(state: &mut UwUGC) {
     state.set_type_manager(LatencyTestTypeManager);
     let state = &state;
 
-    let mut ctx = state.new_context(8192, DumbRootSet::new);
+    let mut ctx = state.new_context(DumbRootSet::new(10));
     let window = ctx.alloc_fast(AllocType::Typed(WINDOW_TYPE_ID)).unwrap();
     ctx.get_root_set().as_slice_mut()[0] = Some(window);
 

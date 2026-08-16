@@ -97,14 +97,7 @@ fn step1<'a>(section_cookie: &mut SectionCookie, args: Step1Args<'a>) -> Step2Ar
         .contexts
         .get_mut()
         .iter()
-        .map(|(_, v)| {
-            let mut guard = v.lock();
-            let root_set = &mut guard.root_set;
-
-            let raw_cloned = root_set.get_raw_mut().clone();
-
-            root_set.clone_metadata(raw_cloned)
-        })
+        .map(|(_, v)| v.lock().root_set.clone_boxed())
         .collect::<Vec<_>>();
 
     // Ignore any request that happen during or before root snapshot

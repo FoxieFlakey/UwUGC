@@ -17,7 +17,6 @@ mod type_manager;
 
 pub use object::ObjectPtr;
 pub use root_set::RootSet;
-pub use root_set::RootSetRaw;
 pub use state::AllocType;
 pub use state::Context;
 pub use state::UwUGC;

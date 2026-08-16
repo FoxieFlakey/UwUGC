@@ -1,45 +1,33 @@
-use core::slice;
+use uwugc::{ObjectPtr, RootSet};
 
-use uwugc::{ObjectPtr, RootSet, RootSetRaw};
-
+#[derive(Clone)]
 pub struct DumbRootSet {
-    raw: RootSetRaw,
-    len: usize,
+    set: Vec<Option<ObjectPtr>>
 }
 
 impl DumbRootSet {
-    pub fn new(set: RootSetRaw) -> Self {
+    pub fn new(size: usize) -> Self {
+        let mut set = Vec::new();
+        set.resize(size, None);
         Self {
-            len: set.get_size() / size_of::<Option<ObjectPtr>>(),
-            raw: set,
+            set
         }
     }
 
     // shared reference ensures no mutable reference to the memory
     pub fn as_slice<'a>(&'a self) -> &'a [Option<ObjectPtr>] {
-        unsafe { slice::from_raw_parts(self.raw.get_ptr().cast(), self.len) }
+        &self.set
     }
 
     // &mut ensure nothing accesses the memory
     pub fn as_slice_mut<'a>(&'a mut self) -> &'a mut [Option<ObjectPtr>] {
-        unsafe { slice::from_raw_parts_mut(self.raw.get_ptr().cast(), self.len) }
+        &mut self.set
     }
 }
 
 unsafe impl RootSet for DumbRootSet {
-    fn clone_metadata(&self, set: RootSetRaw) -> Box<dyn RootSet> {
-        Box::new(Self {
-            raw: set,
-            len: self.len,
-        })
-    }
-
-    fn get_raw(&self) -> &RootSetRaw {
-        &self.raw
-    }
-
-    fn get_raw_mut(&mut self) -> &mut RootSetRaw {
-        &mut self.raw
+    fn clone_boxed(&self) -> Box<dyn RootSet> {
+        Box::new(self.clone())
     }
 
     fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr)) {
