@@ -1,5 +1,9 @@
 use std::{
-    mem::MaybeUninit, ptr::NonNull, slice, sync::atomic::{AtomicPtr, Ordering}, time::Instant
+    mem::MaybeUninit,
+    ptr::NonNull,
+    slice,
+    sync::atomic::{AtomicPtr, Ordering},
+    time::Instant,
 };
 
 use uwugc::{AllocType, Context, ObjectPtr, RootSet, RootSetRaw, TypeManager, UwUGC};
@@ -20,8 +24,9 @@ fn make_message(ctx: &mut Context<'_, DumbRootSet>, n: u8) -> Option<ObjectPtr> 
         })
         .inspect(|x| {
             // SAFETY: We allocated MSG_SIZE bytes
-            let slice =
-                unsafe { slice::from_raw_parts_mut(x.data().cast::<MaybeUninit<u8>>().as_ptr(), MSG_SIZE) };
+            let slice = unsafe {
+                slice::from_raw_parts_mut(x.data().cast::<MaybeUninit<u8>>().as_ptr(), MSG_SIZE)
+            };
             slice.fill(MaybeUninit::new(n));
         })
 }
@@ -69,7 +74,11 @@ pub fn run(state: &mut UwUGC) {
 }
 
 fn get_window<'a>(ctx: &'a DumbRootSet) -> &'a [AtomicPtr<u8>] {
-    let data = ctx.as_slice()[0].unwrap().data().as_ptr().cast::<AtomicPtr<u8>>();
+    let data = ctx.as_slice()[0]
+        .unwrap()
+        .data()
+        .as_ptr()
+        .cast::<AtomicPtr<u8>>();
 
     // SAFETY: the type ID is corect
     unsafe { slice::from_raw_parts(data, WINDOW_SIZE) }
@@ -111,7 +120,6 @@ unsafe impl TypeManager for LatencyTestTypeManager {
                 // SAFETY: We only ever store valid object pointer in this array
                 visitor(unsafe { ObjectPtr::from_nonnull(ptr) });
             }
-
         }
 
         true
@@ -193,6 +201,3 @@ unsafe impl RootSet for DumbRootSet {
         });
     }
 }
-
-
-

@@ -5,7 +5,14 @@ use rayon::{ThreadPool, ThreadPoolBuilder};
 use userfaultfd::{Uffd, UffdBuilder};
 
 use crate::{
-    bitmap::AtomicBitmap, gc::{HeapInfoLater, relocation_map::FrozenRegistry}, mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, MM, PageTable}, mmap::Mmap, object::ObjectPtr, pipe::Pipe, quirks, type_manager::TypeManagerConcrete
+    bitmap::AtomicBitmap,
+    gc::{HeapInfoLater, relocation_map::FrozenRegistry},
+    mm::{BASE_PAGE_SHIFT, BASE_PAGE_SIZE, FlexPage, MM, PageTable},
+    mmap::Mmap,
+    object::ObjectPtr,
+    pipe::Pipe,
+    quirks,
+    type_manager::TypeManagerConcrete,
 };
 
 pub struct Copier {
@@ -93,7 +100,8 @@ impl CopierActive {
             return;
         }
 
-        let start = (self.page_table.get_base_addr() as *mut u8).wrapping_byte_add(page_id * BASE_PAGE_SIZE);
+        let start = (self.page_table.get_base_addr() as *mut u8)
+            .wrapping_byte_add(page_id * BASE_PAGE_SIZE);
         let len = BASE_PAGE_SIZE;
 
         unsafe { self.state.uffd.zeropage(start.cast(), len, true) }.unwrap();

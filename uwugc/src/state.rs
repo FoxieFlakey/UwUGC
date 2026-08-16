@@ -85,7 +85,8 @@ pub enum CreateError {
 
 impl UwUGC {
     pub fn set_type_manager<T>(&mut self, new_manager: T) -> Box<dyn TypeManager>
-        where T: TypeManager
+    where
+        T: TypeManager,
     {
         let new = TypeManagerConcrete::new(new_manager);
 

@@ -1,5 +1,8 @@
 use std::{
-    any::Any, marker::PhantomData, ops::{Deref, DerefMut}, sync::Arc
+    any::Any,
+    marker::PhantomData,
+    ops::{Deref, DerefMut},
+    sync::Arc,
 };
 
 use arbitrary_int::u61;

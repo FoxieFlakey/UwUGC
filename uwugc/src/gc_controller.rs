@@ -63,7 +63,8 @@ impl GCController {
 
     // Runs 'func' with GC being blocked
     pub fn run_exclusive<F, R>(&self, func: F) -> R
-        where F: FnOnce() -> R
+    where
+        F: FnOnce() -> R,
     {
         let mut state = self.state.lock();
         self.condvar.wait_while(&mut state, |x| x.is_running);

@@ -127,4 +127,3 @@ impl RootSetRaw {
         cloned
     }
 }
-

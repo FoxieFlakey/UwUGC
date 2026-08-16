@@ -25,12 +25,7 @@ unsafe impl TypeManager for NoopTypeManager {
     fn get_size(&self, _: u64) -> Option<usize> {
         None
     }
-    fn iterate_gc_pointers(
-        &self,
-        _: u64,
-        _: ObjectPtr,
-        _: &mut dyn FnMut(ObjectPtr),
-    ) -> bool {
+    fn iterate_gc_pointers(&self, _: u64, _: ObjectPtr, _: &mut dyn FnMut(ObjectPtr)) -> bool {
         false
     }
     fn update_gc_pointers(
@@ -42,4 +37,3 @@ unsafe impl TypeManager for NoopTypeManager {
         false
     }
 }
-
