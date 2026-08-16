@@ -61,6 +61,17 @@ impl GCController {
         self.state.lock().is_requested = false;
     }
 
+    // Runs 'func' with GC being blocked
+    pub fn run_exclusive<F, R>(&self, func: F) -> R
+        where F: FnOnce() -> R
+    {
+        let mut state = self.state.lock();
+        self.condvar.wait_while(&mut state, |x| x.is_running);
+
+        // Now we sure GC cannot run at all
+        func()
+    }
+
     pub fn do_looper(&self, mut on_cycle: impl FnMut()) {
         let mut state = self.state.lock();
         while !state.is_shutting_down {
@@ -73,6 +84,7 @@ impl GCController {
 
             state = self.state.lock();
             state.finished_count += 1;
+            state.is_running = false;
             self.cycle_done_condvar.notify_all();
         }
     }

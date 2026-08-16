@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    mem::ManuallyDrop,
+    mem::{self, ManuallyDrop},
     sync::{Arc, mpsc},
     thread::{self, JoinHandle, ThreadId},
 };
@@ -84,6 +84,20 @@ pub enum CreateError {
 }
 
 impl UwUGC {
+    pub fn set_type_manager<T>(&mut self, new_manager: T) -> Box<dyn TypeManager>
+        where T: TypeManager
+    {
+        let new = TypeManagerConcrete::new(new_manager);
+
+        // With &mut can be sure no other contexts exists, so shouldnt deadlock
+        // This is kept becaue GC potentially still mid cycle because &mut does
+        // not mean GC is not running.
+        self.controller.run_exclusive(|| {
+            let old = mem::replace(&mut self.shared.get_exclusive().get().type_manager, new);
+            old.type_manager
+        })
+    }
+
     // There has to be only one context per thread!
     // or else there contexts that "cant" be parked
     // or safepoint'ed so GC can be deadlocked
@@ -117,7 +131,7 @@ impl UwUGC {
         Context::new(self, shared, shared_data)
     }
 
-    pub fn new<M: TypeManager + 'static>(
+    pub fn new<M: TypeManager>(
         size: usize,
         preferred_primary_base: Option<usize>,
         preferred_second_space: Option<usize>,

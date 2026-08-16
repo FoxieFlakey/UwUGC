@@ -1,3 +1,5 @@
+use std::any::Any;
+
 use arbitrary_int::traits::Integer;
 
 use crate::object::{MetadataCompressed, ObjectKind, ObjectPtr};
@@ -21,7 +23,7 @@ use crate::object::{MetadataCompressed, ObjectKind, ObjectPtr};
 // Do not assume ObjectPtr's address values at all.
 // Only thing its safe is start of an object to end
 // object.
-pub unsafe trait TypeManager: Send + Sync {
+pub unsafe trait TypeManager: Send + Sync + Any + 'static {
     // GC tells that all descriptors are "dead"
     // but do not remove all desciptors yet
     //
