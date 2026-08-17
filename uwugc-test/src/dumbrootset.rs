@@ -28,7 +28,7 @@ unsafe impl RootSet for DumbRootSet {
         Box::new(self.clone())
     }
 
-    fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr)) {
+    fn iter_pointers(&mut self, visitor: &mut dyn FnMut(&ObjectPtr)) {
         self.as_slice().iter().flatten().for_each(visitor);
     }
 

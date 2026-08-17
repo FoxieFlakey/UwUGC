@@ -7,6 +7,6 @@ use crate::object::ObjectPtr;
 // GC else GC willl be unsafe
 pub unsafe trait RootSet: Send + Any {
     fn map_pointers(&mut self, visitor: &mut dyn FnMut(ObjectPtr) -> ObjectPtr);
-    fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr));
+    fn iter_pointers(&mut self, visitor: &mut dyn FnMut(&ObjectPtr));
     fn clone_boxed(&mut self) -> Box<dyn RootSet>;
 }

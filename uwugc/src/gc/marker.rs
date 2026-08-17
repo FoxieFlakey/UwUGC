@@ -92,7 +92,7 @@ impl Marker {
             }
         };
 
-        for root in roots {
+        for mut root in roots {
             root.iter_pointers(&mut visitor);
         }
 
