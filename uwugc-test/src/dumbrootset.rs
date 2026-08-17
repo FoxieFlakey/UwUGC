@@ -2,16 +2,14 @@ use uwugc::{ObjectPtr, RootSet};
 
 #[derive(Clone)]
 pub struct DumbRootSet {
-    set: Vec<Option<ObjectPtr>>
+    set: Vec<Option<ObjectPtr>>,
 }
 
 impl DumbRootSet {
     pub fn new(size: usize) -> Self {
         let mut set = Vec::new();
         set.resize(size, None);
-        Self {
-            set
-        }
+        Self { set }
     }
 
     // shared reference ensures no mutable reference to the memory

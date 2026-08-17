@@ -1,23 +1,20 @@
-use arbitrary_int::prelude::*;
 use std::{
     fmt::Display,
     ops::Not,
     sync::atomic::{AtomicU64, Ordering},
 };
 
-#[repr(transparent)]
 pub struct Metadata {
     word: AtomicU64,
+    payload: u64,
 }
 
-pub enum MetadataEnum {
-    // While these 3, GC calculate it itself. as this
-    // encodes the size directly. The content is ignored
-    PlainOldData(u61),
+// 64-bit or 8 bytes alignment required for Metadata
+const _: () = assert!(align_of::<Metadata>() == 8);
 
-    // 60-bit payload for user of the GC, to determine
-    // what data in an object
-    NotPlainOldData(u61),
+pub enum MetadataEnum {
+    PlainOldData(u64),
+    NotPlainOldData(u64),
 }
 
 // Neither is true nor false as bit can be flipped.
@@ -74,6 +71,9 @@ const PAYLOAD_SHIFT: u64 = 3;
 impl Metadata {
     pub fn new(data: MetadataExpanded) -> Metadata {
         Metadata {
+            payload: match data.payload {
+                MetadataEnum::NotPlainOldData(x) | MetadataEnum::PlainOldData(x) => x,
+            },
             word: AtomicU64::new(Self::encode_word(data)),
         }
     }
@@ -97,8 +97,8 @@ impl Metadata {
 
     fn encode_word(data: MetadataExpanded) -> u64 {
         let mut v = match data.payload {
-            MetadataEnum::PlainOldData(len) => (len.value() << PAYLOAD_SHIFT) | 0b000,
-            MetadataEnum::NotPlainOldData(desc) => (desc.value() << PAYLOAD_SHIFT) | 0b100,
+            MetadataEnum::PlainOldData(len) => (len << PAYLOAD_SHIFT) | 0b000,
+            MetadataEnum::NotPlainOldData(desc) => (desc << PAYLOAD_SHIFT) | 0b100,
         };
 
         if data.is_marked == Bit::Bit1 {
@@ -114,7 +114,7 @@ impl Metadata {
 
     fn decode(&self, v: u64) -> MetadataExpanded {
         let kind = v & OBJECT_TYPE_MASK;
-        let payload = u61::extract_u64(v, PAYLOAD_SHIFT as usize);
+        let payload = self.payload;
 
         let payload = match kind >> OBJECT_TYPE_SHIFT {
             0b0 => MetadataEnum::PlainOldData(payload),

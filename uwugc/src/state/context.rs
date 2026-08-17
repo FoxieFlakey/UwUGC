@@ -5,7 +5,6 @@ use std::{
     sync::Arc,
 };
 
-use arbitrary_int::u61;
 use parking_lot::{Mutex, MutexGuard};
 
 use crate::{
@@ -98,10 +97,8 @@ where
 
     fn to_obj_kind(&self, ty: AllocType) -> ObjectKind {
         match ty {
-            AllocType::PlainOldData(x) => {
-                ObjectKind::PlainOldData(u61::try_new(u64::try_from(x).unwrap()).unwrap())
-            }
-            AllocType::Typed(x) => ObjectKind::NotPlainOldData(u61::try_new(x).unwrap()),
+            AllocType::PlainOldData(x) => ObjectKind::PlainOldData(u64::try_from(x).unwrap()),
+            AllocType::Typed(x) => ObjectKind::NotPlainOldData(x),
         }
     }
 

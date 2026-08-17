@@ -1,7 +1,5 @@
 use std::any::Any;
 
-use arbitrary_int::traits::Integer;
-
 use crate::object::{MetadataCompressed, ObjectKind, ObjectPtr};
 
 // A trait user of GC implements to teach GC
@@ -114,7 +112,7 @@ impl TypeManagerConcrete {
             ObjectKind::NotPlainOldData(payload) => {
                 assert!(
                     self.type_manager
-                        .iterate_gc_pointers(payload.as_u64(), object, visitor)
+                        .iterate_gc_pointers(payload, object, visitor)
                 );
             }
         }
@@ -123,10 +121,8 @@ impl TypeManagerConcrete {
     // Get size of object including header
     pub fn get_size(&self, object: &ObjectPtr) -> usize {
         (match object.metadata().payload {
-            ObjectKind::PlainOldData(x) => x.as_usize(),
-            ObjectKind::NotPlainOldData(type_id) => {
-                self.type_manager.get_size(type_id.as_u64()).unwrap()
-            }
+            ObjectKind::PlainOldData(x) => x.try_into().unwrap(),
+            ObjectKind::NotPlainOldData(type_id) => self.type_manager.get_size(type_id).unwrap(),
         }) + size_of::<MetadataCompressed>()
     }
 
@@ -143,7 +139,7 @@ impl TypeManagerConcrete {
             ObjectKind::NotPlainOldData(payload) => {
                 assert!(
                     self.type_manager
-                        .update_gc_pointers(payload.as_u64(), object, updater)
+                        .update_gc_pointers(payload, object, updater)
                 );
             }
         }

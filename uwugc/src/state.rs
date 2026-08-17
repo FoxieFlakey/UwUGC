@@ -101,10 +101,7 @@ impl UwUGC {
     // There has to be only one context per thread!
     // or else there contexts that "cant" be parked
     // or safepoint'ed so GC can be deadlocked
-    pub fn new_context<'a, T>(
-        &'a self,
-        root_set: T,
-    ) -> Context<'a, T>
+    pub fn new_context<'a, T>(&'a self, root_set: T) -> Context<'a, T>
     where
         T: RootSet + 'static,
     {
@@ -148,9 +145,7 @@ impl UwUGC {
         Ok(UwUGC {
             shared: shared.clone(),
             controller: controller.clone(),
-            gc_thread: ManuallyDrop::new(thread::spawn(move || {
-                gc_thread(shared, controller)
-            })),
+            gc_thread: ManuallyDrop::new(thread::spawn(move || gc_thread(shared, controller))),
         })
     }
 }
@@ -176,11 +171,7 @@ fn gc_thread(shared: Arc<GCSync<SharedState>>, controller: Arc<GCController>) {
             });
 
         println!("[GC] Cycle start");
-        gc_state = Some(gc::do_cycle(
-            &shared,
-            &controller,
-            gc_state.take(),
-        ));
+        gc_state = Some(gc::do_cycle(&shared, &controller, gc_state.take()));
         println!("[GC] Cycle end");
     });
 

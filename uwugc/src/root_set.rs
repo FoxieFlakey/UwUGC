@@ -10,4 +10,3 @@ pub unsafe trait RootSet: Send + Any {
     fn iter_pointers(&self, visitor: &mut dyn FnMut(&ObjectPtr));
     fn clone_boxed(&self) -> Box<dyn RootSet>;
 }
-
