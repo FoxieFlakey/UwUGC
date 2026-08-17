@@ -24,7 +24,7 @@ impl DumbRootSet {
 }
 
 unsafe impl RootSet for DumbRootSet {
-    fn clone_boxed(&self) -> Box<dyn RootSet> {
+    fn clone_boxed(&mut self) -> Box<dyn RootSet> {
         Box::new(self.clone())
     }
 
