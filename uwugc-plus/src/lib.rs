@@ -79,13 +79,14 @@ where
     (args.after_safepoint)();
 }
 
-pub fn alloc<'a, T, F1, F2>(
+pub fn alloc<'a, T, F, F1, F2>(
     safepoint_args: &mut SafepointArgs<'a, F1, F2>,
-    init: T,
+    init: F,
 ) -> Option<RootRef<T>>
 where
     F1: FnMut() + 'a,
     F2: FnMut() + 'a,
+    F: FnOnce() -> T + 'a,
     T: HasDescriptor,
 {
     context::with_context_mut(|x| x.alloc_fast(TypeId::from(T::DESCRIPTOR)))
@@ -98,7 +99,7 @@ where
         .map(|x| {
             let mut ptr = x.get_ptr().data().cast::<MaybeUninit<T>>();
             // SAFETY: Allocator allocated correct sizing and stuffs, so its safe to write
-            unsafe { ptr.as_mut() }.write(init);
+            unsafe { ptr.as_mut() }.write(init());
 
             // SAFETY: We allocated with correct descriptor for given type
             // by constructing Descriptor, caller guarantee its correct. So
