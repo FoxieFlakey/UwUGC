@@ -8,7 +8,7 @@ use std::{
 use parking_lot::{Mutex, MutexGuard};
 
 use crate::{
-    gc_sync, mm,
+    TypeManager, gc_sync, mm,
     object::{Metadata, MetadataCompressed, ObjectKind, ObjectPtr},
     root_set::RootSet,
     state::{SharedState, UwUGC},
@@ -177,6 +177,10 @@ where
             _phantom: PhantomData,
             guard: self.shared_data.lock(),
         }
+    }
+
+    pub fn get_type_manager(&'a self) -> &'a dyn TypeManager {
+        &*self.shared.get().type_manager.type_manager
     }
 }
 
