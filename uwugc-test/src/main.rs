@@ -2,9 +2,10 @@ use uwugc::{ObjectPtr, TypeManager, UwUGC};
 
 mod dumbrootset;
 mod gclatencytest;
+mod uwugc_plus;
 
 fn main() {
-    let mut state = UwUGC::new(
+    let state = UwUGC::new(
         512 * 1024 * 1024,
         Some(0x60ef_0000_0000),
         Some(0x60ff_0000_0000),
@@ -12,10 +13,11 @@ fn main() {
     )
     .unwrap();
 
-    gclatencytest::run(&mut state);
+    let _ = gclatencytest::run;
+    uwugc_plus::run(state);
 }
 
-pub struct NoopTypeManager;
+struct NoopTypeManager;
 
 unsafe impl TypeManager for NoopTypeManager {
     fn assume_all_dead(&mut self) {}
