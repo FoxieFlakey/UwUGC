@@ -15,12 +15,14 @@ use crate::{
 };
 
 mod context;
+mod gcref;
 mod has_descriptor;
 mod typed_root_ref;
 
 pub mod types;
 
 pub struct UwUGCPlus(UwUGC);
+pub use gcref::{GCBoxOption, GCBox};
 pub use has_descriptor::HasDescriptor;
 pub use typed_root_ref::RootRef;
 
@@ -77,7 +79,10 @@ where
     (args.after_safepoint)();
 }
 
-pub fn alloc<'a, T, F1, F2>(safepoint_args: &mut SafepointArgs<'a, F1, F2>, init: T) -> Option<RootRef<T>>
+pub fn alloc<'a, T, F1, F2>(
+    safepoint_args: &mut SafepointArgs<'a, F1, F2>,
+    init: T,
+) -> Option<RootRef<T>>
 where
     F1: FnMut() + 'a,
     F2: FnMut() + 'a,

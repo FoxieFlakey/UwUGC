@@ -21,9 +21,14 @@ use std::sync::atomic::{AtomicI128, AtomicU128};
 // caller have to make sure the descriptor has
 // valid information in accordance to Descriptor
 // for Self. By implementing thing you are making
-// sure that GCRef fileds inside object won't be
+// sure that GCBox fileds inside object won't be
 // assignment directly after construction. Must
 // use .load() and .store() on it
+//
+// Few things is banend is on some bit pattenr GCBox
+// is not present like Option<GCBox<..>> or any case
+// where GCBox might not present is illegal. For nullable
+// use GCBoxNullable instead
 pub unsafe trait HasDescriptor: Unpin {
     const DESCRIPTOR: &'static Descriptor;
 }

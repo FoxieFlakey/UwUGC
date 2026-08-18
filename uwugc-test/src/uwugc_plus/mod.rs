@@ -13,5 +13,3 @@ pub fn run(uwugc: UwUGC) {
         uwugc_plus::safepoint(&mut safepoint);
     }
 }
-
-

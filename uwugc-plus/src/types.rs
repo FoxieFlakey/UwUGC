@@ -16,7 +16,7 @@ use uwugc::{ObjectPtr, TypeManager};
 // for kind
 // 0b00 => static type, a.k.a it points to &'static Descriptor, can immediately
 //  be dereferenced
-// 0b01 => ref array, its a array of GCRefs
+// 0b01 => ref array, its a array of GCBoxs
 // 0b10 => dynamic added type
 
 static PAYLOAD_SHIFT: u32 = 2;
@@ -49,7 +49,7 @@ impl From<&'static Descriptor> for TypeId {
 
 #[derive(Clone)]
 pub struct Descriptor {
-    // Field must contains offset to GCRef<T> fields inside an object
+    // Field must contains offset to GCBox<T> fields inside an object
     pub fields: Cow<'static, [usize]>,
     pub size: usize,
     _private: PhantomData<()>,
@@ -214,7 +214,7 @@ unsafe impl TypeManager for Types {
             let field = unsafe { field.as_ref() }.load(Ordering::Relaxed);
             if let Some(val) = NonNull::new(field) {
                 // SAFETY: The content of each fields are controlled by us
-                // via GCRef and caller make sure it only ever contains valid
+                // via GCBox and caller make sure it only ever contains valid
                 // GC pointer
                 visitor(unsafe { ObjectPtr::from_nonnull(val) });
             }
@@ -250,7 +250,7 @@ unsafe impl TypeManager for Types {
             let field = unsafe { field.as_mut() };
             if let Some(current_val) = NonNull::new(*field) {
                 // SAFETY: The content of each fields are controlled by us
-                // via GCRef and caller make sure it only ever contains valid
+                // via GCBox and caller make sure it only ever contains valid
                 // GC pointer
                 *field = updater(unsafe { ObjectPtr::from_nonnull(current_val) })
                     .into_raw()

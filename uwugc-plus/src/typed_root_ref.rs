@@ -21,6 +21,10 @@ impl<T: Unpin> RootRef<T> {
         }
     }
 
+    pub fn into_raw(self) -> RootRefRaw {
+        self.raw
+    }
+
     pub fn store(this: &mut Self) {
         this.raw.store();
     }
