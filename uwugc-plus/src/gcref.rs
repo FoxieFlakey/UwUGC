@@ -82,7 +82,7 @@ impl<T: Unpin> GCBox<T> {
     // any safepoints
     pub unsafe fn new(init: RootRef<T>) -> Self {
         Self {
-            inner: GCBoxOption::new(Some(init))
+            inner: GCBoxOption::new(Some(init)),
         }
     }
 
@@ -94,6 +94,3 @@ impl<T: Unpin> GCBox<T> {
         self.inner.store(ordering, Some(reference));
     }
 }
-
-
-

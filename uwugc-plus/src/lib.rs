@@ -1,4 +1,7 @@
+#![feature(unsize)]
+#![feature(coerce_unsized)]
 #![feature(map_try_insert)]
+#![feature(set_ptr_value)]
 
 // An high level interface for uwugc with extra structures and alike.
 // inter mixing calls thru this and direct calls are very fragile and
@@ -22,7 +25,7 @@ mod typed_root_ref;
 pub mod types;
 
 pub struct UwUGCPlus(UwUGC);
-pub use gcref::{GCBoxOption, GCBox};
+pub use gcref::{GCBox, GCBoxOption};
 pub use has_descriptor::HasDescriptor;
 pub use typed_root_ref::RootRef;
 
