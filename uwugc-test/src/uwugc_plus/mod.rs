@@ -34,7 +34,7 @@ pub fn run(uwugc: UwUGC) {
 
     for _ in 0..200000 {
         let root_ref: uwugc_plus::RootRef<[i32]> =
-            uwugc_plus::alloc(&mut safepoint, || [0; 16 * 1024]).unwrap();
+            RootRef::coerce(uwugc_plus::alloc(&mut safepoint, || [0; 16 * 1024]).unwrap());
         assert_eq!(root_ref.len(), 16 * 1024, "aaa");
         drop(root_ref);
 

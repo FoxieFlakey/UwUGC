@@ -1,7 +1,6 @@
+#![feature(ptr_metadata)]
 #![feature(unsize)]
-#![feature(coerce_unsized)]
 #![feature(map_try_insert)]
-#![feature(set_ptr_value)]
 
 // An high level interface for uwugc with extra structures and alike.
 // inter mixing calls thru this and direct calls are very fragile and
