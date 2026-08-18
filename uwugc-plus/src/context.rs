@@ -75,17 +75,16 @@ impl RootRefRaw {
     }
 
     pub fn load(&mut self) {
-        let ptr = self.ptr.take().unwrap();
         let idx = self.idx;
-        with_context_mut(move |x| {
+        self.ptr = Some(with_context_mut(move |x| {
             let mut root_set = x.context.get_root_set();
-            root_set.stored_count += 1;
+            root_set.stored_count -= 1;
 
             // Each slot can only be used by one RootRefRaw. So it should not
             // be already loaded
             assert!(root_set.set[idx].is_some(), "Slot is already loaded?");
-            root_set.set[idx] = Some(ptr);
-        });
+            root_set.set[idx].take().unwrap()
+        }));
     }
 }
 
@@ -108,7 +107,7 @@ impl<'a> Context<'a> {
         let mut inner = self.context.get_root_set();
         let Some(free_index) = inner.used_map.first_zero() else {
             let index = inner.set.len();
-            inner.set.insert(index, Some(ptr));
+            inner.set.insert(index, None);
             inner.used_map.push(true);
             inner.exist_count += 1;
 
@@ -120,7 +119,7 @@ impl<'a> Context<'a> {
         };
 
         assert!(inner.set[free_index].is_none());
-        inner.set[free_index] = Some(ptr);
+        inner.set[free_index] = None;
         inner.used_map.set(free_index, true);
         inner.exist_count += 1;
 
