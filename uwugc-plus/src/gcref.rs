@@ -1,12 +1,10 @@
 use std::{
-    marker::PhantomData,
-    ptr::{self, NonNull},
-    sync::atomic::{AtomicPtr, Ordering},
+    borrow::Cow, marker::PhantomData, ptr::{self, NonNull}, sync::atomic::{AtomicPtr, Ordering}
 };
 
 use uwugc::ObjectPtr;
 
-use crate::{RootRef, context};
+use crate::{Descriptor, HasDescriptor, RootRef, context};
 
 // This type is what you'll put inside objects for GC pointers
 // you must not overwrite it once its in heap. Implementing
@@ -29,12 +27,31 @@ pub struct GCBoxOption<T: Unpin + 'static> {
     _phantom: PhantomData<T>,
 }
 
+// # Safety
+// We told where the pointer is, because we are the pointer
+unsafe impl<T: Unpin> HasDescriptor for GCBoxOption<T> {
+    const DESCRIPTOR: &'static crate::Descriptor = &unsafe { Descriptor::new(Cow::Borrowed(&[0]), size_of::<Self>()) };
+}
+
+// # Safety
+// We told where the pointer is, because we are the pointer
+unsafe impl<T: Unpin> HasDescriptor for GCBox<T> {
+    const DESCRIPTOR: &'static crate::Descriptor = &unsafe { Descriptor::new(Cow::Borrowed(&[0]), size_of::<Self>()) };
+}
+
 impl<T: Unpin> GCBoxOption<T> {
+    pub fn none() -> Self {
+        Self {
+            inner: AtomicPtr::new(ptr::null_mut()),
+            _phantom: PhantomData,
+        }
+    }
+
     // # Safety
     // By creating GCBoxOption you have to make sure its store
     // onto heap, where GC can find GCBox before reaching
     // any safepoints
-    pub fn new(init: Option<RootRef<T>>) -> Self {
+    pub unsafe fn new(init: Option<RootRef<T>>) -> Self {
         let ptr = init
             .map(|x| {
                 let raw = RootRef::into_raw(x);
@@ -82,7 +99,7 @@ impl<T: Unpin> GCBox<T> {
     // any safepoints
     pub unsafe fn new(init: RootRef<T>) -> Self {
         Self {
-            inner: GCBoxOption::new(Some(init)),
+            inner: unsafe { GCBoxOption::new(Some(init)) },
         }
     }
 

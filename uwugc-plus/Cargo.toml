@@ -9,3 +9,4 @@ either = "1.17.0"
 parking_lot = "0.12.5"
 uwugc = { version = "0.1.0", path = "../uwugc" }
 yoke = { version = "0.8.3", features = ["derive"] }
+uwugc-plus-derive = { version = "0.1.0", path = "../uwugc-plus-derive/" }

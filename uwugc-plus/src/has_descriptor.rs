@@ -33,6 +33,8 @@ pub unsafe trait HasDescriptor: Unpin {
     const DESCRIPTOR: &'static Descriptor;
 }
 
+pub use uwugc_plus_derive::HasDescriptor;
+
 macro_rules! decl_static_array {
     ($primitive:ty) => {
         unsafe impl<const N: usize> HasDescriptor for [$primitive; N] {

@@ -587,7 +587,16 @@ dependencies = [
  "either",
  "parking_lot",
  "uwugc",
+ "uwugc-plus-derive",
  "yoke",
+]
+
+[[package]]
+name = "uwugc-plus-derive"
+version = "0.1.0"
+dependencies = [
+ "quote",
+ "syn 3.0.3",
 ]
 
 [[package]]

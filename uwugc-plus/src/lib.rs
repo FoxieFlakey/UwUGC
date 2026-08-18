@@ -22,12 +22,13 @@ mod gcref;
 mod has_descriptor;
 mod typed_root_ref;
 
-pub mod types;
+mod types;
 
 pub struct UwUGCPlus(UwUGC);
 pub use gcref::{GCBox, GCBoxOption};
 pub use has_descriptor::HasDescriptor;
 pub use typed_root_ref::RootRef;
+pub use types::Descriptor;
 
 impl UwUGCPlus {
     // Note: passing UwUGC to here, will
@@ -58,7 +59,7 @@ where
 {
     pub before_safepoint: F1,
     pub after_safepoint: F2,
-    phantom: PhantomData<&'a ()>,
+    pub phantom: PhantomData<&'a ()>,
 }
 
 impl Default for SafepointArgs<'_, fn(), fn()> {
