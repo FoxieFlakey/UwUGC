@@ -1,4 +1,4 @@
-use std::{marker::PhantomData, sync::atomic::Ordering};
+use std::sync::atomic::Ordering;
 
 use uwugc::UwUGC;
 use uwugc_plus::{GCBoxOption, HasDescriptor, RootRef, SafepointArgs, UwUGCPlus};
@@ -15,7 +15,22 @@ pub fn run(uwugc: UwUGC) {
     let uwugc = UwUGCPlus::new(uwugc);
     uwugc.init_context();
 
-    let mut safepoint = SafepointArgs::default();
+    let list = uwugc_plus::alloc(&mut SafepointArgs::default(), || SinglyLinked {
+        data: 19,
+        next: GCBoxOption::none(),
+    }).unwrap();
+
+    let mut list = uwugc_plus::alloc(&mut SafepointArgs::default(), || SinglyLinked {
+        data: 38,
+        next: unsafe { GCBoxOption::new(Some(list)) },
+    }).unwrap();
+
+    let mut safepoint = SafepointArgs {
+        state: &mut list,
+        before_safepoint: |x| RootRef::store(x),
+        after_safepoint: |x| RootRef::load(x),
+    };
+
     for _ in 0..200000 {
         let root_ref: uwugc_plus::RootRef<[i32]> =
             uwugc_plus::alloc(&mut safepoint, || [0; 16 * 1024]).unwrap();
@@ -24,4 +39,9 @@ pub fn run(uwugc: UwUGC) {
 
         uwugc_plus::safepoint(&mut safepoint);
     }
+
+    println!("A: {}", list.data);
+
+    let list = list.next.load(Ordering::Relaxed).unwrap();
+    println!("B: {}", list.data);
 }

@@ -7,7 +7,7 @@
 // inter mixing calls thru this and direct calls are very fragile and
 // be done with care.
 
-use std::{marker::PhantomData, mem::MaybeUninit, sync::Arc};
+use std::{mem::MaybeUninit, sync::Arc};
 
 use uwugc::UwUGC;
 use yoke::Yoke;
@@ -52,52 +52,52 @@ impl UwUGCPlus {
 
 // A safepoint structure mainly used for if caller
 // want to store/load some root refs.
-pub struct SafepointArgs<'a, F1, F2>
+pub struct SafepointArgs<T, F1, F2>
 where
-    F1: FnMut() + 'a,
-    F2: FnMut() + 'a,
+    F1: FnMut(&mut T),
+    F2: FnMut(&mut T),
 {
     pub before_safepoint: F1,
     pub after_safepoint: F2,
-    pub phantom: PhantomData<&'a ()>,
+    pub state: T,
 }
 
-impl Default for SafepointArgs<'_, fn(), fn()> {
+impl Default for SafepointArgs<(), fn(&mut ()), fn(&mut ())> {
     fn default() -> Self {
         Self {
-            before_safepoint: || (),
-            after_safepoint: || (),
-            phantom: PhantomData,
+            before_safepoint: |_| (),
+            after_safepoint: |_| (),
+            state: ()
         }
     }
 }
 
 // Free standing functions
-pub fn safepoint<'a, F1, F2>(args: &mut SafepointArgs<'a, F1, F2>)
+pub fn safepoint<T, F1, F2>(args: &mut SafepointArgs<T, F1, F2>)
 where
-    F1: FnMut() + 'a,
-    F2: FnMut() + 'a,
+    F1: FnMut(&mut T),
+    F2: FnMut(&mut T),
 {
-    (args.before_safepoint)();
+    (args.before_safepoint)(&mut args.state);
     context::with_context_mut(|x| x.safepoint());
-    (args.after_safepoint)();
+    (args.after_safepoint)(&mut args.state);
 }
 
-pub fn alloc<'a, T, F, F1, F2>(
-    safepoint_args: &mut SafepointArgs<'a, F1, F2>,
+pub fn alloc<'a, T, State, F, F1, F2>(
+    safepoint_args: &mut SafepointArgs<State, F1, F2>,
     init: F,
 ) -> Option<RootRef<T>>
 where
-    F1: FnMut() + 'a,
-    F2: FnMut() + 'a,
-    F: FnOnce() -> T + 'a,
+    F1: FnMut(&mut State),
+    F2: FnMut(&mut State),
+    F: FnOnce() -> T,
     T: HasDescriptor,
 {
     context::with_context_mut(|x| x.alloc_fast(TypeId::from(T::DESCRIPTOR)))
         .or_else(|| {
-            (safepoint_args.before_safepoint)();
+            (safepoint_args.before_safepoint)(&mut safepoint_args.state);
             let ret = context::with_context_mut(|x| x.alloc_slow(TypeId::from(T::DESCRIPTOR)));
-            (safepoint_args.after_safepoint)();
+            (safepoint_args.after_safepoint)(&mut safepoint_args.state);
             ret
         })
         .map(|x| {
