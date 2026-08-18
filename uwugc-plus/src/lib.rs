@@ -107,6 +107,6 @@ where
             // SAFETY: We allocated with correct descriptor for given type
             // by constructing Descriptor, caller guarantee its correct. So
             // we trust it
-            unsafe { RootRef::from_raw(x) }
+            unsafe { RootRef::from_raw(x, ()) }
         })
 }

@@ -11,13 +11,13 @@ pub struct RootRef<T: Unpin + ?Sized> {
     _phantom: PhantomData<T>,
 }
 
-impl<T: Unpin> RootRef<T> {
+impl<T: Unpin + ?Sized> RootRef<T> {
     // # Safety
     // Caller has to make sure that object being pointed is valid
     // to be interpreted as T
-    pub(crate) unsafe fn from_raw(raw: RootRefRaw) -> Self {
+    pub(crate) unsafe fn from_raw(raw: RootRefRaw, metadata: <T as ptr::Pointee>::Metadata) -> Self {
         Self {
-            metadata: ptr::metadata(raw.get_ptr().into_raw().as_ptr().cast::<T>()),
+            metadata,
             raw,
             _phantom: PhantomData,
         }
@@ -49,7 +49,7 @@ impl<T: Unpin + ?Sized> RootRef<T> {
         }
     }
 
-    fn get_ptr(this: &Self) -> *mut T {
+    pub fn get_ptr(this: &Self) -> *mut T {
         let ptr = this.raw.get_ptr().data().as_ptr();
         ptr::from_raw_parts_mut(ptr, this.metadata)
     }
