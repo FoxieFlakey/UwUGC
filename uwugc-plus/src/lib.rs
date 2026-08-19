@@ -6,16 +6,18 @@
 // inter mixing calls thru this and direct calls are very fragile and
 // be done with care.
 
-use std::{mem::MaybeUninit, sync::Arc};
+use std::{marker::PhantomData, mem::MaybeUninit, sync::Arc};
 
 use uwugc::UwUGC;
 use yoke::Yoke;
 
 use crate::{
+    array_metadata::ArrayHeader,
     context::Context,
     types::{TypeId, Types},
 };
 
+mod array;
 mod array_metadata;
 mod context;
 mod descriptor;
@@ -25,6 +27,7 @@ mod typed_root_ref;
 mod types;
 
 pub struct UwUGCPlus(UwUGC);
+pub use array::Array;
 pub use descriptor::Descriptor;
 pub use gcref::{GCBox, GCBoxOption};
 pub use has_descriptor::HasDescriptor;
@@ -81,6 +84,61 @@ where
     (args.before_safepoint)(&mut args.state);
     context::with_context_mut(|x| x.safepoint());
     (args.after_safepoint)(&mut args.state);
+}
+
+pub fn alloc_array<'a, T, State, F, F1, F2>(
+    safepoint_args: &mut SafepointArgs<State, F1, F2>,
+    extra_bytes: usize,
+    mut init: F,
+    len: usize,
+) -> Option<RootRef<Array<T>>>
+where
+    F1: FnMut(&mut State),
+    F2: FnMut(&mut State),
+    F: FnMut() -> T,
+    T: HasDescriptor,
+{
+    let data_bytes = size_of::<T>() * len;
+    context::with_context_mut(move |x| {
+        x.alloc_fast(
+            TypeId::from(Array::<T>::DESCRIPTOR),
+            data_bytes + extra_bytes,
+        )
+    })
+    .or_else(move || {
+        (safepoint_args.before_safepoint)(&mut safepoint_args.state);
+        let ret = context::with_context_mut(move |x| {
+            x.alloc_slow(
+                TypeId::from(Array::<T>::DESCRIPTOR),
+                data_bytes + extra_bytes,
+            )
+        });
+        (safepoint_args.after_safepoint)(&mut safepoint_args.state);
+        ret
+    })
+    .map(|x| {
+        let mut ptr = x.get_ptr().data().cast::<MaybeUninit<Array<T>>>();
+        // SAFETY: Allocator allocated correct sizing and stuffs, so its safe to write
+        // we're writing header here
+        unsafe { ptr.as_mut() }.write(Array {
+            metadata: ArrayHeader { size: len },
+            _phantom: PhantomData,
+        });
+
+        // SAFETY: We allocated with correct descriptor for given type
+        // by constructing Descriptor, caller guarantee its correct. So
+        // we trust it
+        let mut ret = unsafe { RootRef::<Array<T>>::from_raw(x, ()) };
+
+        // Now lets init the data
+        Array::get_uninit_slice_mut(&mut ret)
+            .iter_mut()
+            .for_each(|x| {
+                x.write(init());
+            });
+
+        ret
+    })
 }
 
 pub fn alloc<'a, T, State, F, F1, F2>(

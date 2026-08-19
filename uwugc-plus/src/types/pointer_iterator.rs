@@ -34,10 +34,34 @@ impl<'a> PointerIterator<'a> {
     pub fn from_type_info(info: &'a TypeInfo<'a>, ptr: ObjectPtr) -> Self {
         let data = match &info.0 {
             TypeInfoImpl::DynamicallyKnown(desc) => {
-                PointerIteratorData::NormalIterator(desc.iter_ptrs())
+                if desc.is_array {
+                    // SAFETY: Code which make Descriptor ensures that the array is prepended
+                    // with ArrayHeader
+                    let meta = unsafe { ptr.data().cast::<ArrayHeader>().as_ref() };
+                    PointerIteratorData::Array(ArrayIter {
+                        current: 0,
+                        len: meta.size,
+                        element_desc: desc,
+                        current_iter: desc.iter_ptrs(),
+                    })
+                } else {
+                    PointerIteratorData::NormalIterator(desc.iter_ptrs())
+                }
             }
             TypeInfoImpl::StaticallyKnown(desc) => {
-                PointerIteratorData::NormalIterator(desc.iter_ptrs())
+                if desc.is_array {
+                    // SAFETY: Code which make Descriptor ensures that the array is prepended
+                    // with ArrayHeader
+                    let meta = unsafe { ptr.data().cast::<ArrayHeader>().as_ref() };
+                    PointerIteratorData::Array(ArrayIter {
+                        current: 0,
+                        len: meta.size,
+                        element_desc: desc,
+                        current_iter: desc.iter_ptrs(),
+                    })
+                } else {
+                    PointerIteratorData::NormalIterator(desc.iter_ptrs())
+                }
             }
             TypeInfoImpl::RefArray(len) => PointerIteratorData::RefArray(0..*len),
         };

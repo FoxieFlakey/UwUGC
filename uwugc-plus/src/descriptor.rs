@@ -12,6 +12,12 @@ pub struct Descriptor {
     // the 'fields' fields
     pub unflattened: &'static [(usize, &'static Descriptor)],
     pub size: usize,
+
+    // If this is true, that mean current Descriptor is [T]
+    // where the rest of field is exact same values from T.
+    // In "array descriptor" it is assume the data prepended
+    // by ArrayHeader
+    pub(crate) is_array: bool,
     _private: PhantomData<()>,
 }
 
@@ -26,6 +32,7 @@ impl Descriptor {
         Self {
             fields,
             size,
+            is_array: false,
             unflattened: &[],
             _private: PhantomData,
         }
@@ -39,6 +46,7 @@ impl Descriptor {
         Self {
             fields,
             size,
+            is_array: false,
             unflattened,
             _private: PhantomData,
         }
@@ -51,6 +59,19 @@ impl Descriptor {
                 fields: self.fields.iter(),
                 childs: self.unflattened.iter(),
             }],
+        }
+    }
+
+    pub(crate) const fn to_array(&'static self) -> Self {
+        Self {
+            fields: Cow::Borrowed(match &self.fields {
+                Cow::Borrowed(x) => x,
+                Cow::Owned(_) => panic!("Some of descriptor has owned fields"),
+            }),
+            is_array: true,
+            size: self.size,
+            unflattened: self.unflattened,
+            _private: PhantomData,
         }
     }
 }
