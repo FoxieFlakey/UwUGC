@@ -19,10 +19,10 @@ const MSG_COUNT: usize = 10_000_000;
 const MSG_SIZE: usize = 1024;
 
 fn make_message(ctx: &mut Context<'_, DumbRootSet>, n: u8) -> Option<ObjectPtr> {
-    ctx.alloc_fast(AllocType::PlainOldData(MSG_SIZE))
+    ctx.alloc_fast(AllocType::PlainOldData(MSG_SIZE), 0)
         .or_else(|| {
             // SAFETY: Dont have anything imporant to save into root set
-            unsafe { ctx.alloc_slow(AllocType::PlainOldData(MSG_SIZE)) }
+            unsafe { ctx.alloc_slow(AllocType::PlainOldData(MSG_SIZE), 0) }
         })
         .inspect(|x| {
             // SAFETY: We allocated MSG_SIZE bytes
@@ -47,7 +47,7 @@ pub fn run(state: &mut UwUGC) {
     let state = &state;
 
     let mut ctx = state.new_context(DumbRootSet::new(10));
-    let window = ctx.alloc_fast(AllocType::Typed(WINDOW_TYPE_ID)).unwrap();
+    let window = ctx.alloc_fast(AllocType::Typed(WINDOW_TYPE_ID), 0).unwrap();
     ctx.get_root_set().as_slice_mut()[0] = Some(window);
 
     let mut worst = None;

@@ -84,6 +84,7 @@ where
 
 pub fn alloc<'a, T, State, F, F1, F2>(
     safepoint_args: &mut SafepointArgs<State, F1, F2>,
+    extra_bytes: usize,
     init: F,
 ) -> Option<RootRef<T>>
 where
@@ -92,10 +93,10 @@ where
     F: FnOnce() -> T,
     T: HasDescriptor,
 {
-    context::with_context_mut(|x| x.alloc_fast(TypeId::from(T::DESCRIPTOR)))
-        .or_else(|| {
+    context::with_context_mut(move |x| x.alloc_fast(TypeId::from(T::DESCRIPTOR), extra_bytes))
+        .or_else(move || {
             (safepoint_args.before_safepoint)(&mut safepoint_args.state);
-            let ret = context::with_context_mut(|x| x.alloc_slow(TypeId::from(T::DESCRIPTOR)));
+            let ret = context::with_context_mut(move |x| x.alloc_slow(TypeId::from(T::DESCRIPTOR), extra_bytes));
             (safepoint_args.after_safepoint)(&mut safepoint_args.state);
             ret
         })

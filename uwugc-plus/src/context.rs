@@ -130,13 +130,13 @@ impl<'a> Context<'a> {
         }
     }
 
-    pub fn alloc_fast(&mut self, type_id: TypeId) -> Option<RootRefRaw> {
+    pub fn alloc_fast(&mut self, type_id: TypeId, extra_bytes: usize) -> Option<RootRefRaw> {
         self.context
-            .alloc_fast(uwugc::AllocType::Typed(type_id.0))
+            .alloc_fast(uwugc::AllocType::Typed(type_id.0), extra_bytes)
             .map(|x| self.add_ptr(x))
     }
 
-    pub fn alloc_slow(&mut self, type_id: TypeId) -> Option<RootRefRaw> {
+    pub fn alloc_slow(&mut self, type_id: TypeId, extra_bytes: usize) -> Option<RootRefRaw> {
         let root_set = self.context.get_root_set();
         assert!(
             root_set.stored_count == root_set.exist_count,
@@ -145,7 +145,7 @@ impl<'a> Context<'a> {
         drop(root_set);
 
         // SAFETY: We checked that all root references are stored first
-        unsafe { self.context.alloc_slow(uwugc::AllocType::Typed(type_id.0)) }
+        unsafe { self.context.alloc_slow(uwugc::AllocType::Typed(type_id.0), extra_bytes) }
             .map(|x| self.add_ptr(x))
     }
 

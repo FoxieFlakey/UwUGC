@@ -15,13 +15,13 @@ pub fn run(uwugc: UwUGC) {
     let uwugc = UwUGCPlus::new(uwugc);
     uwugc.init_context();
 
-    let list = uwugc_plus::alloc(&mut SafepointArgs::default(), || SinglyLinked {
+    let list = uwugc_plus::alloc(&mut SafepointArgs::default(), 0, || SinglyLinked {
         data: 19,
         next: GCBoxOption::none(),
     })
     .unwrap();
 
-    let mut list = uwugc_plus::alloc(&mut SafepointArgs::default(), || SinglyLinked {
+    let mut list = uwugc_plus::alloc(&mut SafepointArgs::default(), 0, || SinglyLinked {
         data: 38,
         // SAFETY: We're indeed assigning here and won't dangle the pointer
         next: unsafe { GCBoxOption::new(Some(list)) },
@@ -36,7 +36,7 @@ pub fn run(uwugc: UwUGC) {
 
     for _ in 0..200000 {
         let root_ref: uwugc_plus::RootRef<[i32]> =
-            RootRef::coerce(uwugc_plus::alloc(&mut safepoint, || [0; 16 * 1024]).unwrap());
+            RootRef::coerce(uwugc_plus::alloc(&mut safepoint, 0, || [0; 16 * 1024]).unwrap());
         assert_eq!(root_ref.len(), 16 * 1024, "aaa");
         drop(root_ref);
 

@@ -81,7 +81,7 @@ where
     // }
     //
     // <use the object>
-    pub fn alloc_fast(&mut self, ty: AllocType) -> Option<ObjectPtr> {
+    pub fn alloc_fast(&mut self, ty: AllocType, extra_bytes: usize) -> Option<ObjectPtr> {
         let kind = self.to_obj_kind(ty);
 
         // SAFETY: We're using same mm consistently
@@ -89,7 +89,7 @@ where
             self.shared_data
                 .lock()
                 .mm_context
-                .alloc(&self.shared.get().mm, self.get_size_of_alloc(ty))
+                .alloc(&self.shared.get().mm, self.get_size_of_alloc(ty) + extra_bytes)
         };
 
         ret.map(|x| unsafe { Self::init_object(self, x.0, kind) })
@@ -146,7 +146,7 @@ where
     //
     // DO NOTE, if you're calee. you dont know what caller might want
     // to keep. SO be VERY careful
-    pub unsafe fn alloc_slow(&mut self, ty: AllocType) -> Option<ObjectPtr> {
+    pub unsafe fn alloc_slow(&mut self, ty: AllocType, extra_bytes: usize) -> Option<ObjectPtr> {
         // Retry 3 times :3
         for _ in 0..3 {
             let kind = self.to_obj_kind(ty);
@@ -155,7 +155,7 @@ where
                 self.shared_data
                     .lock()
                     .mm_context
-                    .alloc(&self.shared.get().mm, self.get_size_of_alloc(ty))
+                    .alloc(&self.shared.get().mm, self.get_size_of_alloc(ty) + extra_bytes)
             };
 
             if ret.is_some() {
