@@ -29,13 +29,13 @@ pub struct GCBoxOption<T: Unpin + ?Sized + 'static> {
 
 // # Safety
 // We told where the pointer is, because we are the pointer
-unsafe impl<T: Unpin> HasDescriptor for GCBoxOption<T> {
+unsafe impl<T: Unpin + ?Sized> HasDescriptor for GCBoxOption<T> {
     const DESCRIPTOR: &'static crate::Descriptor = &unsafe { Descriptor::new(Cow::Borrowed(&[0]), size_of::<Self>()) };
 }
 
 // # Safety
 // We told where the pointer is, because we are the pointer
-unsafe impl<T: Unpin> HasDescriptor for GCBox<T> {
+unsafe impl<T: Unpin + ?Sized> HasDescriptor for GCBox<T> {
     const DESCRIPTOR: &'static crate::Descriptor = &unsafe { Descriptor::new(Cow::Borrowed(&[0]), size_of::<Self>()) };
 }
 

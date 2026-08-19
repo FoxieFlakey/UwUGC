@@ -592,6 +592,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "uwugc-plus-alloc"
+version = "0.1.0"
+dependencies = [
+ "uwugc-plus",
+]
+
+[[package]]
 name = "uwugc-plus-derive"
 version = "0.1.0"
 dependencies = [

@@ -18,18 +18,19 @@ pub fn derive_has_descriptor(input: TokenStream) -> TokenStream {
     let mut generics = input.generics.clone();
     let where_clause = generics.make_where_clause();
 
-    let mut slices = Vec::new();
-    for field in fields {
+    let mut unflattened = Vec::new();
+    for (idx, field) in fields.iter().enumerate() {
         let field_type = &field.ty;
         where_clause.predicates.push(syn::parse_quote!{
             #field_type: ::uwugc_plus::HasDescriptor
         });
 
-        slices.push(quote! {
-            match &<#field_type as ::uwugc_plus::HasDescriptor>::DESCRIPTOR.fields {
-                ::std::borrow::Cow::Borrowed(slice) => slice,
-                ::std::borrow::Cow::Owned(_) => unreachable!(),
-            }
+        let name = field.ident
+            .as_ref()
+            .map(|id| quote! { #id })
+            .unwrap_or_else(|| quote! { #idx });
+        unflattened.push(quote! {
+            (::std::mem::offset_of!(Self, #name), <#field_type as ::uwugc_plus::HasDescriptor>::DESCRIPTOR)
         });
     }
 
@@ -37,45 +38,14 @@ pub fn derive_has_descriptor(input: TokenStream) -> TokenStream {
     let (impl_generics, type_generics, where_clause) = generics.split_for_impl();
     TokenStream::from(quote! {
         unsafe impl #impl_generics ::uwugc_plus::HasDescriptor for #name #type_generics #where_clause {
-            const DESCRIPTOR: &'static ::uwugc_plus::Descriptor = &unsafe { ::uwugc_plus::Descriptor::new(
-                ::std::borrow::Cow::Borrowed({
-                    const SLICES: &[&[usize]] = &[ #(#slices),* ];
-                    const TOTAL_LEN: usize = {
-                        let mut current = 0;
-                        let mut idx = 0;
-                        while idx < SLICES.len() {
-                            current += SLICES[idx].len();
-                            idx += 1;
-                        }
-                        current
-                    };
-
+            const DESCRIPTOR: &'static ::uwugc_plus::Descriptor = &unsafe { ::uwugc_plus::Descriptor::new_unflattened(
+                ::std::borrow::Cow::Borrowed(const {
                     // HasDescriptor requires struct to be aligned to at most 8 bytes
-                    const _: () = assert!(::std::mem::align_of::<#name>() <= 8, #aligned_8_error);
-
-                    const TEMP: [usize; TOTAL_LEN] = {
-                        let mut result = [0; TOTAL_LEN];
-                        let mut i = 0;
-                        let mut out_idx = 0;
-                        while i < SLICES.len() {
-                            let mut j = 0;
-                            let cur = SLICES[i];
-
-                            while j < cur.len() {
-                                result[out_idx] = cur[j];
-                                out_idx += 1;
-                                j += 1;
-                            }
-
-                            i += 1;
-                        }
-
-                        result
-                    };
-
-                    &TEMP
+                    assert!(::std::mem::align_of::<Self>() <= 8, #aligned_8_error);
+                    &[]
                 }),
                 ::std::mem::size_of::<Self>(),
+                &[ #(#unflattened),* ]
             ) };
         }
     })
