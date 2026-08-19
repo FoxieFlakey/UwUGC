@@ -2,7 +2,6 @@ use std::{
     borrow::Cow,
     collections::HashMap,
     iter::Copied,
-    marker::PhantomData,
     ops::Range,
     ptr::{self, NonNull},
     sync::atomic::{AtomicPtr, AtomicU64, Ordering},
@@ -11,6 +10,8 @@ use std::{
 use either::Either;
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 use uwugc::{ObjectPtr, TypeManager};
+
+use crate::Descriptor;
 
 // So GC gave 64-bit payload and then this module reserves 2 bits at bottom
 // for kind
@@ -44,52 +45,6 @@ impl From<&'static Descriptor> for TypeId {
             "Pointer to descriptor aren't properly aligned bottom {PAYLOAD_SHIFT} bits is used when it shouldnt"
         );
         TypeId(ptr)
-    }
-}
-
-#[derive(Clone)]
-pub struct Descriptor {
-    // Field must contains offset to GCBox<T> fields inside an object
-    pub fields: Cow<'static, [usize]>,
-
-    // Due lack of Rust const power, I couldn't flatten this at compile
-    // time. So it has to be flatten at runtime. This field supplements
-    // the 'fields' fields
-    pub unflattened: &'static [ (usize, &'static Descriptor) ],
-    pub size: usize,
-    _private: PhantomData<()>,
-}
-
-impl Descriptor {
-    // # Safety
-    // By creating this Descriptor, caller make sure that fields, size
-    // and other details are consistent.
-    //
-    // Why here? there no unsafe code. I essentially pushed up the requirement
-    // up to here. Because everything else depends Descriptor being sane
-    pub const unsafe fn new(
-        fields: Cow<'static, [usize]>,
-        size: usize,
-    ) -> Self {
-        Self {
-            fields,
-            size,
-            unflattened: &[],
-            _private: PhantomData,
-        }
-    }
-
-    pub const unsafe fn new_unflattened(
-        fields: Cow<'static, [usize]>,
-        size: usize,
-        unflattened: &'static [ (usize, &'static Descriptor) ]
-    ) -> Self {
-        Self {
-            fields,
-            size,
-            unflattened,
-            _private: PhantomData,
-        }
     }
 }
 

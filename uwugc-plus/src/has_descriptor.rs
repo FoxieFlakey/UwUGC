@@ -1,4 +1,3 @@
-use crate::types::Descriptor;
 use std::{
     borrow::Cow,
     cell::{Cell, Ref, RefCell, RefMut},
@@ -34,6 +33,8 @@ pub unsafe trait HasDescriptor: Unpin {
 }
 
 pub use uwugc_plus_derive::HasDescriptor;
+
+use crate::Descriptor;
 
 macro_rules! decl_static_array {
     ($primitive:ty) => {
@@ -95,8 +96,8 @@ macro_rules! decl_generic {
         where
             $generic_one: Unpin + Copy + Clone + 'static,
         {
-            const DESCRIPTOR: &'static $crate::types::Descriptor = &unsafe {
-                $crate::types::Descriptor::new(::std::borrow::Cow::Borrowed(&[]), size_of::<Self>())
+            const DESCRIPTOR: &'static $crate::Descriptor = &unsafe {
+                $crate::Descriptor::new(::std::borrow::Cow::Borrowed(&[]), size_of::<Self>())
             };
         }
     };
@@ -106,8 +107,8 @@ macro_rules! decl_generic {
         where
             $generic_one: Unpin + Copy + Clone + 'static,
         {
-            const DESCRIPTOR: &'static $crate::types::Descriptor = &unsafe {
-                $crate::types::Descriptor::new(::std::borrow::Cow::Borrowed(&[]), size_of::<Self>())
+            const DESCRIPTOR: &'static $crate::Descriptor = &unsafe {
+                $crate::Descriptor::new(::std::borrow::Cow::Borrowed(&[]), size_of::<Self>())
             };
         }
     };
@@ -119,8 +120,8 @@ macro_rules! decl_generic {
             $generic_one: Unpin + Copy + Clone + 'static,
             $generic_two: Unpin + Copy + Clone + 'static,
         {
-            const DESCRIPTOR: &'static $crate::types::Descriptor = &unsafe {
-                $crate::types::Descriptor::new(::std::borrow::Cow::Borrowed(&[]), size_of::<Self>())
+            const DESCRIPTOR: &'static $crate::Descriptor = &unsafe {
+                $crate::Descriptor::new(::std::borrow::Cow::Borrowed(&[]), size_of::<Self>())
             };
         }
     };

@@ -20,14 +20,14 @@ mod context;
 mod gcref;
 mod has_descriptor;
 mod typed_root_ref;
-
+mod descriptor;
 mod types;
 
 pub struct UwUGCPlus(UwUGC);
 pub use gcref::{GCBox, GCBoxOption};
 pub use has_descriptor::HasDescriptor;
 pub use typed_root_ref::RootRef;
-pub use types::Descriptor;
+pub use descriptor::Descriptor;
 
 impl UwUGCPlus {
     // Note: passing UwUGC to here, will
