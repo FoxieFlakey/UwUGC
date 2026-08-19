@@ -1,7 +1,6 @@
 use std::{
     borrow::Cow,
     marker::PhantomData,
-    mem::MaybeUninit,
     ptr::{self, NonNull},
     sync::atomic::{AtomicPtr, Ordering},
 };
@@ -27,7 +26,6 @@ use crate::{Descriptor, HasDescriptor, RootRef, context};
 
 pub struct GCBoxOption<T: Unpin + 'static> {
     inner: AtomicPtr<u8>,
-    metadata: MaybeUninit<<T as std::ptr::Pointee>::Metadata>,
     _phantom: PhantomData<T>,
 }
 
@@ -49,7 +47,6 @@ impl<T: Unpin> GCBoxOption<T> {
     pub fn none() -> Self {
         Self {
             inner: AtomicPtr::new(ptr::null_mut()),
-            metadata: MaybeUninit::uninit(),
             _phantom: PhantomData,
         }
     }
@@ -71,10 +68,6 @@ impl<T: Unpin> GCBoxOption<T> {
     // onto heap, where GC can find GCBox before reaching
     // any safepoints
     pub unsafe fn new(init: Option<RootRef<T>>) -> Self {
-        let meta = init
-            .as_ref()
-            .map(RootRef::get_ptr)
-            .map(|x| ptr::metadata(x));
         let ptr = init
             .map(|x| {
                 let raw = RootRef::into_raw(x);
@@ -84,32 +77,23 @@ impl<T: Unpin> GCBoxOption<T> {
 
         Self {
             inner: AtomicPtr::new(ptr),
-            metadata: meta
-                .map(MaybeUninit::new)
-                .unwrap_or_else(MaybeUninit::uninit),
             _phantom: PhantomData,
         }
     }
 
     pub fn load(&self) -> Option<RootRef<T>> {
         let ptr = NonNull::new(self.inner.load(Ordering::Relaxed))?;
-        // SAFETY: It is initialize if ptr is non null
-        let metadata = unsafe { self.metadata.assume_init() };
 
         Some(context::with_context_mut(move |x| {
             // SAFETY: GCBoxOption will only contains valid GC pointer
             let root_ref = x.add_ptr(unsafe { ObjectPtr::from_nonnull(ptr) });
 
             // SAFETY: The object can be interpret as T, because no other ptr can be placed
-            unsafe { RootRef::from_raw(root_ref, metadata) }
+            unsafe { RootRef::from_raw(root_ref, ()) }
         }))
     }
 
     pub fn store(&mut self, reference: Option<RootRef<T>>) {
-        let meta = reference
-            .as_ref()
-            .map(RootRef::get_ptr)
-            .map(|x| ptr::metadata(x));
         let ptr = reference
             .map(|x| {
                 let raw = RootRef::into_raw(x);
@@ -117,9 +101,6 @@ impl<T: Unpin> GCBoxOption<T> {
             })
             .unwrap_or(ptr::null_mut());
 
-        self.metadata = meta
-            .map(MaybeUninit::new)
-            .unwrap_or_else(MaybeUninit::uninit);
         self.inner.store(ptr, Ordering::Relaxed);
     }
 }
