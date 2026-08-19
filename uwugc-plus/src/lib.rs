@@ -32,6 +32,7 @@ pub use descriptor::Descriptor;
 pub use gcref::{GCBox, GCBoxOption};
 pub use has_descriptor::HasDescriptor;
 pub use typed_root_ref::RootRef;
+pub use context::RootRefRaw;
 
 impl UwUGCPlus {
     // Note: passing UwUGC to here, will
@@ -56,6 +57,38 @@ impl UwUGCPlus {
 pub trait Safepoint {
     fn before_safepoint(&mut self);
     fn after_safepoint(&mut self);
+}
+
+impl<'a, T> Safepoint for T
+    where T: AsRef<[&'a RootRefRaw]>
+{
+    fn before_safepoint(&mut self) {
+        self.as_ref()
+            .iter()
+            .for_each(|x| {
+                x.store();
+            });
+    }
+
+    fn after_safepoint(&mut self) {
+        self.as_ref()
+            .iter()
+            .for_each(|x| {
+                x.load();
+            });
+    }
+}
+
+// Convenient macro for saving/loading root refs
+#[macro_export]
+macro_rules! safe_roots {
+    ($($item:expr),* $(,)?) => {
+        [
+            $(
+                $crate::RootRef::as_raw($item)
+            )*
+        ]
+    };
 }
 
 // Free standing functions
@@ -119,7 +152,7 @@ where
 }
 
 pub fn alloc<'a, T, F>(
-    safepoint_args: &mut dyn Safepoint,
+    safepoint: &mut dyn Safepoint,
     extra_bytes: usize,
     init: F,
 ) -> Option<RootRef<T>>
@@ -129,11 +162,11 @@ where
 {
     context::with_context_mut(move |x| x.alloc_fast(TypeId::from(T::DESCRIPTOR), extra_bytes))
         .or_else(move || {
-            safepoint_args.before_safepoint();
+            safepoint.before_safepoint();
             let ret = context::with_context_mut(move |x| {
                 x.alloc_slow(TypeId::from(T::DESCRIPTOR), extra_bytes)
             });
-            safepoint_args.after_safepoint();
+            safepoint.after_safepoint();
             ret
         })
         .map(|x| {

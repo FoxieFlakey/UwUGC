@@ -29,8 +29,12 @@ impl<T: Unpin + ?Sized> RootRef<T> {
 }
 
 impl<T: Unpin + ?Sized> RootRef<T> {
-    pub fn into_raw(self) -> RootRefRaw {
-        self.raw
+    pub fn into_raw(this: Self) -> RootRefRaw {
+        this.raw
+    }
+
+    pub fn as_raw(this: &Self) -> &RootRefRaw {
+        &this.raw
     }
 
     pub fn store(this: &mut Self) {

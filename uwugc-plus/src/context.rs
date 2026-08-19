@@ -1,6 +1,6 @@
 // This assume each thread has own root set
 
-use std::{cell::RefCell, marker::PhantomData, sync::Arc};
+use std::{cell::{Cell, RefCell}, marker::PhantomData, sync::Arc};
 
 use bitvec::vec::BitVec;
 use uwugc::{ObjectPtr, UwUGC};
@@ -25,7 +25,7 @@ pub struct Context<'a> {
 }
 
 pub struct RootRefRaw {
-    ptr: Option<ObjectPtr>,
+    ptr: Cell<Option<ObjectPtr>>,
     idx: usize,
 
     // RootRef is right belong'ed to one thread
@@ -36,7 +36,7 @@ pub struct RootRefRaw {
 impl Drop for RootRefRaw {
     fn drop(&mut self) {
         let idx = self.idx;
-        let is_stored = self.ptr.is_none();
+        let is_stored = self.ptr.get().is_none();
         with_context_mut(move |x| {
             let mut root_set = x.context.get_root_set();
             root_set.exist_count -= 1;
@@ -55,10 +55,11 @@ impl Drop for RootRefRaw {
 impl RootRefRaw {
     pub fn get_ptr(&self) -> ObjectPtr {
         self.ptr
+            .get()
             .expect("This root ref is stored to root set, please load first")
     }
 
-    pub fn store(&mut self) {
+    pub fn store(&self) {
         let ptr = self.ptr.take().unwrap();
         let idx = self.idx;
         with_context_mut(move |x| {
@@ -74,9 +75,9 @@ impl RootRefRaw {
         });
     }
 
-    pub fn load(&mut self) {
+    pub fn load(&self) {
         let idx = self.idx;
-        self.ptr = Some(with_context_mut(move |x| {
+        self.ptr.set(Some(with_context_mut(move |x| {
             let mut root_set = x.context.get_root_set();
             root_set.stored_count -= 1;
 
@@ -84,7 +85,7 @@ impl RootRefRaw {
             // be already loaded
             assert!(root_set.set[idx].is_some(), "Slot is already loaded?");
             root_set.set[idx].take().unwrap()
-        }));
+        })));
     }
 }
 
@@ -113,7 +114,7 @@ impl<'a> Context<'a> {
 
             return RootRefRaw {
                 idx: index,
-                ptr: Some(ptr),
+                ptr: Cell::new(Some(ptr)),
                 _no_send_sync: PhantomData,
             };
         };
@@ -125,7 +126,7 @@ impl<'a> Context<'a> {
 
         RootRefRaw {
             idx: free_index,
-            ptr: Some(ptr),
+            ptr: Cell::new(Some(ptr)),
             _no_send_sync: PhantomData,
         }
     }
