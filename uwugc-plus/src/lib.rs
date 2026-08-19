@@ -54,15 +54,33 @@ impl UwUGCPlus {
     }
 }
 
+// Safe point for types that don't need &mut self
 pub trait Safepoint {
+    fn before_safepoint(&self);
+    fn after_safepoint(&self);
+}
+
+pub trait SafepointMut {
     fn before_safepoint(&mut self);
     fn after_safepoint(&mut self);
+}
+
+impl<T> SafepointMut for T
+    where T: Safepoint
+{
+    fn after_safepoint(&mut self) {
+        (self as &dyn Safepoint).after_safepoint();
+    }
+
+    fn before_safepoint(&mut self) {
+        (self as &dyn Safepoint).before_safepoint();
+    }
 }
 
 impl<'a, T> Safepoint for T
     where T: AsRef<[&'a RootRefRaw]>
 {
-    fn before_safepoint(&mut self) {
+    fn before_safepoint(&self) {
         self.as_ref()
             .iter()
             .for_each(|x| {
@@ -70,7 +88,7 @@ impl<'a, T> Safepoint for T
             });
     }
 
-    fn after_safepoint(&mut self) {
+    fn after_safepoint(&self) {
         self.as_ref()
             .iter()
             .for_each(|x| {
@@ -92,14 +110,14 @@ macro_rules! safe_roots {
 }
 
 // Free standing functions
-pub fn safepoint(safepoint: &mut dyn Safepoint) {
+pub fn safepoint(safepoint: &mut dyn SafepointMut) {
     safepoint.before_safepoint();
     context::with_context_mut(|x| x.safepoint());
     safepoint.after_safepoint();
 }
 
 pub fn alloc_array<'a, T, F>(
-    safepoint: &mut dyn Safepoint,
+    safepoint: &mut dyn SafepointMut,
     extra_bytes: usize,
     mut init: F,
     len: usize,
@@ -152,7 +170,7 @@ where
 }
 
 pub fn alloc<'a, T, F>(
-    safepoint: &mut dyn Safepoint,
+    safepoint: &mut dyn SafepointMut,
     extra_bytes: usize,
     init: F,
 ) -> Option<RootRef<T>>
