@@ -34,7 +34,7 @@ pub use gcref::{GCBox, GCBoxOption};
 pub use has_descriptor::HasDescriptor;
 pub use typed_root_ref::RootRef;
 pub use context::RootRefRaw;
-pub use safepoint::{Safepoint, SafepointMut};
+pub use safepoint::{Safepoint, SafepointMut, SafepointList};
 
 impl UwUGCPlus {
     // Note: passing UwUGC to here, will

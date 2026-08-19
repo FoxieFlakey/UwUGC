@@ -66,3 +66,23 @@ macro_rules! safe_roots {
     };
 }
 
+pub struct SafepointList<'a>(&'a mut [&'a mut dyn SafepointMut]);
+
+impl SafepointMut for SafepointList<'_> {
+    fn before_safepoint(&mut self) {
+        self.0
+            .iter_mut()
+            .for_each(|x| {
+                x.before_safepoint();
+            });
+    }
+
+    fn after_safepoint(&mut self) {
+        self.0
+            .iter_mut()
+            .for_each(|x| {
+                x.after_safepoint();
+            });
+    }
+}
+
