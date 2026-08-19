@@ -43,6 +43,6 @@ pub fn run(uwugc: UwUGC) {
 
     println!("A: {}", list.data);
 
-    let list = list.next.load().unwrap();
+    let list = list.next.get_ref().unwrap();
     println!("B: {}", list.data);
 }

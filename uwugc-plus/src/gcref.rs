@@ -7,7 +7,7 @@ use std::{
 
 use uwugc::ObjectPtr;
 
-use crate::{Descriptor, HasDescriptor, RootRef, context};
+use crate::{Descriptor, HasDescriptor, RootRef};
 
 // This type is what you'll put inside objects for GC pointers
 // you must not overwrite it once its in heap. Implementing
@@ -81,16 +81,16 @@ impl<T: Unpin> GCBoxOption<T> {
         }
     }
 
-    pub fn load(&self) -> Option<RootRef<T>> {
-        let ptr = NonNull::new(self.inner.load(Ordering::Relaxed))?;
+    pub fn get_ref<'a>(&'a self) -> Option<&'a T> {
+        // SAFETY: We have shared reference, this is safe
+        self.get_ptr()
+            .map(|x| unsafe { x.as_ref() })
+    }
 
-        Some(context::with_context_mut(move |x| {
-            // SAFETY: GCBoxOption will only contains valid GC pointer
-            let root_ref = x.add_ptr(unsafe { ObjectPtr::from_nonnull(ptr) });
-
-            // SAFETY: The object can be interpret as T, because no other ptr can be placed
-            unsafe { RootRef::from_raw(root_ref, ()) }
-        }))
+    pub fn get_mut<'a>(&'a mut self) -> Option<&'a mut T> {
+        // SAFETY: We have mutable reference, this is safe
+        self.get_ptr()
+            .map(|mut x| unsafe { x.as_mut() })
     }
 
     pub fn store(&mut self, reference: Option<RootRef<T>>) {
@@ -120,8 +120,18 @@ impl<T: Unpin> GCBox<T> {
         }
     }
 
-    pub fn load(&self) -> RootRef<T> {
-        self.inner.load().expect("GCBox is nonnullable")
+    // This pointer valid as long as no safepoint
+    // occur (means the object is not moved)
+    pub fn get_ptr(&self) -> NonNull<T> {
+        self.inner.get_ptr().unwrap()
+    }
+
+    pub fn get_ref<'a>(&'a self) -> &'a T {
+        &self.inner.get_ref().unwrap()
+    }
+
+    pub fn get_mut<'a>(&'a mut self) -> &'a mut T {
+        self.inner.get_mut().unwrap()
     }
 
     pub fn store(&mut self, reference: RootRef<T>) {
