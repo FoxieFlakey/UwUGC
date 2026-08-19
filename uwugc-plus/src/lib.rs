@@ -53,48 +53,25 @@ impl UwUGCPlus {
     }
 }
 
-// A safepoint structure mainly used for if caller
-// want to store/load some root refs.
-pub struct SafepointArgs<T, F1, F2>
-where
-    F1: FnMut(&mut T),
-    F2: FnMut(&mut T),
-{
-    pub before_safepoint: F1,
-    pub after_safepoint: F2,
-    pub state: T,
-}
-
-impl Default for SafepointArgs<(), fn(&mut ()), fn(&mut ())> {
-    fn default() -> Self {
-        Self {
-            before_safepoint: |_| (),
-            after_safepoint: |_| (),
-            state: (),
-        }
-    }
+pub trait Safepoint {
+    fn before_safepoint(&mut self);
+    fn after_safepoint(&mut self);
 }
 
 // Free standing functions
-pub fn safepoint<T, F1, F2>(args: &mut SafepointArgs<T, F1, F2>)
-where
-    F1: FnMut(&mut T),
-    F2: FnMut(&mut T),
-{
-    (args.before_safepoint)(&mut args.state);
+pub fn safepoint(safepoint: &mut dyn Safepoint) {
+    safepoint.before_safepoint();
     context::with_context_mut(|x| x.safepoint());
-    (args.after_safepoint)(&mut args.state);
+    safepoint.after_safepoint();
 }
 
-pub fn alloc_array<'a, T, State, F, F1, F2>(
-    safepoint_args: &mut SafepointArgs<State, F1, F2>,
+pub fn alloc_array<'a, T, F>(
+    safepoint: &mut dyn Safepoint,
     extra_bytes: usize,
     mut init: F,
     len: usize,
 ) -> Option<RootRef<Array<T>>>
 where
-    F1: FnMut(&mut State),
-    F2: FnMut(&mut State),
     F: FnMut() -> T,
     T: HasDescriptor,
 {
@@ -106,14 +83,14 @@ where
         )
     })
     .or_else(move || {
-        (safepoint_args.before_safepoint)(&mut safepoint_args.state);
+        safepoint.before_safepoint();
         let ret = context::with_context_mut(move |x| {
             x.alloc_slow(
                 TypeId::from(Array::<T>::DESCRIPTOR),
                 data_bytes + extra_bytes,
             )
         });
-        (safepoint_args.after_safepoint)(&mut safepoint_args.state);
+        safepoint.after_safepoint();
         ret
     })
     .map(|x| {
@@ -141,24 +118,22 @@ where
     })
 }
 
-pub fn alloc<'a, T, State, F, F1, F2>(
-    safepoint_args: &mut SafepointArgs<State, F1, F2>,
+pub fn alloc<'a, T, F>(
+    safepoint_args: &mut dyn Safepoint,
     extra_bytes: usize,
     init: F,
 ) -> Option<RootRef<T>>
 where
-    F1: FnMut(&mut State),
-    F2: FnMut(&mut State),
     F: FnOnce() -> T,
     T: HasDescriptor,
 {
     context::with_context_mut(move |x| x.alloc_fast(TypeId::from(T::DESCRIPTOR), extra_bytes))
         .or_else(move || {
-            (safepoint_args.before_safepoint)(&mut safepoint_args.state);
+            safepoint_args.before_safepoint();
             let ret = context::with_context_mut(move |x| {
                 x.alloc_slow(TypeId::from(T::DESCRIPTOR), extra_bytes)
             });
-            (safepoint_args.after_safepoint)(&mut safepoint_args.state);
+            safepoint_args.after_safepoint();
             ret
         })
         .map(|x| {

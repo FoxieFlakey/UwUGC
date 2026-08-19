@@ -1,5 +1,5 @@
 use uwugc::UwUGC;
-use uwugc_plus::{GCBoxOption, HasDescriptor, RootRef, SafepointArgs, UwUGCPlus};
+use uwugc_plus::{GCBoxOption, HasDescriptor, RootRef, Safepoint, UwUGCPlus};
 
 // Spamming garbage objects test
 
@@ -7,6 +7,41 @@ use uwugc_plus::{GCBoxOption, HasDescriptor, RootRef, SafepointArgs, UwUGCPlus};
 pub struct SinglyLinked {
     next: GCBoxOption<SinglyLinked>,
     data: u32,
+}
+
+// A safepoint structure mainly used for if caller
+// want to store/load some root refs.
+pub struct SafepointArgs<T, F1, F2>
+where
+    F1: FnMut(&mut T),
+    F2: FnMut(&mut T),
+{
+    pub before_safepoint: F1,
+    pub after_safepoint: F2,
+    pub state: T,
+}
+
+impl Default for SafepointArgs<(), fn(&mut ()), fn(&mut ())> {
+    fn default() -> Self {
+        Self {
+            before_safepoint: |_| (),
+            after_safepoint: |_| (),
+            state: (),
+        }
+    }
+}
+
+impl<S, F1, F2> Safepoint for SafepointArgs<S, F1, F2>
+    where F1: FnMut(&mut S),
+        F2: FnMut(&mut S),
+{
+    fn after_safepoint(&mut self) {
+        (self.after_safepoint)(&mut self.state)
+    }
+
+    fn before_safepoint(&mut self) {
+        (self.before_safepoint)(&mut self.state)
+    }
 }
 
 pub fn run(uwugc: UwUGC) {
