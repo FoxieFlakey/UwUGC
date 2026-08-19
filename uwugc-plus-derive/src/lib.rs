@@ -21,11 +21,12 @@ pub fn derive_has_descriptor(input: TokenStream) -> TokenStream {
     let mut unflattened = Vec::new();
     for (idx, field) in fields.iter().enumerate() {
         let field_type = &field.ty;
-        where_clause.predicates.push(syn::parse_quote!{
+        where_clause.predicates.push(syn::parse_quote! {
             #field_type: ::uwugc_plus::HasDescriptor
         });
 
-        let name = field.ident
+        let name = field
+            .ident
             .as_ref()
             .map(|id| quote! { #id })
             .unwrap_or_else(|| quote! { #idx });
@@ -50,5 +51,3 @@ pub fn derive_has_descriptor(input: TokenStream) -> TokenStream {
         }
     })
 }
-
-

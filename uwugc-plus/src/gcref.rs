@@ -1,5 +1,9 @@
 use std::{
-    borrow::Cow, marker::PhantomData, mem::MaybeUninit, ptr::{self, NonNull}, sync::atomic::{AtomicPtr, Ordering}
+    borrow::Cow,
+    marker::PhantomData,
+    mem::MaybeUninit,
+    ptr::{self, NonNull},
+    sync::atomic::{AtomicPtr, Ordering},
 };
 
 use uwugc::ObjectPtr;
@@ -30,13 +34,15 @@ pub struct GCBoxOption<T: Unpin + 'static> {
 // # Safety
 // We told where the pointer is, because we are the pointer
 unsafe impl<T: Unpin> HasDescriptor for GCBoxOption<T> {
-    const DESCRIPTOR: &'static crate::Descriptor = &unsafe { Descriptor::new(Cow::Borrowed(&[0]), size_of::<Self>()) };
+    const DESCRIPTOR: &'static crate::Descriptor =
+        &unsafe { Descriptor::new(Cow::Borrowed(&[0]), size_of::<Self>()) };
 }
 
 // # Safety
 // We told where the pointer is, because we are the pointer
 unsafe impl<T: Unpin> HasDescriptor for GCBox<T> {
-    const DESCRIPTOR: &'static crate::Descriptor = &unsafe { Descriptor::new(Cow::Borrowed(&[0]), size_of::<Self>()) };
+    const DESCRIPTOR: &'static crate::Descriptor =
+        &unsafe { Descriptor::new(Cow::Borrowed(&[0]), size_of::<Self>()) };
 }
 
 impl<T: Unpin> GCBoxOption<T> {
@@ -53,7 +59,8 @@ impl<T: Unpin> GCBoxOption<T> {
     // onto heap, where GC can find GCBox before reaching
     // any safepoints
     pub unsafe fn new(init: Option<RootRef<T>>) -> Self {
-        let meta = init.as_ref()
+        let meta = init
+            .as_ref()
             .map(RootRef::get_ptr)
             .map(|x| ptr::metadata(x));
         let ptr = init
@@ -65,7 +72,9 @@ impl<T: Unpin> GCBoxOption<T> {
 
         Self {
             inner: AtomicPtr::new(ptr),
-            metadata: meta.map(MaybeUninit::new).unwrap_or_else(MaybeUninit::uninit),
+            metadata: meta
+                .map(MaybeUninit::new)
+                .unwrap_or_else(MaybeUninit::uninit),
             _phantom: PhantomData,
         }
     }
@@ -85,7 +94,8 @@ impl<T: Unpin> GCBoxOption<T> {
     }
 
     pub fn store(&mut self, ordering: Ordering, reference: Option<RootRef<T>>) {
-        let meta = reference.as_ref()
+        let meta = reference
+            .as_ref()
             .map(RootRef::get_ptr)
             .map(|x| ptr::metadata(x));
         let ptr = reference
@@ -95,7 +105,9 @@ impl<T: Unpin> GCBoxOption<T> {
             })
             .unwrap_or(ptr::null_mut());
 
-        self.metadata = meta.map(MaybeUninit::new).unwrap_or_else(MaybeUninit::uninit);
+        self.metadata = meta
+            .map(MaybeUninit::new)
+            .unwrap_or_else(MaybeUninit::uninit);
         self.inner.store(ptr, ordering);
     }
 }

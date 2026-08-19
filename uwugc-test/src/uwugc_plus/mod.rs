@@ -18,13 +18,15 @@ pub fn run(uwugc: UwUGC) {
     let list = uwugc_plus::alloc(&mut SafepointArgs::default(), || SinglyLinked {
         data: 19,
         next: GCBoxOption::none(),
-    }).unwrap();
+    })
+    .unwrap();
 
     let mut list = uwugc_plus::alloc(&mut SafepointArgs::default(), || SinglyLinked {
         data: 38,
         // SAFETY: We're indeed assigning here and won't dangle the pointer
         next: unsafe { GCBoxOption::new(Some(list)) },
-    }).unwrap();
+    })
+    .unwrap();
 
     let mut safepoint = SafepointArgs {
         state: &mut list,

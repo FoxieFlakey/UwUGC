@@ -17,17 +17,17 @@ use crate::{
 };
 
 mod context;
+mod descriptor;
 mod gcref;
 mod has_descriptor;
 mod typed_root_ref;
-mod descriptor;
 mod types;
 
 pub struct UwUGCPlus(UwUGC);
+pub use descriptor::Descriptor;
 pub use gcref::{GCBox, GCBoxOption};
 pub use has_descriptor::HasDescriptor;
 pub use typed_root_ref::RootRef;
-pub use descriptor::Descriptor;
 
 impl UwUGCPlus {
     // Note: passing UwUGC to here, will
@@ -66,7 +66,7 @@ impl Default for SafepointArgs<(), fn(&mut ()), fn(&mut ())> {
         Self {
             before_safepoint: |_| (),
             after_safepoint: |_| (),
-            state: ()
+            state: (),
         }
     }
 }

@@ -1,6 +1,7 @@
 use std::{
     marker::{PhantomData, Unsize},
-    ops::{Deref, DerefMut}, ptr,
+    ops::{Deref, DerefMut},
+    ptr,
 };
 
 use crate::context::RootRefRaw;
@@ -15,7 +16,10 @@ impl<T: Unpin + ?Sized> RootRef<T> {
     // # Safety
     // Caller has to make sure that object being pointed is valid
     // to be interpreted as T
-    pub(crate) unsafe fn from_raw(raw: RootRefRaw, metadata: <T as ptr::Pointee>::Metadata) -> Self {
+    pub(crate) unsafe fn from_raw(
+        raw: RootRefRaw,
+        metadata: <T as ptr::Pointee>::Metadata,
+    ) -> Self {
         Self {
             metadata,
             raw,
@@ -38,14 +42,14 @@ impl<T: Unpin + ?Sized> RootRef<T> {
     }
 
     pub fn coerce<U>(this: Self) -> RootRef<U>
-        where
-            T: Unsize<U>,
-            U: ?Sized + Unpin,
+    where
+        T: Unsize<U>,
+        U: ?Sized + Unpin,
     {
         RootRef {
             metadata: ptr::metadata(Self::get_ptr(&this) as *mut U),
             raw: this.raw,
-            _phantom: PhantomData
+            _phantom: PhantomData,
         }
     }
 

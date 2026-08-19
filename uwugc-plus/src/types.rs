@@ -1,17 +1,17 @@
 use std::{
     borrow::Cow,
     collections::HashMap,
-    iter::Copied,
-    ops::Range,
     ptr::{self, NonNull},
     sync::atomic::{AtomicPtr, AtomicU64, Ordering},
 };
 
-use either::Either;
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 use uwugc::{ObjectPtr, TypeManager};
 
-use crate::{Descriptor, descriptor};
+use crate::Descriptor;
+
+mod pointer_iterator;
+pub use pointer_iterator::PointerIterator;
 
 // So GC gave 64-bit payload and then this module reserves 2 bits at bottom
 // for kind
@@ -134,11 +134,7 @@ pub struct TypeInfo<'a>(TypeInfoImpl<'a>);
 impl<'a> TypeInfo<'a> {
     // This return offset to each GC pointer
     pub fn iter_pointers(&'a self) -> PointerIterator<'a> {
-        PointerIterator(match &self.0 {
-            TypeInfoImpl::DynamicallyKnown(desc) => Either::Left(desc.iter_ptrs()),
-            TypeInfoImpl::StaticallyKnown(desc) => Either::Left(desc.iter_ptrs()),
-            TypeInfoImpl::RefArray(len) => Either::Right(0..*len),
-        })
+        PointerIterator::from_type_info(self)
     }
 
     pub fn get_size(&self) -> usize {
@@ -147,16 +143,6 @@ impl<'a> TypeInfo<'a> {
             TypeInfoImpl::DynamicallyKnown(desc) => desc.size,
             TypeInfoImpl::StaticallyKnown(desc) => desc.size,
         }
-    }
-}
-
-pub struct PointerIterator<'a>(Either<descriptor::PointerIter<'a>, Range<usize>>);
-
-impl Iterator for PointerIterator<'_> {
-    type Item = usize;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        self.0.next()
     }
 }
 

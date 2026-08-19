@@ -10,7 +10,7 @@ pub struct Descriptor {
     // Due lack of Rust const power, I couldn't flatten this at compile
     // time. So it has to be flatten at runtime. This field supplements
     // the 'fields' fields
-    pub unflattened: &'static [ (usize, &'static Descriptor) ],
+    pub unflattened: &'static [(usize, &'static Descriptor)],
     pub size: usize,
     _private: PhantomData<()>,
 }
@@ -22,10 +22,7 @@ impl Descriptor {
     //
     // Why here? there no unsafe code. I essentially pushed up the requirement
     // up to here. Because everything else depends Descriptor being sane
-    pub const unsafe fn new(
-        fields: Cow<'static, [usize]>,
-        size: usize,
-    ) -> Self {
+    pub const unsafe fn new(fields: Cow<'static, [usize]>, size: usize) -> Self {
         Self {
             fields,
             size,
@@ -37,7 +34,7 @@ impl Descriptor {
     pub const unsafe fn new_unflattened(
         fields: Cow<'static, [usize]>,
         size: usize,
-        unflattened: &'static [ (usize, &'static Descriptor) ]
+        unflattened: &'static [(usize, &'static Descriptor)],
     ) -> Self {
         Self {
             fields,
@@ -49,25 +46,23 @@ impl Descriptor {
 
     pub fn iter_ptrs<'a>(&'a self) -> PointerIter<'a> {
         PointerIter {
-            iter_stack: smallvec![
-                CurrentDescriptor {
-                    base: 0,
-                    fields: self.fields.iter(),
-                    childs: self.unflattened.iter(),
-                }
-            ],
+            iter_stack: smallvec![CurrentDescriptor {
+                base: 0,
+                fields: self.fields.iter(),
+                childs: self.unflattened.iter(),
+            }],
         }
     }
 }
 
-struct CurrentDescriptor<'a>{
+struct CurrentDescriptor<'a> {
     base: usize,
     fields: slice::Iter<'a, usize>,
     childs: slice::Iter<'a, (usize, &'a Descriptor)>,
 }
 
 pub struct PointerIter<'a> {
-    iter_stack: SmallVec<[CurrentDescriptor<'a>; 4]>
+    iter_stack: SmallVec<[CurrentDescriptor<'a>; 4]>,
 }
 
 impl Iterator for PointerIter<'_> {
@@ -93,5 +88,3 @@ impl Iterator for PointerIter<'_> {
         }
     }
 }
-
-
