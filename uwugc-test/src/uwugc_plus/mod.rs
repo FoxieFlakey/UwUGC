@@ -1,5 +1,3 @@
-use std::sync::atomic::Ordering;
-
 use uwugc::UwUGC;
 use uwugc_plus::{GCBoxOption, HasDescriptor, RootRef, SafepointArgs, UwUGCPlus};
 
@@ -45,6 +43,6 @@ pub fn run(uwugc: UwUGC) {
 
     println!("A: {}", list.data);
 
-    let list = list.next.load(Ordering::Relaxed).unwrap();
+    let list = list.next.load().unwrap();
     println!("B: {}", list.data);
 }

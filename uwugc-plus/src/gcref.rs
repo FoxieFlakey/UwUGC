@@ -54,6 +54,18 @@ impl<T: Unpin> GCBoxOption<T> {
         }
     }
 
+    // This pointer valid as long as no safepoint
+    // occur (means the object is not moved)
+    pub fn get_ptr(&self) -> Option<NonNull<T>> {
+        NonNull::new(self.inner.load(Ordering::Relaxed))
+            .map(|x| {
+                // SAFETY: We only ever puts valid ObjectPtr so this is safe
+                unsafe { ObjectPtr::from_nonnull(x) }
+                    .data()
+                    .cast()
+            })
+    }
+
     // # Safety
     // By creating GCBoxOption you have to make sure its store
     // onto heap, where GC can find GCBox before reaching
@@ -79,8 +91,8 @@ impl<T: Unpin> GCBoxOption<T> {
         }
     }
 
-    pub fn load(&self, ordering: Ordering) -> Option<RootRef<T>> {
-        let ptr = NonNull::new(self.inner.load(ordering))?;
+    pub fn load(&self) -> Option<RootRef<T>> {
+        let ptr = NonNull::new(self.inner.load(Ordering::Relaxed))?;
         // SAFETY: It is initialize if ptr is non null
         let metadata = unsafe { self.metadata.assume_init() };
 
@@ -93,7 +105,7 @@ impl<T: Unpin> GCBoxOption<T> {
         }))
     }
 
-    pub fn store(&mut self, ordering: Ordering, reference: Option<RootRef<T>>) {
+    pub fn store(&mut self, reference: Option<RootRef<T>>) {
         let meta = reference
             .as_ref()
             .map(RootRef::get_ptr)
@@ -108,7 +120,7 @@ impl<T: Unpin> GCBoxOption<T> {
         self.metadata = meta
             .map(MaybeUninit::new)
             .unwrap_or_else(MaybeUninit::uninit);
-        self.inner.store(ptr, ordering);
+        self.inner.store(ptr, Ordering::Relaxed);
     }
 }
 
@@ -127,11 +139,11 @@ impl<T: Unpin> GCBox<T> {
         }
     }
 
-    pub fn load(&self, ordering: Ordering) -> RootRef<T> {
-        self.inner.load(ordering).expect("GCBox is nonnullable")
+    pub fn load(&self) -> RootRef<T> {
+        self.inner.load().expect("GCBox is nonnullable")
     }
 
-    pub fn store(&mut self, ordering: Ordering, reference: RootRef<T>) {
-        self.inner.store(ordering, Some(reference));
+    pub fn store(&mut self, reference: RootRef<T>) {
+        self.inner.store(Some(reference));
     }
 }
