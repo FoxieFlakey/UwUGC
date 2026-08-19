@@ -133,8 +133,8 @@ pub struct TypeInfo<'a>(TypeInfoImpl<'a>);
 
 impl<'a> TypeInfo<'a> {
     // This return offset to each GC pointer
-    pub fn iter_pointers(&'a self) -> PointerIterator<'a> {
-        PointerIterator::from_type_info(self)
+    pub fn iter_pointers(&'a self, obj: ObjectPtr) -> PointerIterator<'a> {
+        PointerIterator::from_type_info(self, obj)
     }
 
     pub fn get_size(&self) -> usize {
@@ -164,17 +164,14 @@ unsafe impl TypeManager for Types {
         object: uwugc::ObjectPtr,
         visitor: &mut dyn FnMut(uwugc::ObjectPtr),
     ) -> bool {
-        let Some(fields_iter) = self.get_type(TypeId(type_id)) else {
+        let Some(type_info) = self.get_type(TypeId(type_id)) else {
             return false;
         };
 
-        for field in fields_iter.iter_pointers() {
-            // SAFETY: We got field offset frm trusted sources like RefArray its essentially
-            // every entry in array and for descriptor, descriptor maker already make sure its safe
-            let field = unsafe { object.data().byte_add(field) }.cast::<AtomicPtr<u8>>();
+        for field in type_info.iter_pointers(object) {
             // SAFETY: Registrator make sure offset is correct and GC make sure that
             // the 'object' cover valid range and contains the field
-            let field = unsafe { field.as_ref() }.load(Ordering::Relaxed);
+            let field = unsafe { field.cast::<AtomicPtr<u8>>().as_ref() }.load(Ordering::Relaxed);
             if let Some(val) = NonNull::new(field) {
                 // SAFETY: The content of each fields are controlled by us
                 // via GCBox and caller make sure it only ever contains valid
@@ -204,13 +201,10 @@ unsafe impl TypeManager for Types {
             return false;
         };
 
-        for field in type_info.iter_pointers() {
-            // SAFETY: registering descriptor requires caller to make sure offsets
-            // are valid for .byte_add and within the object size. So this is safe
-            let mut field = unsafe { object.data().byte_add(field) }.cast::<*mut u8>();
+        for field in type_info.iter_pointers(object) {
             // SAFETY: Registrator make sure offset is correct and GC make sure that
             // the 'object' cover valid range and contains the field
-            let field = unsafe { field.as_mut() };
+            let field = unsafe { field.cast::<*mut u8>().as_mut() };
             if let Some(current_val) = NonNull::new(*field) {
                 // SAFETY: The content of each fields are controlled by us
                 // via GCBox and caller make sure it only ever contains valid
