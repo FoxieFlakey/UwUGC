@@ -8,7 +8,7 @@ pub struct Vec<T: Unpin + HasDescriptor + 'static> {
     // if there pointer, GC would ignore nulls. Because
     // we're not getting &T there no UB if all zeros is
     // invalid
-    backing: GCBox<[MaybeUninit<T>]>,
+    backing: MaybeUninit<T>,
     capacity: usize,
     len: usize,
 }

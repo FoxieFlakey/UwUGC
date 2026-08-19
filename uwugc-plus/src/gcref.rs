@@ -21,7 +21,7 @@ use crate::{Descriptor, HasDescriptor, RootRef, context};
 // // allocate objects without HasDescriptor
 // object.field = GCBox::new(...)
 
-pub struct GCBoxOption<T: Unpin + ?Sized + 'static> {
+pub struct GCBoxOption<T: Unpin + 'static> {
     inner: AtomicPtr<u8>,
     metadata: MaybeUninit<<T as std::ptr::Pointee>::Metadata>,
     _phantom: PhantomData<T>,
@@ -29,17 +29,17 @@ pub struct GCBoxOption<T: Unpin + ?Sized + 'static> {
 
 // # Safety
 // We told where the pointer is, because we are the pointer
-unsafe impl<T: Unpin + ?Sized> HasDescriptor for GCBoxOption<T> {
+unsafe impl<T: Unpin> HasDescriptor for GCBoxOption<T> {
     const DESCRIPTOR: &'static crate::Descriptor = &unsafe { Descriptor::new(Cow::Borrowed(&[0]), size_of::<Self>()) };
 }
 
 // # Safety
 // We told where the pointer is, because we are the pointer
-unsafe impl<T: Unpin + ?Sized> HasDescriptor for GCBox<T> {
+unsafe impl<T: Unpin> HasDescriptor for GCBox<T> {
     const DESCRIPTOR: &'static crate::Descriptor = &unsafe { Descriptor::new(Cow::Borrowed(&[0]), size_of::<Self>()) };
 }
 
-impl<T: Unpin + ?Sized> GCBoxOption<T> {
+impl<T: Unpin> GCBoxOption<T> {
     pub fn none() -> Self {
         Self {
             inner: AtomicPtr::new(ptr::null_mut()),
@@ -100,11 +100,11 @@ impl<T: Unpin + ?Sized> GCBoxOption<T> {
     }
 }
 
-pub struct GCBox<T: Unpin + ?Sized + 'static> {
+pub struct GCBox<T: Unpin + 'static> {
     inner: GCBoxOption<T>,
 }
 
-impl<T: Unpin + ?Sized> GCBox<T> {
+impl<T: Unpin> GCBox<T> {
     // # Safety
     // By creating GCBox you have to make sure its store
     // onto heap, where GC can find GCBox before reaching
