@@ -586,6 +586,7 @@ dependencies = [
  "bitvec",
  "either",
  "parking_lot",
+ "smallvec",
  "uwugc",
  "uwugc-plus-derive",
  "yoke",

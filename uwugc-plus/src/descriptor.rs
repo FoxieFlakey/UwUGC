@@ -1,4 +1,6 @@
-use std::{borrow::Cow, marker::PhantomData};
+use std::{borrow::Cow, marker::PhantomData, slice};
+
+use smallvec::{SmallVec, smallvec};
 
 #[derive(Clone)]
 pub struct Descriptor {
@@ -44,5 +46,52 @@ impl Descriptor {
             _private: PhantomData,
         }
     }
+
+    pub fn iter_ptrs<'a>(&'a self) -> PointerIter<'a> {
+        PointerIter {
+            iter_stack: smallvec![
+                CurrentDescriptor {
+                    base: 0,
+                    fields: self.fields.iter(),
+                    childs: self.unflattened.iter(),
+                }
+            ],
+        }
+    }
 }
+
+struct CurrentDescriptor<'a>{
+    base: usize,
+    fields: slice::Iter<'a, usize>,
+    childs: slice::Iter<'a, (usize, &'a Descriptor)>,
+}
+
+pub struct PointerIter<'a> {
+    iter_stack: SmallVec<[CurrentDescriptor<'a>; 4]>
+}
+
+impl Iterator for PointerIter<'_> {
+    type Item = usize;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            let current = self.iter_stack.last_mut()?;
+            if let Some(field) = current.fields.next() {
+                return Some(current.base + *field);
+            }
+
+            let Some((offset, child)) = current.childs.next() else {
+                self.iter_stack.pop();
+                continue;
+            };
+
+            self.iter_stack.push(CurrentDescriptor {
+                base: *offset,
+                childs: child.unflattened.iter(),
+                fields: child.fields.iter(),
+            });
+        }
+    }
+}
+
 

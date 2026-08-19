@@ -11,7 +11,7 @@ use either::Either;
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 use uwugc::{ObjectPtr, TypeManager};
 
-use crate::Descriptor;
+use crate::{Descriptor, descriptor};
 
 // So GC gave 64-bit payload and then this module reserves 2 bits at bottom
 // for kind
@@ -135,8 +135,8 @@ impl<'a> TypeInfo<'a> {
     // This return offset to each GC pointer
     pub fn iter_pointers(&'a self) -> PointerIterator<'a> {
         PointerIterator(match &self.0 {
-            TypeInfoImpl::DynamicallyKnown(iter) => Either::Left(iter.fields.iter().copied()),
-            TypeInfoImpl::StaticallyKnown(iter) => Either::Left(iter.fields.iter().copied()),
+            TypeInfoImpl::DynamicallyKnown(desc) => Either::Left(desc.iter_ptrs()),
+            TypeInfoImpl::StaticallyKnown(desc) => Either::Left(desc.iter_ptrs()),
             TypeInfoImpl::RefArray(len) => Either::Right(0..*len),
         })
     }
@@ -150,7 +150,7 @@ impl<'a> TypeInfo<'a> {
     }
 }
 
-pub struct PointerIterator<'a>(Either<Copied<std::slice::Iter<'a, usize>>, Range<usize>>);
+pub struct PointerIterator<'a>(Either<descriptor::PointerIter<'a>, Range<usize>>);
 
 impl Iterator for PointerIterator<'_> {
     type Item = usize;
