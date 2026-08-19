@@ -145,8 +145,11 @@ impl<'a> Context<'a> {
         drop(root_set);
 
         // SAFETY: We checked that all root references are stored first
-        unsafe { self.context.alloc_slow(uwugc::AllocType::Typed(type_id.0), extra_bytes) }
-            .map(|x| self.add_ptr(x))
+        unsafe {
+            self.context
+                .alloc_slow(uwugc::AllocType::Typed(type_id.0), extra_bytes)
+        }
+        .map(|x| self.add_ptr(x))
     }
 
     // This panics if there any active root reference

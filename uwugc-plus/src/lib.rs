@@ -16,6 +16,7 @@ use crate::{
     types::{TypeId, Types},
 };
 
+mod array_metadata;
 mod context;
 mod descriptor;
 mod gcref;
@@ -96,7 +97,9 @@ where
     context::with_context_mut(move |x| x.alloc_fast(TypeId::from(T::DESCRIPTOR), extra_bytes))
         .or_else(move || {
             (safepoint_args.before_safepoint)(&mut safepoint_args.state);
-            let ret = context::with_context_mut(move |x| x.alloc_slow(TypeId::from(T::DESCRIPTOR), extra_bytes));
+            let ret = context::with_context_mut(move |x| {
+                x.alloc_slow(TypeId::from(T::DESCRIPTOR), extra_bytes)
+            });
             (safepoint_args.after_safepoint)(&mut safepoint_args.state);
             ret
         })

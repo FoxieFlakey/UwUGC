@@ -86,10 +86,10 @@ where
 
         // SAFETY: We're using same mm consistently
         let ret = unsafe {
-            self.shared_data
-                .lock()
-                .mm_context
-                .alloc(&self.shared.get().mm, self.get_size_of_alloc(ty) + extra_bytes)
+            self.shared_data.lock().mm_context.alloc(
+                &self.shared.get().mm,
+                self.get_size_of_alloc(ty) + extra_bytes,
+            )
         };
 
         ret.map(|x| unsafe { Self::init_object(self, x.0, kind) })
@@ -152,10 +152,10 @@ where
             let kind = self.to_obj_kind(ty);
             // SAFETY: We're using same mm consistently
             let ret = unsafe {
-                self.shared_data
-                    .lock()
-                    .mm_context
-                    .alloc(&self.shared.get().mm, self.get_size_of_alloc(ty) + extra_bytes)
+                self.shared_data.lock().mm_context.alloc(
+                    &self.shared.get().mm,
+                    self.get_size_of_alloc(ty) + extra_bytes,
+                )
             };
 
             if ret.is_some() {
