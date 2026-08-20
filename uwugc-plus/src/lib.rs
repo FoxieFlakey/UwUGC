@@ -7,7 +7,7 @@
 // inter mixing calls thru this and direct calls are very fragile and
 // be done with care.
 
-use std::{marker::PhantomData, mem::MaybeUninit, sync::Arc};
+use std::{borrow::Cow, marker::PhantomData, mem::MaybeUninit, sync::Arc};
 
 use uwugc::UwUGC;
 use yoke::Yoke;
@@ -124,6 +124,13 @@ where
             });
 
         ret
+    })
+}
+
+pub fn register(descriptor: Cow<'static, Descriptor>) -> TypeId {
+    context::with_context_mut(move |x| {
+        x.get_type_manager()
+            .register(descriptor)
     })
 }
 

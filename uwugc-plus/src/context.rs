@@ -1,16 +1,14 @@
 // This assume each thread has own root set
 
 use std::{
-    cell::{Cell, RefCell},
-    marker::PhantomData,
-    sync::Arc,
+    any::Any, cell::{Cell, RefCell}, marker::PhantomData, sync::Arc
 };
 
 use bitvec::vec::BitVec;
 use uwugc::{ObjectPtr, UwUGC};
 use yoke::{Yoke, Yokeable};
 
-use crate::{UwUGCPlus, types::TypeId};
+use crate::{UwUGCPlus, types::{TypeId, Types}};
 
 #[derive(Clone)]
 struct Inner {
@@ -168,6 +166,13 @@ impl<'a> Context<'a> {
 
         // SAFETY: We make sure there no living root reference
         unsafe { self.context.safepoint() };
+    }
+
+    pub fn get_type_manager(&self) -> &Types {
+        match (self.context.get_type_manager() as &dyn Any).downcast_ref() {
+            Some(x) => x,
+            None => panic!("Aaa")
+        }
     }
 }
 
