@@ -27,7 +27,8 @@ pub fn run(uwugc: UwUGC) {
     .unwrap();
 
     let mut safepoint = safe_roots!(&list);
-    let mut vec: RootRef<uwugc_plus_alloc::Vec<GCBoxOption<SinglyLinked>>> = uwugc_plus_alloc::Vec::new(&mut safepoint).unwrap();
+    let mut vec: RootRef<uwugc_plus_alloc::Vec<GCBoxOption<SinglyLinked>>> =
+        uwugc_plus_alloc::Vec::new(&mut safepoint).unwrap();
 
     vec.insert(&mut safepoint, GCBoxOption::none()).unwrap();
     vec[0].store(Some(list));

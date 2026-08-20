@@ -1,5 +1,9 @@
 use std::{
-    borrow::Cow, marker::PhantomData, pin::UnsafePinned, ptr::{self, NonNull}, sync::atomic::{AtomicPtr, Ordering}
+    borrow::Cow,
+    marker::PhantomData,
+    pin::UnsafePinned,
+    ptr::{self, NonNull},
+    sync::atomic::{AtomicPtr, Ordering},
 };
 
 use uwugc::ObjectPtr;
@@ -57,11 +61,12 @@ impl<T: Unpin> GCBoxOption<T> {
         // SAFETY: Both GC and mutator will only ever get shared
         // reference. The write/read are synchronized by atomics
         let loaded = unsafe {
-                self.inner.get()
-                    .cast_const()
-                    .as_ref_unchecked()
-                    .load(Ordering::Relaxed)
-            };
+            self.inner
+                .get()
+                .cast_const()
+                .as_ref_unchecked()
+                .load(Ordering::Relaxed)
+        };
         NonNull::new(loaded).map(|x| {
             // SAFETY: We only ever puts valid ObjectPtr so this is safe
             unsafe { ObjectPtr::from_nonnull(x) }.data().cast()
@@ -107,7 +112,8 @@ impl<T: Unpin> GCBoxOption<T> {
         // SAFETY: Both GC and mutator will only ever get shared
         // reference. The write/read are synchronized by atomics
         unsafe {
-            self.inner.get()
+            self.inner
+                .get()
                 .cast_const()
                 .as_ref_unchecked()
                 .store(ptr, Ordering::Relaxed);
