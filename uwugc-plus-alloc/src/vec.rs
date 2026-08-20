@@ -79,6 +79,18 @@ impl<T: Unpin + HasDescriptor + 'static> Vec<T> {
         self.len += 1;
         Ok(())
     }
+
+    pub fn resize_with<F>(&mut self, mut safepoint: &mut dyn SafepointMut, len: usize, mut initer: F) -> Result<(), ()>
+        where F: FnMut() -> T
+    {
+        self.ensure_capacity(&mut safepoint, self.len + 1)?;
+        for _ in 0..len {
+            self.backing.get_mut().unwrap()[self.len] = ZeroOrInit::new(initer());
+            self.len += 1;
+        }
+
+        Ok(())
+    }
 }
 
 impl<T: Unpin + HasDescriptor + 'static> Deref for Vec<T> {

@@ -1,11 +1,12 @@
 use uwugc::{ObjectPtr, TypeManager, UwUGC};
 
 mod dumbrootset;
+mod gclatencyexperiment;
 mod gclatencytest;
 mod uwugc_plus;
 
 fn main() {
-    let state = UwUGC::new(
+    let mut state = UwUGC::new(
         512 * 1024 * 1024,
         Some(0x60ef_0000_0000),
         Some(0x60ff_0000_0000),
@@ -13,8 +14,8 @@ fn main() {
     )
     .unwrap();
 
-    let _ = gclatencytest::run;
-    uwugc_plus::run(state);
+    gclatencytest::run(&mut state);
+    // uwugc_plus::run(state);
 }
 
 struct NoopTypeManager;

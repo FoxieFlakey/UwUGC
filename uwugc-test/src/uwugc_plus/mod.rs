@@ -9,18 +9,19 @@ pub struct SinglyLinked {
     data: u32,
 }
 
+#[expect(unused)]
 pub fn run(uwugc: UwUGC) {
     // SAFETY: Dont illegal stuffs
     let uwugc = unsafe { UwUGCPlus::new(uwugc) };
     uwugc.init_context();
 
-    let list = uwugc_plus::alloc(&mut [], 0, || SinglyLinked {
+    let list = uwugc_plus::alloc(&mut safe_roots!(), 0, || SinglyLinked {
         data: 19,
         next: GCBoxOption::none(),
     })
     .unwrap();
 
-    let list = uwugc_plus::alloc(&mut [], 0, || SinglyLinked {
+    let list = uwugc_plus::alloc(&mut safe_roots!(), 0, || SinglyLinked {
         data: 38,
         // SAFETY: We're indeed assigning here and won't dangle the pointer
         next: unsafe { GCBoxOption::new(Some(list)) },
