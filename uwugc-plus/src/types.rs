@@ -8,7 +8,7 @@ use std::{
 use parking_lot::{MappedRwLockReadGuard, RwLock, RwLockReadGuard};
 use uwugc::{ObjectPtr, TypeManager};
 
-use crate::Descriptor;
+use crate::{Descriptor, array_metadata::ArrayHeader};
 
 mod pointer_iterator;
 pub use pointer_iterator::PointerIterator;
@@ -137,11 +137,53 @@ impl<'a> TypeInfo<'a> {
         PointerIterator::from_type_info(self, obj)
     }
 
-    pub fn get_size(&self) -> usize {
+    pub fn get_static_size(&self) -> usize {
         match &self.0 {
             TypeInfoImpl::RefArray(len) => len * size_of::<*mut u8>(),
-            TypeInfoImpl::DynamicallyKnown(desc) => desc.size,
-            TypeInfoImpl::StaticallyKnown(desc) => desc.size,
+            TypeInfoImpl::DynamicallyKnown(desc) => {
+                if desc.is_array {
+                    // Array is special case, its "static" size is the header itself
+                    size_of::<ArrayHeader>()
+                } else {
+                    desc.size
+                }
+            }
+            TypeInfoImpl::StaticallyKnown(desc) => {
+                if desc.is_array {
+                    // Array is special case, its "static" size is the header itself
+                    size_of::<ArrayHeader>()
+                } else {
+                    desc.size
+                }
+            }
+        }
+    }
+
+    pub fn get_dynamic_size(&self, obj: ObjectPtr) -> usize {
+        match &self.0 {
+            TypeInfoImpl::RefArray(_) => self.get_static_size(),
+            TypeInfoImpl::DynamicallyKnown(desc) => {
+                if desc.is_array {
+                    // SAFETY: obj is guarantee to be valid array
+                    let array_header = unsafe { obj.data().cast::<ArrayHeader>().as_ref() };
+
+                    // Array's dynamic size is the header + the elements size
+                    self.get_static_size() + desc.size * array_header.size
+                } else {
+                    desc.size
+                }
+            }
+            TypeInfoImpl::StaticallyKnown(desc) => {
+                if desc.is_array {
+                    // SAFETY: obj is guarantee to be valid array
+                    let array_header = unsafe { obj.data().cast::<ArrayHeader>().as_ref() };
+
+                    // Array's dynamic size is the header + the elements size
+                    self.get_static_size() + desc.size * array_header.size
+                } else {
+                    desc.size
+                }
+            }
         }
     }
 }
@@ -154,8 +196,13 @@ unsafe impl TypeManager for Types {
             .for_each(|x| x.marked_dead = true);
     }
 
-    fn get_size(&self, type_id: u64) -> Option<usize> {
-        self.get_type(TypeId(type_id)).map(|x| x.get_size())
+    fn get_static_size(&self, type_id: u64) -> Option<usize> {
+        self.get_type(TypeId(type_id)).map(|x| x.get_static_size())
+    }
+
+    fn get_dynamic_size(&self, type_id: u64, object: uwugc::ObjectPtr) -> Option<usize> {
+        self.get_type(TypeId(type_id))
+            .map(|x| x.get_dynamic_size(object))
     }
 
     fn iterate_gc_pointers(

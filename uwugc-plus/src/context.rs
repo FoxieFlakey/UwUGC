@@ -1,6 +1,10 @@
 // This assume each thread has own root set
 
-use std::{cell::{Cell, RefCell}, marker::PhantomData, sync::Arc};
+use std::{
+    cell::{Cell, RefCell},
+    marker::PhantomData,
+    sync::Arc,
+};
 
 use bitvec::vec::BitVec;
 use uwugc::{ObjectPtr, UwUGC};

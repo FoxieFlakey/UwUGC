@@ -96,12 +96,16 @@ unsafe impl TypeManager for LatencyTestTypeManager {
         type_id == WINDOW_TYPE_ID
     }
 
-    fn get_size(&self, type_id: u64) -> Option<usize> {
+    fn get_static_size(&self, type_id: u64) -> Option<usize> {
         if type_id == WINDOW_TYPE_ID {
             Some(size_of::<AtomicPtr<u8>>() * WINDOW_SIZE)
         } else {
             None
         }
+    }
+
+    fn get_dynamic_size(&self, type_id: u64, _: ObjectPtr) -> Option<usize> {
+        self.get_static_size(type_id)
     }
 
     fn iterate_gc_pointers(

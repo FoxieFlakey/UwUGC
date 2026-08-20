@@ -23,18 +23,18 @@ mod context;
 mod descriptor;
 mod gcref;
 mod has_descriptor;
+mod safepoint;
 mod typed_root_ref;
 mod types;
-mod safepoint;
 
 pub struct UwUGCPlus(UwUGC);
 pub use array::Array;
+pub use context::RootRefRaw;
 pub use descriptor::Descriptor;
 pub use gcref::{GCBox, GCBoxOption};
 pub use has_descriptor::HasDescriptor;
+pub use safepoint::{Safepoint, SafepointList, SafepointMut};
 pub use typed_root_ref::RootRef;
-pub use context::RootRefRaw;
-pub use safepoint::{Safepoint, SafepointMut, SafepointList};
 
 impl UwUGCPlus {
     // Note: passing UwUGC to here, will

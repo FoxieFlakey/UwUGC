@@ -54,13 +54,10 @@ impl<T: Unpin> GCBoxOption<T> {
     // This pointer valid as long as no safepoint
     // occur (means the object is not moved)
     pub fn get_ptr(&self) -> Option<NonNull<T>> {
-        NonNull::new(self.inner.load(Ordering::Relaxed))
-            .map(|x| {
-                // SAFETY: We only ever puts valid ObjectPtr so this is safe
-                unsafe { ObjectPtr::from_nonnull(x) }
-                    .data()
-                    .cast()
-            })
+        NonNull::new(self.inner.load(Ordering::Relaxed)).map(|x| {
+            // SAFETY: We only ever puts valid ObjectPtr so this is safe
+            unsafe { ObjectPtr::from_nonnull(x) }.data().cast()
+        })
     }
 
     // # Safety
@@ -83,14 +80,12 @@ impl<T: Unpin> GCBoxOption<T> {
 
     pub fn get_ref<'a>(&'a self) -> Option<&'a T> {
         // SAFETY: We have shared reference, this is safe
-        self.get_ptr()
-            .map(|x| unsafe { x.as_ref() })
+        self.get_ptr().map(|x| unsafe { x.as_ref() })
     }
 
     pub fn get_mut<'a>(&'a mut self) -> Option<&'a mut T> {
         // SAFETY: We have mutable reference, this is safe
-        self.get_ptr()
-            .map(|mut x| unsafe { x.as_mut() })
+        self.get_ptr().map(|mut x| unsafe { x.as_mut() })
     }
 
     pub fn store(&mut self, reference: Option<RootRef<T>>) {

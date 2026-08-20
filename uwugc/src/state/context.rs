@@ -110,7 +110,7 @@ where
                 .get()
                 .type_manager
                 .type_manager
-                .get_size(x)
+                .get_static_size(x)
                 .unwrap(),
         }) + size_of::<MetadataCompressed>()
     }

@@ -12,7 +12,8 @@ pub trait SafepointMut {
 }
 
 impl<T> SafepointMut for T
-    where T: Safepoint
+where
+    T: Safepoint,
 {
     fn after_safepoint(&mut self) {
         (self as &dyn Safepoint).after_safepoint();
@@ -24,22 +25,19 @@ impl<T> SafepointMut for T
 }
 
 impl<'a, T> Safepoint for T
-    where T: AsRef<[&'a RootRefRaw]>
+where
+    T: AsRef<[&'a RootRefRaw]>,
 {
     fn before_safepoint(&self) {
-        self.as_ref()
-            .iter()
-            .for_each(|x| {
-                x.store();
-            });
+        self.as_ref().iter().for_each(|x| {
+            x.store();
+        });
     }
 
     fn after_safepoint(&self) {
-        self.as_ref()
-            .iter()
-            .for_each(|x| {
-                x.load();
-            });
+        self.as_ref().iter().for_each(|x| {
+            x.load();
+        });
     }
 }
 
@@ -70,19 +68,14 @@ pub struct SafepointList<'a>(&'a mut [&'a mut dyn SafepointMut]);
 
 impl SafepointMut for SafepointList<'_> {
     fn before_safepoint(&mut self) {
-        self.0
-            .iter_mut()
-            .for_each(|x| {
-                x.before_safepoint();
-            });
+        self.0.iter_mut().for_each(|x| {
+            x.before_safepoint();
+        });
     }
 
     fn after_safepoint(&mut self) {
-        self.0
-            .iter_mut()
-            .for_each(|x| {
-                x.after_safepoint();
-            });
+        self.0.iter_mut().for_each(|x| {
+            x.after_safepoint();
+        });
     }
 }
-

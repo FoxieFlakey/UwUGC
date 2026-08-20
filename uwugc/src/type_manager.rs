@@ -90,9 +90,17 @@ pub unsafe trait TypeManager: Send + Sync + Any + 'static {
         updater: &mut dyn FnMut(ObjectPtr) -> ObjectPtr,
     ) -> bool;
 
-    // Get size of type_id. Excluding metadata
+    // Get size of type_id. For some objects like array. This only
+    // includes the header of array does not include the dynamically
+    // sized portion. The dynamically sized portion can be controlled
+    // by 'extra_bytes' of alloc functions.
     // Returns None if type_id unknown else Some(length)
-    fn get_size(&self, type_id: u64) -> Option<usize>;
+    fn get_static_size(&self, type_id: u64) -> Option<usize>;
+
+    // Get actual full object size for object which is not dynamically
+    // sized its the same as get_static_size. This mainly so types like
+    // array can calculate fully length include its dynamic portion.
+    fn get_dynamic_size(&self, type_id: u64, obj: ObjectPtr) -> Option<usize>;
 }
 
 pub struct TypeManagerConcrete {
@@ -122,7 +130,10 @@ impl TypeManagerConcrete {
     pub fn get_size(&self, object: &ObjectPtr) -> usize {
         (match object.metadata().payload {
             ObjectKind::PlainOldData(x) => x.try_into().unwrap(),
-            ObjectKind::NotPlainOldData(type_id) => self.type_manager.get_size(type_id).unwrap(),
+            ObjectKind::NotPlainOldData(type_id) => self
+                .type_manager
+                .get_dynamic_size(type_id, *object)
+                .unwrap(),
         }) + size_of::<MetadataCompressed>()
     }
 
