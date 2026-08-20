@@ -40,7 +40,14 @@ pub use typed_root_ref::RootRef;
 impl UwUGCPlus {
     // Note: passing UwUGC to here, will
     // replaces TypeManager that is in there
-    pub fn new(mut uwugc: UwUGC) -> Arc<UwUGCPlus> {
+    //
+    // # Safety
+    // there few place that can cause "unsafe", it is up to the user
+    // to make sure they dont do these illegal stuffs which is trying
+    // to modify the GCBox and GCBoxOption in a structure directly
+    // it has to use .store and .load, it would cause data race if manually
+    // moves into it
+    pub unsafe fn new(mut uwugc: UwUGC) -> Arc<UwUGCPlus> {
         uwugc.set_type_manager(Types::new());
         Arc::new(UwUGCPlus(uwugc))
     }

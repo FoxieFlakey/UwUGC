@@ -10,7 +10,8 @@ pub struct SinglyLinked {
 }
 
 pub fn run(uwugc: UwUGC) {
-    let uwugc = UwUGCPlus::new(uwugc);
+    // SAFETY: Dont illegal stuffs
+    let uwugc = unsafe { UwUGCPlus::new(uwugc) };
     uwugc.init_context();
 
     let list = uwugc_plus::alloc(&mut [], 0, || SinglyLinked {
