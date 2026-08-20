@@ -1,8 +1,5 @@
 use std::{
-    borrow::Cow,
-    marker::PhantomData,
-    ptr::{self, NonNull},
-    sync::atomic::{AtomicPtr, Ordering},
+    borrow::Cow, marker::PhantomData, pin::UnsafePinned, ptr::{self, NonNull}, sync::atomic::{AtomicPtr, Ordering}
 };
 
 use uwugc::ObjectPtr;
@@ -25,9 +22,12 @@ use crate::{Descriptor, HasDescriptor, RootRef};
 // object.field = GCBox::new(...)
 
 pub struct GCBoxOption<T: Unpin + 'static> {
-    inner: AtomicPtr<u8>,
+    inner: UnsafePinned<AtomicPtr<u8>>,
     _phantom: PhantomData<T>,
 }
+
+// I only need the opt out of typical aliasing rule.
+impl<T: Unpin> Unpin for GCBoxOption<T> {}
 
 // # Safety
 // We told where the pointer is, because we are the pointer
@@ -46,7 +46,7 @@ unsafe impl<T: Unpin> HasDescriptor for GCBox<T> {
 impl<T: Unpin> GCBoxOption<T> {
     pub fn none() -> Self {
         Self {
-            inner: AtomicPtr::new(ptr::null_mut()),
+            inner: UnsafePinned::new(AtomicPtr::new(ptr::null_mut())),
             _phantom: PhantomData,
         }
     }
@@ -54,7 +54,15 @@ impl<T: Unpin> GCBoxOption<T> {
     // This pointer valid as long as no safepoint
     // occur (means the object is not moved)
     pub fn get_ptr(&self) -> Option<NonNull<T>> {
-        NonNull::new(self.inner.load(Ordering::Relaxed)).map(|x| {
+        // SAFETY: Both GC and mutator will only ever get shared
+        // reference. The write/read are synchronized by atomics
+        let loaded = unsafe {
+                self.inner.get()
+                    .cast_const()
+                    .as_ref_unchecked()
+                    .load(Ordering::Relaxed)
+            };
+        NonNull::new(loaded).map(|x| {
             // SAFETY: We only ever puts valid ObjectPtr so this is safe
             unsafe { ObjectPtr::from_nonnull(x) }.data().cast()
         })
@@ -73,7 +81,7 @@ impl<T: Unpin> GCBoxOption<T> {
             .unwrap_or(ptr::null_mut());
 
         Self {
-            inner: AtomicPtr::new(ptr),
+            inner: UnsafePinned::new(AtomicPtr::new(ptr)),
             _phantom: PhantomData,
         }
     }
@@ -96,7 +104,14 @@ impl<T: Unpin> GCBoxOption<T> {
             })
             .unwrap_or(ptr::null_mut());
 
-        self.inner.store(ptr, Ordering::Relaxed);
+        // SAFETY: Both GC and mutator will only ever get shared
+        // reference. The write/read are synchronized by atomics
+        unsafe {
+            self.inner.get()
+                .cast_const()
+                .as_ref_unchecked()
+                .store(ptr, Ordering::Relaxed);
+        }
     }
 }
 

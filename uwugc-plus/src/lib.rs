@@ -1,3 +1,4 @@
+#![feature(unsafe_pinned)]
 #![feature(ptr_metadata)]
 #![feature(unsize)]
 #![feature(map_try_insert)]
