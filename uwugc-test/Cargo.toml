@@ -6,3 +6,4 @@ edition = "2024"
 [dependencies]
 uwugc = { path = "../uwugc" }
 uwugc-plus = { version = "0.1.0", path = "../uwugc-plus" }
+uwugc-plus-alloc = { version = "0.1.0", path = "../uwugc-plus-alloc" }

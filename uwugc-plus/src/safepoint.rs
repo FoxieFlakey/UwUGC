@@ -64,7 +64,7 @@ macro_rules! safe_roots {
     };
 }
 
-pub struct SafepointList<'a>(&'a mut [&'a mut dyn SafepointMut]);
+pub struct SafepointList<'a>(pub &'a mut [&'a mut dyn SafepointMut]);
 
 impl SafepointMut for SafepointList<'_> {
     fn before_safepoint(&mut self) {

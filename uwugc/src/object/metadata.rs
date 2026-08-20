@@ -98,7 +98,7 @@ impl Metadata {
     fn encode_word(data: MetadataExpanded) -> u64 {
         let mut v = match data.payload {
             MetadataEnum::PlainOldData(len) => (len << PAYLOAD_SHIFT) | 0b000,
-            MetadataEnum::NotPlainOldData(desc) => (desc << PAYLOAD_SHIFT) | 0b100,
+            MetadataEnum::NotPlainOldData(_) => 0b100,
         };
 
         if data.is_marked == Bit::Bit1 {
