@@ -29,7 +29,7 @@ impl<T: Unpin + HasDescriptor + 'static> Vec<T> {
 
     fn ensure_capacity(
         &mut self,
-        safepoint: &mut dyn SafepointMut,
+        mut safepoint: &mut dyn SafepointMut,
         min_capacity: usize,
     ) -> Result<(), ()> {
         let min_capacity = if min_capacity.is_power_of_two() {
@@ -40,7 +40,7 @@ impl<T: Unpin + HasDescriptor + 'static> Vec<T> {
 
         if self.backing.get_mut().is_none() {
             let allocated =
-                uwugc_plus::alloc_array(safepoint, 0, || ZeroOrInit::zeroed(), min_capacity)
+                uwugc_plus::alloc_array(&mut safepoint, 0, || ZeroOrInit::zeroed(), min_capacity)
                     .ok_or(())?;
             self.backing.store(Some(allocated));
         }
@@ -48,7 +48,7 @@ impl<T: Unpin + HasDescriptor + 'static> Vec<T> {
         let backing = self.backing.get_mut().unwrap();
         if min_capacity > backing.len() {
             let mut allocated =
-                uwugc_plus::alloc_array(safepoint, 0, || ZeroOrInit::zeroed(), min_capacity)
+                uwugc_plus::alloc_array(&mut safepoint, 0, || ZeroOrInit::zeroed(), min_capacity)
                     .ok_or(())?;
             let old = self.backing.get_mut().unwrap();
             for (i, src) in old.iter_mut().enumerate() {
@@ -56,7 +56,7 @@ impl<T: Unpin + HasDescriptor + 'static> Vec<T> {
 
                 // Occasionally safepoint during potentially long copies
                 if i % 512 != 0 {
-                    uwugc_plus::safepoint(&mut SafepointList(&mut [
+                    uwugc_plus::safepoint(SafepointList(&mut [
                         &mut safe_roots!(&mut allocated),
                         safepoint,
                     ]));

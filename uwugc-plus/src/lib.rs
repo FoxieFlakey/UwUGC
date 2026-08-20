@@ -34,7 +34,7 @@ pub use context::RootRefRaw;
 pub use descriptor::Descriptor;
 pub use gcbox::{GCBox, GCBoxOption};
 pub use has_descriptor::HasDescriptor;
-pub use safepoint::{Safepoint, SafepointList, SafepointMut};
+pub use safepoint::{Safepoint, SafepointList, SafepointMut, RootList};
 pub use typed_root_ref::RootRef;
 
 impl UwUGCPlus {
@@ -65,14 +65,16 @@ impl UwUGCPlus {
 }
 
 // Free standing functions
-pub fn safepoint(safepoint: &mut dyn SafepointMut) {
+pub fn safepoint<S>(mut safepoint: S)
+    where S: SafepointMut
+{
     safepoint.before_safepoint();
     context::with_context_mut(|x| x.safepoint());
     safepoint.after_safepoint();
 }
 
-pub fn alloc_array<'a, T, F>(
-    safepoint: &mut dyn SafepointMut,
+pub fn alloc_array<'a, S, T, F>(
+    mut safepoint: S,
     extra_bytes: usize,
     mut init: F,
     len: usize,
@@ -80,6 +82,7 @@ pub fn alloc_array<'a, T, F>(
 where
     F: FnMut() -> T,
     T: HasDescriptor,
+    S: SafepointMut,
 {
     let data_bytes = size_of::<T>() * len;
     context::with_context_mut(move |x| {
